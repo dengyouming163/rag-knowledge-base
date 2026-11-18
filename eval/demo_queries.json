@@ -1,0 +1,8 @@
+[
+  {"query": "退款一般几天到账", "gold_chunk_ids": ["kb-after-sale#1"]},
+  {"query": "买完不想要了怎么退钱", "gold_chunk_ids": ["kb-after-sale#1"]},
+  {"query": "换货要自己出运费吗", "gold_chunk_ids": ["kb-after-sale#2"]},
+  {"query": "下单后多久能发货", "gold_chunk_ids": ["kb-logistics#1"]},
+  {"query": "地址写错了还能改吗", "gold_chunk_ids": ["kb-logistics#2"]},
+  {"query": "E102 报错是什么意思", "gold_chunk_ids": ["kb-device#1"]}
+]
