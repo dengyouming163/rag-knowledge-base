@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import pdfplumber
 from fastapi.testclient import TestClient
@@ -95,23 +95,63 @@ def test_ocr_without_text_returns_readable_422(monkeypatch) -> None:
     assert "扫描件 OCR 未识别出文本" in response.json()["detail"]
 
 
-def test_ocr_pdf_converts_fake_engine_results_to_blocks(monkeypatch) -> None:
-    module = _load_parser_main()
-    image = Image.new("RGB", (2, 2), "white")
-    pages = [
-        SimpleNamespace(to_image=lambda resolution: SimpleNamespace(original=image)),
-        SimpleNamespace(to_image=lambda resolution: SimpleNamespace(original=image)),
-    ]
-
+def _patch_pdf_pages(monkeypatch, pages: list[object]) -> None:
     class FakePdf:
+        def __init__(self) -> None:
+            self.pages = pages
+
         def __enter__(self):
             return self
 
         def __exit__(self, *args):
             return None
 
-    FakePdf.pages = pages
     monkeypatch.setattr(pdfplumber, "open", lambda stream: FakePdf())
+
+
+def test_default_ocr_engine_is_initialized_once_and_reused(monkeypatch) -> None:
+    module = _load_parser_main()
+    image = Image.new("RGB", (2, 2), "white")
+    page = SimpleNamespace(to_image=lambda resolution: SimpleNamespace(original=image))
+    _patch_pdf_pages(monkeypatch, [page])
+    monkeypatch.setattr(module, "_OCR_ENGINE", None, raising=False)
+    initializations = 0
+    inferences = 0
+
+    def fake_ocr(image_array):
+        nonlocal inferences
+        inferences += 1
+        return [[[0, 0], "扫描件正文", 0.99]], 0.01
+
+    def fake_engine_factory():
+        nonlocal initializations
+        initializations += 1
+        return fake_ocr
+
+    fake_module = ModuleType("rapidocr_onnxruntime")
+    fake_module.RapidOCR = fake_engine_factory
+    monkeypatch.setitem(sys.modules, "rapidocr_onnxruntime", fake_module)
+
+    module._ocr_pdf(b"%PDF-first")
+    module._ocr_pdf(b"%PDF-second")
+
+    assert inferences == 2
+    assert initializations == 1
+
+
+def test_ocr_pdf_converts_fake_engine_results_to_blocks(monkeypatch) -> None:
+    module = _load_parser_main()
+    image = Image.new("RGB", (2, 2), "white")
+    resolutions: list[int] = []
+
+    def fake_page():
+        def to_image(resolution: int):
+            resolutions.append(resolution)
+            return SimpleNamespace(original=image)
+
+        return SimpleNamespace(to_image=to_image)
+
+    _patch_pdf_pages(monkeypatch, [fake_page(), fake_page()])
     calls: list[tuple[int, ...]] = []
 
     def fake_ocr(image_array):
@@ -127,3 +167,4 @@ def test_ocr_pdf_converts_fake_engine_results_to_blocks(monkeypatch) -> None:
         {"type": "text", "text": "第二页正文", "page": 2, "section": ""},
     ]
     assert calls == [(2, 2, 3), (2, 2, 3)]
+    assert resolutions == [200, 200]

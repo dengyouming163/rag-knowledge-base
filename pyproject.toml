@@ -19,6 +19,12 @@ dependencies = [
     "pgvector>=0.3",
 ]
 
+[project.optional-dependencies]
+test = [
+    "pdfplumber",
+    "Pillow",
+]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import html
 import io
+import threading
 from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -28,6 +29,8 @@ app = FastAPI(title="kb-parser", version="0.1.0")
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 # 13pt 为启发式，对正文大字号文档可能误判标题，影响仅限 section 噪声，后续可按文档主字号自适应。
 TITLE_FONT_SIZE_MIN = 13.0
+_OCR_ENGINE: Any | None = None
+_OCR_LOCK = threading.RLock()
 
 # 旧元素类型 → 我们的块类型。保留该纯函数以兼容现有调用方和单元测试；
 # HTTP 解析流程已不再依赖 unstructured。
@@ -191,10 +194,15 @@ def _parse_pdf(content: bytes) -> list[Block]:
 
 def _ocr_pdf(content: bytes, ocr: Any | None = None) -> list[Block]:
     """把无文字层 PDF 逐页渲染后交给 RapidOCR，并复用统一块结构。"""
+    global _OCR_ENGINE
     if ocr is None:
-        from rapidocr_onnxruntime import RapidOCR
+        # 默认引擎只初始化一次；持锁递归复用下方流程，同时串行化 ONNX 推理。
+        with _OCR_LOCK:
+            if _OCR_ENGINE is None:
+                from rapidocr_onnxruntime import RapidOCR
 
-        ocr = RapidOCR()
+                _OCR_ENGINE = RapidOCR()
+            return _ocr_pdf(content, ocr=_OCR_ENGINE)
 
     import numpy as np
     import pdfplumber
