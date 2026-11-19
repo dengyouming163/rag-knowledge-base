@@ -61,7 +61,9 @@ class LocalDirectorySource:
         return content
 
     def sync(self) -> list[DocumentRef]:
-        refs = list(self.list_documents(since=None))
+        refs = list(
+            {ref.uri: ref for ref in self.list_documents(since=None)}.values()
+        )
         changed = [
             ref
             for ref in refs

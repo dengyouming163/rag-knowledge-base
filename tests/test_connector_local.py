@@ -139,6 +139,7 @@ def test_sync_retries_all_changes_when_a_later_file_fails(
     ]
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows UNC 路径转换仅在 Windows 验证")
 def test_fetch_preserves_windows_unc_authority(tmp_path, monkeypatch) -> None:
     payload = b"unc payload"
     ref = DocumentRef(
@@ -255,3 +256,31 @@ def test_list_documents_does_not_read_files_older_than_since(
 
     assert [ref.uri for ref in refs] == [new_path.resolve().as_uri()]
     assert old_file_reads == []
+
+
+def test_sync_deduplicates_canonical_uris_before_comparing(
+    tmp_path, monkeypatch
+) -> None:
+    uri = "file:///docs/policy.txt"
+    mtime = datetime.now(timezone.utc)
+    first = DocumentRef(
+        uri=uri,
+        mtime=mtime,
+        size=5,
+        hash=hashlib.sha256(b"first").hexdigest(),
+    )
+    last = DocumentRef(
+        uri=uri,
+        mtime=mtime,
+        size=4,
+        hash=hashlib.sha256(b"last").hexdigest(),
+    )
+    source = LocalDirectorySource(tmp_path)
+    monkeypatch.setattr(
+        source,
+        "list_documents",
+        lambda since: iter([first, last]),
+    )
+
+    assert source.sync() == [last]
+    assert source.sync() == []
