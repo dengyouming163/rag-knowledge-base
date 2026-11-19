@@ -158,6 +158,12 @@ class PgVectorStore:
         acl_sql, acl_params = acl_condition(user_tags, is_admin)
         conditions.append(acl_sql)
         params.update(acl_params)
+        # 版本固定：只允许命中已发布快照里的块
+        version_ids = (filters or {}).get("version_chunk_ids")
+        if version_ids:
+            conditions.append("chunk_id = ANY(CAST(:version_ids AS text[]))")
+            params["version_ids"] = list(version_ids)
+
         if audience is not None:
             conditions.append("meta->>'audience' = :audience")
             params["audience"] = audience

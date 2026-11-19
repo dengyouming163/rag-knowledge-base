@@ -84,7 +84,12 @@ def test_migration_applied(engine) -> None:
             )
         ).scalar_one()
 
-    assert revision == "0007"
+    # 动态读取迁移脚本的 head，避免每加一个迁移就改测试
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    head = ScriptDirectory.from_config(Config("alembic.ini")).get_current_head()
+    assert revision == head
     assert column_type == "vector(1024)"
 
 
