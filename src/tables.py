@@ -39,10 +39,13 @@ def split_markdown_table(rows: list[list[str]], *, max_rows: int = 20) -> list[s
     if len(rows) < 2:
         return []
 
-    header = rows[0]
+    # 先按全表列宽补齐，避免不同片因局部宽行而产生不同列数的表头。
+    width = max(len(row) for row in rows)
+    padded_rows = [row + [""] * (width - len(row)) for row in rows]
+    header = padded_rows[0]
     return [
-        rows_to_markdown([header, *rows[start : start + max_rows]])
-        for start in range(1, len(rows), max_rows)
+        rows_to_markdown([header, *padded_rows[start : start + max_rows]])
+        for start in range(1, len(padded_rows), max_rows)
     ]
 
 
@@ -57,6 +60,20 @@ class _FirstTableParser(HTMLParser):
         self._row: list[str] | None = None
         self._cell_parts: list[str] | None = None
 
+    def _flush_cell(self) -> None:
+        if self._cell_parts is not None and self._row is not None:
+            text = " ".join("".join(self._cell_parts).split())
+            self._row.append(text)
+            self._cell_parts = None
+
+    def _flush_row(self) -> None:
+        # HTML 允许省略 td/tr 结束标签，行边界也必须先收下未闭合的单元格。
+        self._flush_cell()
+        if self._row is not None:
+            if self._row:
+                self.rows.append(self._row)
+            self._row = None
+
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if self._finished:
             return
@@ -66,9 +83,11 @@ class _FirstTableParser(HTMLParser):
             return
         if not self._in_table:
             return
-        if tag == "tr" and self._row is None:
+        if tag == "tr":
+            self._flush_row()
             self._row = []
         elif tag in {"th", "td"} and self._row is not None:
+            self._flush_cell()
             self._cell_parts = []
 
     def handle_data(self, data: str) -> None:
@@ -78,15 +97,19 @@ class _FirstTableParser(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         if not self._in_table or self._finished:
             return
-        if tag in {"th", "td"} and self._cell_parts is not None and self._row is not None:
-            text = " ".join("".join(self._cell_parts).split())
-            self._row.append(text)
-            self._cell_parts = None
-        elif tag == "tr" and self._row is not None:
-            if self._row:
-                self.rows.append(self._row)
-            self._row = None
+        if tag in {"th", "td"}:
+            self._flush_cell()
+        elif tag == "tr":
+            self._flush_row()
         elif tag == "table":
+            self._flush_row()
+            self._in_table = False
+            self._finished = True
+
+    def close(self) -> None:
+        super().close()
+        if self._in_table and not self._finished:
+            self._flush_row()
             self._in_table = False
             self._finished = True
 

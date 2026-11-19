@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 
 import httpx
 
-from src.tables import html_table_to_rows, split_markdown_table
+from src.tables import html_table_to_rows, rows_to_markdown, split_markdown_table
 
 
 class ParserUnavailable(RuntimeError):
@@ -135,7 +135,12 @@ def blocks_to_text(blocks: list[PdfBlock]) -> str:
         if block.type == "table":
             rows = html_table_to_rows(block.text)
             if rows:
-                for table in split_markdown_table(rows):
+                # max_rows=20 是控制块大小的经验值；极宽/极长表格仍可能被
+                # split_document 二次切分，导致后续块无表头，属于已知限制。
+                tables = split_markdown_table(rows)
+                if not tables:
+                    tables = [rows_to_markdown(rows)]
+                for table in tables:
                     lines.append(table)
                     lines.append("")
                 continue

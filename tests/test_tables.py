@@ -151,3 +151,36 @@ def test_blocks_to_text_keeps_plain_text_table_unchanged() -> None:
     text = blocks_to_text([PdfBlock(type="table", text=plain_table, page=1)])
 
     assert text == plain_table
+
+
+def test_html_table_to_rows_flushes_implicit_cell_and_row_boundaries() -> None:
+    from src.tables import html_table_to_rows
+
+    html = "<table><tr><td>a<td>b<tr><td>c<td>d</table>"
+
+    assert html_table_to_rows(html) == [["a", "b"], ["c", "d"]]
+    # 没有 </table> 时，parser.close() 也必须保留最后一个单元格与行。
+    assert html_table_to_rows("<table><tr><td>a<td>b") == [["a", "b"]]
+
+
+def test_split_markdown_table_pads_all_chunks_to_global_width() -> None:
+    from src.tables import split_markdown_table
+
+    chunks = split_markdown_table([["a", "b"], ["1", "2"], ["3", "4", "5"]], max_rows=1)
+
+    assert len(chunks) == 2
+    assert [chunk.splitlines()[0] for chunk in chunks] == ["| a | b |  |"] * 2
+    assert chunks[0].splitlines()[2] == "| 1 | 2 |  |"
+    assert chunks[1].splitlines()[2] == "| 3 | 4 | 5 |"
+
+
+def test_blocks_to_text_preserves_header_only_html_table() -> None:
+    block = PdfBlock(
+        type="table",
+        text="<table><tr><th>服务类型</th><th>时限</th></tr></table>",
+        page=1,
+    )
+
+    text = blocks_to_text([block])
+
+    assert text == "| 服务类型 | 时限 |\n| --- | --- |"
