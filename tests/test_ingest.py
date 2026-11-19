@@ -1,0 +1,271 @@
+"""Task 5：入库执行器测试（解析 → 切分 → 嵌入 → 落库 → BM25 → 文档状态）。
+
+所有 embedding 与 PDF 解析都使用假组件，不联网；数据库用例沿用
+tests/test_ingest_jobs.py 的策略：连不通就直接 skip，避免 CI 因缺少 Postgres 失败。
+"""
+
+from __future__ import annotations
+
+import pytest
+from sqlalchemy import text
+
+from src.bm25_store import BM25Store
+from src.chunk import split_document
+from src.db.base import create_db_engine
+from src.ingest import ingest_document
+from src.parsers.pdf import PdfBlock
+
+TENANT = "t_ingest"
+KB = "kb_ingest"
+DOC = "doc_ingest"
+DIM = 1024
+
+MARKDOWN = "# 售后政策\n\n## 退款\n\n支持七天无理由退款。"
+
+
+class FakeEmbed:
+    """记录每次收到的文本，返回固定 1024 维向量（与 chunks.embedding 维度一致）。"""
+
+    def __init__(self) -> None:
+        self.calls: list[list[str]] = []
+
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        self.calls.append(list(texts))
+        return [[0.01] * DIM for _ in texts]
+
+
+class FakeParser:
+    """替代 PdfParserClient：不解析真实 PDF，只验证执行器确实调用了它。"""
+
+    def __init__(self) -> None:
+        self.called = False
+
+    def parse(self, content: bytes, filename: str = "") -> list[PdfBlock]:
+        self.called = True
+        return [PdfBlock(type="text", text="# 政策\n\n七天无理由退款。", page=1)]
+
+
+def _cleanup(engine) -> None:
+    """按外键依赖顺序清理；chunks 开了 RLS，删除前必须声明租户。"""
+    with engine.begin() as connection:
+        connection.execute(
+            text("SELECT set_config('app.tenant_id', :t, true)"), {"t": TENANT}
+        )
+        connection.execute(
+            text("DELETE FROM ingest_jobs WHERE tenant_id = :t"), {"t": TENANT}
+        )
+        connection.execute(
+            text("DELETE FROM kb_bm25 WHERE tenant_id = :t"), {"t": TENANT}
+        )
+        connection.execute(
+            text("DELETE FROM chunks WHERE tenant_id = :t"), {"t": TENANT}
+        )
+        connection.execute(
+            text("DELETE FROM documents WHERE tenant_id = :t"), {"t": TENANT}
+        )
+        connection.execute(
+            text("DELETE FROM knowledge_bases WHERE tenant_id = :t"), {"t": TENANT}
+        )
+        connection.execute(text("DELETE FROM tenants WHERE id = :t"), {"t": TENANT})
+
+
+def _seed(engine) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            text("INSERT INTO tenants (id, name) VALUES (:t, 'ingest')"), {"t": TENANT}
+        )
+        connection.execute(
+            text(
+                "INSERT INTO knowledge_bases (id, tenant_id, name, description, status) "
+                "VALUES (:kb, :t, 'ingest kb', '', 'active')"
+            ),
+            {"kb": KB, "t": TENANT},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO documents "
+                "(id, tenant_id, kb_id, title, source_url, content_hash, status, meta) "
+                "VALUES (:doc, :t, :kb, '售后政策', '', 'ingest_doc_hash', 'pending', "
+                "'{}'::jsonb)"
+            ),
+            {"doc": DOC, "t": TENANT, "kb": KB},
+        )
+
+
+def _scoped_rows(engine, sql: str, params: dict) -> list[dict]:
+    """在带 app.tenant_id 的事务里查询 chunks，绕过 RLS 的 fail-closed。"""
+    with engine.begin() as connection:
+        connection.execute(
+            text("SELECT set_config('app.tenant_id', :t, true)"), {"t": TENANT}
+        )
+        rows = connection.execute(text(sql), params).mappings().all()
+    return [dict(row) for row in rows]
+
+
+def _doc_status(engine) -> str:
+    with engine.begin() as connection:
+        return connection.execute(
+            text("SELECT status FROM documents WHERE id = :doc AND tenant_id = :t"),
+            {"doc": DOC, "t": TENANT},
+        ).scalar_one()
+
+
+@pytest.fixture()
+def engine():
+    db_engine = create_db_engine()
+    try:
+        with db_engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except Exception as exc:  # noqa: BLE001
+        pytest.skip(f"数据库不可用：{exc}")
+
+    _cleanup(db_engine)
+    _seed(db_engine)
+    yield db_engine
+    _cleanup(db_engine)
+    db_engine.dispose()
+
+
+def test_ingest_markdown_end_to_end(engine, tmp_path) -> None:
+    path = tmp_path / "policy.md"
+    path.write_text(MARKDOWN, encoding="utf-8")
+
+    result = ingest_document(
+        engine,
+        tenant_id=TENANT,
+        kb_id=KB,
+        doc_id=DOC,
+        path=path,
+        embed_client=FakeEmbed(),
+    )
+
+    assert result["chunks"] >= 1
+    assert result["doc_status"] == "ready"
+
+    rows = _scoped_rows(
+        engine,
+        "SELECT is_parent, embedding IS NULL AS no_vector FROM chunks "
+        "WHERE tenant_id = :t AND doc_id = :doc",
+        {"t": TENANT, "doc": DOC},
+    )
+    assert len(rows) == result["chunks"]
+    parents = [row for row in rows if row["is_parent"]]
+    children = [row for row in rows if not row["is_parent"]]
+    # 父块只用于补上下文，绝不写入向量；子块必须全部有向量
+    assert parents and all(row["no_vector"] for row in parents)
+    assert children and all(not row["no_vector"] for row in children)
+
+    assert _doc_status(engine) == "ready"
+    assert BM25Store(engine).version(KB) is not None
+
+
+def test_ingest_pdf_uses_parser_client(engine, tmp_path) -> None:
+    path = tmp_path / "policy.pdf"
+    path.write_bytes(b"%PDF-1.4 fake bytes")
+    fake_parser = FakeParser()
+
+    result = ingest_document(
+        engine,
+        tenant_id=TENANT,
+        kb_id=KB,
+        doc_id=DOC,
+        path=path,
+        embed_client=FakeEmbed(),
+        parser=fake_parser,
+    )
+
+    assert fake_parser.called is True
+    assert result["chunks"] >= 1
+    assert _doc_status(engine) == "ready"
+
+
+def test_reingest_same_doc_does_not_duplicate_chunks(engine, tmp_path) -> None:
+    path = tmp_path / "policy.md"
+    path.write_text(MARKDOWN, encoding="utf-8")
+
+    first = ingest_document(
+        engine,
+        tenant_id=TENANT,
+        kb_id=KB,
+        doc_id=DOC,
+        path=path,
+        embed_client=FakeEmbed(),
+    )
+    before = _scoped_rows(
+        engine,
+        "SELECT chunk_id FROM chunks WHERE tenant_id = :t AND doc_id = :doc",
+        {"t": TENANT, "doc": DOC},
+    )
+    second = ingest_document(
+        engine,
+        tenant_id=TENANT,
+        kb_id=KB,
+        doc_id=DOC,
+        path=path,
+        embed_client=FakeEmbed(),
+    )
+    after = _scoped_rows(
+        engine,
+        "SELECT chunk_id FROM chunks WHERE tenant_id = :t AND doc_id = :doc",
+        {"t": TENANT, "doc": DOC},
+    )
+
+    assert second["chunks"] == first["chunks"]
+    assert len(after) == len(before)
+    assert {row["chunk_id"] for row in after} == {row["chunk_id"] for row in before}
+
+
+def test_embed_receives_only_child_chunks(engine, tmp_path) -> None:
+    path = tmp_path / "policy.md"
+    path.write_text(MARKDOWN, encoding="utf-8")
+    fake_embed = FakeEmbed()
+
+    ingest_document(
+        engine,
+        tenant_id=TENANT,
+        kb_id=KB,
+        doc_id=DOC,
+        path=path,
+        embed_client=fake_embed,
+    )
+
+    chunks = split_document(MARKDOWN, doc_id=DOC)
+    child_texts = [chunk.text for chunk in chunks if not chunk.is_parent]
+    parent_count = sum(1 for chunk in chunks if chunk.is_parent)
+
+    assert parent_count >= 1
+    # 只调用一次，且收到的文本序列与子块逐条一致——父块不会混进来
+    assert fake_embed.calls == [child_texts]
+    assert len(fake_embed.calls[0]) == len(chunks) - parent_count
+
+
+def test_unsupported_extension_raises_before_touching_database(tmp_path) -> None:
+    """engine 传 None：后缀校验必须在建 store / 连库之前失败。"""
+    path = tmp_path / "policy.docx"
+    path.write_bytes(b"whatever")
+
+    with pytest.raises(ValueError, match="不支持"):
+        ingest_document(
+            None,  # type: ignore[arg-type]
+            tenant_id=TENANT,
+            kb_id=KB,
+            doc_id=DOC,
+            path=path,
+            embed_client=FakeEmbed(),
+        )
+
+
+def test_empty_text_raises(tmp_path) -> None:
+    """空内容不能静默成功，否则文档会被标为 ready 却没有任何块。"""
+    path = tmp_path / "empty.md"
+    path.write_text("   \n\n", encoding="utf-8")
+
+    with pytest.raises(ValueError):
+        ingest_document(
+            None,  # type: ignore[arg-type]
+            tenant_id=TENANT,
+            kb_id=KB,
+            doc_id=DOC,
+            path=path,
+            embed_client=FakeEmbed(),
+        )
