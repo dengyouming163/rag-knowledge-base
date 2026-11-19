@@ -57,3 +57,33 @@ Embedding 默认走 SiliconFlow `BAAI/bge-m3`，对话默认走 DeepSeek `deepse
 - Day 3 剩余：Rerank 与引用溯源
 - Day 4：评测集与自动化指标
 - Day 5-6：服务化与面试演示材料
+
+## 架构
+
+```
+写入：上传 → 解析 → 切分（子块 + 父块）→ Embedding → 落库 → 建索引
+查询：鉴权 → 改写 → 向量召回 + BM25 召回 → RRF → 精排 → 拒答 → 拼上下文 → LLM → 引用校验
+```
+
+- 存储：Postgres 16 + pgvector（`chunks.embedding vector(1024)`，HNSW 索引）
+- 服务：FastAPI（`/live`、`/ready`、`/v1/kbs/{kb_id}/search`、`/v1/chat/stream` SSE）
+- 隔离三层：强制作用域（缺 `tenant_id` 直接抛错）→ 文档级 ACL（标签交集）→ 数据库 RLS
+
+## 指标与门禁
+
+| 指标 | 值 | 口径 |
+|---|---|---|
+| Recall@5 | 0.9342 | 38 条可回答用例，mock 向量 |
+| MRR@5 | 0.8575 | 同上 |
+| Hit Rate@5 | 0.9474 | 同上 |
+| 测试 | 210 passed | `py -3.13 -m pytest -q` |
+| 隔离验收 | 6/6 通过 | `py -3.13 scripts/demo_acceptance.py` |
+
+```bash
+py -3.13 -m pytest -q
+py -3.13 scripts/run_eval.py --mock --compare eval/baseline.json   # 退化门禁，退出码 1 表示失败
+py -3.13 scripts/demo_acceptance.py                                # Gate C 演示：检索/隔离/ACL/版本
+```
+
+> mock 向量是确定性哈希，不具语义；上表证明「链路与门禁有效」，不代表真实检索质量。
+> 接真实模型：设置 `EMBED_API_KEY` 后运行 `scripts/run_eval.py --real` 重新记录基线。
