@@ -46,3 +46,8 @@ class ChatRequest(BaseModel):
     history: list[dict] = Field(default_factory=list)
     top_k: int = Field(default=5, ge=1, le=20)
     audience: Audience = "public"
+
+
+class UploadDocumentResponse(BaseModel):
+    job_id: int
+    doc_id: str
