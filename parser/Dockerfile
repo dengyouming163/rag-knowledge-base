@@ -8,8 +8,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+RUN sed -i 's|http://deb.debian.org|https://mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+# RapidOCR 默认使用 wheel 随包模型；构建时初始化，缺失即在 build 阶段失败。
+RUN python -c "from rapidocr_onnxruntime import RapidOCR; RapidOCR()"
 
 COPY main.py .
 

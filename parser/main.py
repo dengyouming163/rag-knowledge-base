@@ -189,6 +189,33 @@ def _parse_pdf(content: bytes) -> list[Block]:
     return blocks
 
 
+def _ocr_pdf(content: bytes, ocr: Any | None = None) -> list[Block]:
+    """把无文字层 PDF 逐页渲染后交给 RapidOCR，并复用统一块结构。"""
+    if ocr is None:
+        from rapidocr_onnxruntime import RapidOCR
+
+        ocr = RapidOCR()
+
+    import numpy as np
+    import pdfplumber
+
+    blocks: list[Block] = []
+    with pdfplumber.open(io.BytesIO(content)) as pdf:
+        for page_number, page in enumerate(pdf.pages, start=1):
+            image = page.to_image(resolution=200).original
+            result, _ = ocr(np.asarray(image))
+            lines = []
+            for item in result or []:
+                text = str(item[1]).strip()
+                if text:
+                    lines.append(text)
+            if lines:
+                blocks.append(
+                    Block(type="text", text="\n".join(lines), page=page_number, section="")
+                )
+    return blocks
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -208,6 +235,13 @@ async def parse(file: UploadFile = File(...)) -> ParseResponse:
         raise HTTPException(status_code=422, detail=f"PDF 解析失败：{exc}") from exc
 
     if not blocks:
-        # 最常见的原因是纯扫描件（没有文字层）；OCR 由后续任务接入。
-        raise HTTPException(status_code=422, detail="未解析出文本，可能是扫描件，需要 OCR")
+        try:
+            blocks = await run_in_threadpool(_ocr_pdf, content)
+        except Exception as exc:  # noqa: BLE001 - 缺少 OCR 依赖或模型时快速给出可读原因
+            raise HTTPException(
+                status_code=422,
+                detail=f"扫描件 OCR 失败：{exc}；请确认 parser 镜像已预置 RapidOCR 模型",
+            ) from exc
+        if not blocks:
+            raise HTTPException(status_code=422, detail="扫描件 OCR 未识别出文本，请检查扫描件清晰度")
     return ParseResponse(blocks=blocks)

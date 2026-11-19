@@ -3,3 +3,5 @@ uvicorn[standard]>=0.30
 python-multipart
 pdfplumber
 pypdf
+rapidocr-onnxruntime==1.2.3
+numpy<2
