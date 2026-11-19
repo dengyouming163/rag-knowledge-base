@@ -211,6 +211,10 @@ class IngestJob(Base):
     doc_id: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
     error: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    source: Mapped[str] = mapped_column(Text, nullable=False, default="upload", server_default="")
+    attempts: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
+    progress: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
