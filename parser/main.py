@@ -20,9 +20,14 @@ import io
 from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 app = FastAPI(title="kb-parser", version="0.1.0")
+
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+# 13pt 为启发式，对正文大字号文档可能误判标题，影响仅限 section 噪声，后续可按文档主字号自适应。
+TITLE_FONT_SIZE_MIN = 13.0
 
 # 旧元素类型 → 我们的块类型。保留该纯函数以兼容现有调用方和单元测试；
 # HTTP 解析流程已不再依赖 unstructured。
@@ -91,6 +96,7 @@ def _inside_any_table(word: dict[str, Any], boxes: list[tuple[float, float, floa
     return any(x0 <= x <= x1 and top <= y <= bottom for x0, top, x1, bottom in boxes)
 
 
+# 按 top 聚行 + x0 排序对复杂双栏/上下标版面可能错序，属已知限制，当前样本验收以内容流顺序为准。
 def _group_lines(words: list[dict[str, Any]]) -> list[dict[str, Any]]:
     lines: list[dict[str, Any]] = []
     for word in sorted(words, key=lambda item: (float(item["top"]), float(item["x0"]))):
@@ -171,8 +177,7 @@ def _parse_pdf(content: bytes) -> list[Block]:
                             section=section,
                         )
                     )
-                # 样本标题为 18/14pt、正文为 11pt；13pt 是轻量启发式阈值。
-                elif event["size"] >= 13.0:
+                elif event["size"] >= TITLE_FONT_SIZE_MIN:
                     flush_text()
                     section = event["text"]
                     blocks.append(
@@ -192,11 +197,13 @@ def health() -> dict[str, str]:
 @app.post("/parse", response_model=ParseResponse)
 async def parse(file: UploadFile = File(...)) -> ParseResponse:
     content = await file.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="文件超过 20MB 大小限制")
     if not content:
         raise HTTPException(status_code=400, detail="空文件")
 
     try:
-        blocks = _parse_pdf(content)
+        blocks = await run_in_threadpool(_parse_pdf, content)
     except Exception as exc:  # noqa: BLE001 - 解析失败要给出可读原因
         raise HTTPException(status_code=422, detail=f"PDF 解析失败：{exc}") from exc
 
