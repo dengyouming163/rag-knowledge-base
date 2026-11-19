@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 
@@ -81,60 +82,69 @@ async def chat_stream(
 
     async def event_stream():
         started = time.perf_counter()
-        try:
-            result = await run_in_threadpool(
-                pipeline.answer,
-                payload.question,
-                payload.history,
-                payload.audience,
-                payload.top_k,
-                user_tags,
-                is_admin,
-            )
-        except Exception as exc:  # noqa: BLE001 - 任何失败都要显式告知前端
-            trace_store.record(
+
+        async def record_stage(stage: str, *, hits: int, refused: bool, mode: str) -> None:
+            await run_in_threadpool(
+                trace_store.record,
                 trace_id=trace_id,
                 tenant=tenant_id,
                 kb=payload.kb_id,
-                stage="error",
+                stage=stage,
                 ms=(time.perf_counter() - started) * 1000,
-                hits=0,
-                refused=False,
-                mode="error",
+                hits=hits,
+                refused=refused,
+                mode=mode,
                 query=payload.question,
             )
-            message = str(exc)[:300] or exc.__class__.__name__
-            yield f"event: error\ndata: {json.dumps({'message': message}, ensure_ascii=False)}\n\n"
-            return
 
-        chunks = result["chunks"]
-        trace_store.record(
-            trace_id=trace_id,
-            tenant=tenant_id,
-            kb=payload.kb_id,
-            stage="answer",
-            ms=(time.perf_counter() - started) * 1000,
-            hits=len(chunks),
-            refused=not chunks,
-            mode="chat",
-            query=payload.question,
-        )
-        yield (
-            "event: hits\ndata: "
-            + json.dumps(
-                {
-                    "chunks": chunks,
-                    "rewritten": result["rewritten"],
-                    "rerank_degraded": result.get("rerank_degraded", False),
-                    "citation_ok": result.get("citation_ok", True),
-                },
-                ensure_ascii=False,
+        async def record_cancelled() -> None:
+            task = asyncio.create_task(
+                record_stage("cancelled", hits=0, refused=False, mode="error")
             )
-            + "\n\n"
-        )
-        for piece in _deltas(result["answer"]):
-            yield _frame({"delta": piece})
-        yield _frame("[DONE]")
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                # 重复取消不再等待，但 shield 内的线程池记录仍会继续完成。
+                pass
+
+        try:
+            try:
+                result = await run_in_threadpool(
+                    pipeline.answer,
+                    payload.question,
+                    payload.history,
+                    payload.audience,
+                    payload.top_k,
+                    user_tags,
+                    is_admin,
+                )
+            except Exception as exc:  # noqa: BLE001 - 任何失败都要显式告知前端
+                await record_stage("error", hits=0, refused=False, mode="error")
+                message = str(exc)[:300] or exc.__class__.__name__
+                yield f"event: error\ndata: {json.dumps({'message': message}, ensure_ascii=False)}\n\n"
+                return
+
+            chunks = result["chunks"]
+            await record_stage("answer", hits=len(chunks), refused=not chunks, mode="chat")
+            yield (
+                "event: hits\ndata: "
+                + json.dumps(
+                    {
+                        "chunks": chunks,
+                        "rewritten": result["rewritten"],
+                        "rerank_degraded": result.get("rerank_degraded", False),
+                        "citation_ok": result.get("citation_ok", True),
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n\n"
+            )
+            for piece in _deltas(result["answer"]):
+                yield _frame({"delta": piece})
+            yield _frame("[DONE]")
+        except asyncio.CancelledError:
+            await record_cancelled()
+            raise
 
     headers = {**SSE_HEADERS, "X-Trace-Id": trace_id}
     return StreamingResponse(event_stream(), media_type="text/event-stream", headers=headers)

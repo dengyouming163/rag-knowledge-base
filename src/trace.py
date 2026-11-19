@@ -23,7 +23,8 @@ class TraceStore:
     def __init__(self, root: str | Path = "data/traces") -> None:
         self._root = Path(root)
         self._records: deque[dict] = deque(maxlen=1000)
-        self._lock = threading.Lock()
+        self._memory_lock = threading.Lock()
+        self._file_lock = threading.Lock()
 
     def record(
         self,
@@ -51,43 +52,51 @@ class TraceStore:
             "query": query,
             "ts": now.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
         }
-        with self._lock:
+        with self._memory_lock:
             self._records.append(item)
-            try:
+        try:
+            with self._file_lock:
                 self._root.mkdir(parents=True, exist_ok=True)
                 path = self._root / f"{now.date().isoformat()}.jsonl"
                 with path.open("a", encoding="utf-8", newline="\n") as handle:
                     handle.write(json.dumps(item, ensure_ascii=False, separators=(",", ":")) + "\n")
-            except OSError:
-                logger.exception("trace 写盘失败，已保留内存记录：trace_id=%s", trace_id)
+        except OSError:
+            logger.exception("trace 写盘失败，已保留内存记录：trace_id=%s", trace_id)
         return dict(item)
 
     def find(self, trace_id: str, tenant: str) -> list[dict]:
-        """先查内存；完全未命中时才读当天文件，最后统一执行租户过滤。"""
-        with self._lock:
-            candidates = [dict(item) for item in self._records if item["trace_id"] == trace_id]
-            if not candidates:
-                candidates = self._read_today(trace_id)
-        return [item for item in candidates if item.get("tenant") == tenant]
+        """先复制内存，再读当天文件补齐已淘汰阶段，去重后按时间稳定排序。"""
+        with self._memory_lock:
+            memory = [dict(item) for item in self._records if item["trace_id"] == trace_id]
+        with self._file_lock:
+            persisted = self._read_today(trace_id)
+
+        merged: list[dict] = []
+        seen: set[str] = set()
+        for item in [*persisted, *memory]:
+            identity = json.dumps(item, ensure_ascii=False, sort_keys=True)
+            if identity not in seen:
+                seen.add(identity)
+                merged.append(item)
+        merged.sort(key=lambda item: item["ts"])
+        return [item for item in merged if item.get("tenant") == tenant]
 
     def _read_today(self, trace_id: str) -> list[dict]:
         date = datetime.now(timezone.utc).date().isoformat()
         path = self._root / f"{date}.jsonl"
+        records: list[dict] = []
         try:
             with path.open("r", encoding="utf-8") as handle:
-                lines = handle.readlines()
+                for line in handle:
+                    try:
+                        item = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(item, dict) and item.get("trace_id") == trace_id:
+                        records.append(item)
         except FileNotFoundError:
             return []
         except OSError:
             logger.exception("trace 文件读取失败：path=%s", path)
             return []
-
-        records: list[dict] = []
-        for line in lines:
-            try:
-                item = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(item, dict) and item.get("trace_id") == trace_id:
-                records.append(item)
         return records

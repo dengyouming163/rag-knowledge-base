@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import time
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Request, Response
 
 from app.deps import EmbedderDep, EngineDep, TenantId, TraceStoreDep, UserId, user_context_of
 from app.schemas import HitOut, SearchRequest, SearchResponse
@@ -21,6 +21,7 @@ router = APIRouter(prefix="/v1", tags=["search"])
 def search(
     kb_id: str,
     payload: SearchRequest,
+    request: Request,
     response: Response,
     tenant_id: TenantId,
     user_id: UserId,
@@ -29,24 +30,39 @@ def search(
     trace_store: TraceStoreDep,
 ):
     trace_id = new_trace_id()
+    request.state.trace_id = trace_id
     response.headers["X-Trace-Id"] = trace_id
     ensure_kb(engine, tenant_id, kb_id)
     user_tags, is_admin = user_context_of(engine, tenant_id, user_id)
 
-    retriever = build_retriever(
-        engine,
-        tenant_id,
-        kb_id,
-        embed_client,
-        need_bm25=payload.mode in ("hybrid", "bm25"),
-    )
     started = time.perf_counter()
-    hits = retriever.retrieve(
-        payload.query,
-        top_k=payload.top_k,
-        filters={"audience": payload.audience, "user_tags": user_tags, "is_admin": is_admin},
-        mode=payload.mode,
-    )
+    try:
+        retriever = build_retriever(
+            engine,
+            tenant_id,
+            kb_id,
+            embed_client,
+            need_bm25=payload.mode in ("hybrid", "bm25"),
+        )
+        hits = retriever.retrieve(
+            payload.query,
+            top_k=payload.top_k,
+            filters={"audience": payload.audience, "user_tags": user_tags, "is_admin": is_admin},
+            mode=payload.mode,
+        )
+    except Exception:
+        trace_store.record(
+            trace_id=trace_id,
+            tenant=tenant_id,
+            kb=kb_id,
+            stage="error",
+            ms=(time.perf_counter() - started) * 1000,
+            hits=0,
+            refused=False,
+            mode=payload.mode,
+            query=payload.query,
+        )
+        raise
     elapsed_ms = (time.perf_counter() - started) * 1000
     trace_store.record(
         trace_id=trace_id,
