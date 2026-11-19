@@ -324,3 +324,172 @@ def test_http_error_is_propagated_readably() -> None:
 
     with pytest.raises(FeishuAPIError, match="403.*forbidden by scope policy"):
         list(_source(handler).list_documents(None))
+
+
+def test_sync_deduplicates_uris_and_keeps_latest_snapshot(monkeypatch) -> None:
+    mtime = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    first = DocumentRef(
+        uri="feishu://docx/doc-1",
+        mtime=mtime,
+        size=-1,
+        hash="1",
+    )
+    latest = DocumentRef(
+        uri="feishu://docx/doc-1",
+        mtime=mtime,
+        size=-1,
+        hash="2",
+    )
+    source = _source(lambda request: httpx.Response(500))
+    monkeypatch.setattr(
+        source,
+        "list_documents",
+        lambda since: iter([first, latest]),
+    )
+
+    assert source.sync() == [latest]
+    assert source.sync() == []
+
+
+def test_close_releases_client_but_sync_leaves_it_open(monkeypatch) -> None:
+    source = _source(lambda request: httpx.Response(500))
+    monkeypatch.setattr(source, "list_documents", lambda since: iter(()))
+
+    assert source.sync() == []
+    assert source._client.is_closed is False
+
+    source.close()
+
+    assert source._client.is_closed is True
+
+
+def test_token_is_reused_before_expiry_and_refreshed_at_boundary(
+    monkeypatch,
+) -> None:
+    import src.connectors.feishu as feishu
+
+    now = [100.0]
+    token_requests = 0
+    monkeypatch.setattr(feishu.time, "monotonic", lambda: now[0])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal token_requests
+        if request.url.path == "/open-apis/auth/v3/tenant_access_token/internal":
+            token_requests += 1
+            return _token_response(expire=100)
+        return httpx.Response(
+            200,
+            json={"code": 0, "data": {"has_more": False, "files": []}},
+        )
+
+    source = _source(handler)
+    assert source.sync() == []
+    assert token_requests == 1
+
+    # expire=100，提前 60 秒刷新，因此有效边界为 monotonic 140。
+    now[0] = 139.0
+    assert source.sync() == []
+    assert token_requests == 1
+
+    now[0] = 140.0
+    assert source.sync() == []
+    assert token_requests == 2
+
+
+def test_short_lived_token_is_refreshed_when_refresh_margin_exceeds_ttl(
+    monkeypatch,
+) -> None:
+    import src.connectors.feishu as feishu
+
+    now = [500.0]
+    token_requests = 0
+    monkeypatch.setattr(feishu.time, "monotonic", lambda: now[0])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal token_requests
+        if request.url.path == "/open-apis/auth/v3/tenant_access_token/internal":
+            token_requests += 1
+            return _token_response(expire=30)
+        return httpx.Response(
+            200,
+            json={"code": 0, "data": {"has_more": False, "files": []}},
+        )
+
+    source = _source(handler)
+    assert source.sync() == []
+    assert source.sync() == []
+
+    assert token_requests == 2
+
+
+@pytest.mark.parametrize("failure_point", ["second_page", "metadata"])
+def test_sync_failure_does_not_commit_partial_revision_state(
+    failure_point,
+) -> None:
+    FeishuAPIError, _ = _feishu_types()
+    revision = 1
+    should_fail = False
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/open-apis/auth/v3/tenant_access_token/internal":
+            return _token_response()
+        if request.url.path == "/open-apis/drive/v1/files":
+            if failure_point == "metadata":
+                return httpx.Response(
+                    200,
+                    json={
+                        "code": 0,
+                        "data": {
+                            "has_more": False,
+                            "files": [
+                                _file("doc-1", 1704067200),
+                                _file("doc-2", 1704067200),
+                            ],
+                        },
+                    },
+                )
+            if "page_token" not in request.url.params:
+                return httpx.Response(
+                    200,
+                    json={
+                        "code": 0,
+                        "data": {
+                            "has_more": True,
+                            "next_page_token": "page-2",
+                            "files": [_file("doc-1", 1704067200)],
+                        },
+                    },
+                )
+            if should_fail:
+                return httpx.Response(503, text="injected second page failure")
+            return httpx.Response(
+                200,
+                json={
+                    "code": 0,
+                    "data": {
+                        "has_more": False,
+                        "files": [_file("doc-2", 1704067200)],
+                    },
+                },
+            )
+
+        token = request.url.path.rsplit("/", 1)[-1]
+        if failure_point == "metadata" and token == "doc-2" and should_fail:
+            return httpx.Response(503, text="injected metadata failure")
+        return _document_response(token, revision)
+
+    source = _source(handler)
+    first = source.sync()
+    assert [ref.hash for ref in first] == ["1", "1"]
+    seen_before_failure = source._seen_revisions.copy()
+
+    revision = 2
+    should_fail = True
+    with pytest.raises(FeishuAPIError, match="injected"):
+        source.sync()
+    assert source._seen_revisions == seen_before_failure
+
+    should_fail = False
+    recovered = source.sync()
+    assert [ref.hash for ref in recovered] == ["2", "2"]
+    assert source.sync() == []

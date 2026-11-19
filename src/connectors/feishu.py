@@ -83,6 +83,9 @@ class FeishuSource:
     def available(self) -> bool:
         return bool(self._app_id and self._app_secret)
 
+    def close(self) -> None:
+        self._client.close()
+
     def _require_available(self) -> None:
         if not self.available:
             raise RuntimeError(
@@ -189,7 +192,9 @@ class FeishuSource:
 
     def sync(self) -> list[DocumentRef]:
         self._require_available()
-        refs = list(self.list_documents(None))
+        refs = list(
+            {ref.uri: ref for ref in self.list_documents(since=None)}.values()
+        )
         changed = [
             ref
             for ref in refs

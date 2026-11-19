@@ -10,7 +10,11 @@ from typing import Protocol
 
 @dataclass(frozen=True)
 class DocumentRef:
-    """来源文档的一次内容快照；mtime 必须带时区，hash 为内容 SHA-256。"""
+    """来源文档的一次内容快照。
+
+    mtime 必须带时区；hash 是来源版本标识/摘要：local_dir 使用内容 SHA-256，
+    feishu 使用文档 revision_id。
+    """
 
     uri: str
     mtime: datetime
