@@ -86,3 +86,18 @@ def get_reranker():
 
 
 RerankerDep = Annotated[Any, Depends(get_reranker)]
+
+
+def current_user(x_user_id: str | None = Header(default=None, alias="X-User-Id")) -> str:
+    """当前用户。Phase 3 先用请求头占位，后续换成 token 解析。"""
+    return x_user_id or "demo-user"
+
+
+UserId = Annotated[str, Depends(current_user)]
+
+
+def user_tags_of(engine: Engine, tenant_id: str, user_id: str) -> list[str]:
+    """取用户 ACL 标签；用户不存在返回空列表（只能看公开内容）。"""
+    from src.acl import load_user_tags
+
+    return load_user_tags(engine, tenant_id, user_id)

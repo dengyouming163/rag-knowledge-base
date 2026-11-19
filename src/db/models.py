@@ -16,6 +16,7 @@ from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    ARRAY,
     BigInteger,
     DateTime,
     ForeignKey,
@@ -224,3 +225,21 @@ class IngestJob(Base):
         Index("ix_ingest_jobs_tenant_id_kb_id", "tenant_id", "kb_id"),
         Index("ix_ingest_jobs_status", "status"),
     )
+
+
+class User(Base):
+    """租户内用户与 ACL 标签：tags 与 chunks.meta.acl_tags 求交集决定可见性。"""
+
+    __tablename__ = "users"
+
+    user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    display_name: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    tags: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (Index("ix_users_tenant_id", "tenant_id"),)

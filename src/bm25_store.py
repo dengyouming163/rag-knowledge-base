@@ -87,6 +87,7 @@ class BM25Store:
                 content_hash=row["content_hash"],
                 audience=(row["meta"] or {}).get("audience", "public"),
                 token_count=row["token_count"],
+                acl_tags=list((row["meta"] or {}).get("acl_tags") or []),
             )
             for row in rows
         ]

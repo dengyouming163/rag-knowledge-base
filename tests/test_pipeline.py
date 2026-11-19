@@ -102,7 +102,7 @@ def test_audience_filter_and_top_k_are_forwarded():
 
     pipeline.answer("退款到账要多久", audience="internal", top_k=3)
 
-    assert retriever.calls[0]["filters"] == {"audience": "internal"}
+    assert retriever.calls[0]["filters"] == {"audience": "internal", "user_tags": []}
     assert retriever.calls[0]["top_k"] == 3
 
 

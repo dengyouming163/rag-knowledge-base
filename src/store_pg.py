@@ -15,6 +15,7 @@ from typing import Any, Sequence
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
+from .acl import acl_condition
 from .chunk import Chunk
 from .store import SearchHit
 
@@ -135,6 +136,7 @@ class PgVectorStore:
 
         tenant_id, kb_ids = self._resolve_scope(filters)
         audience = (filters or {}).get("audience")
+        user_tags = list((filters or {}).get("user_tags") or [])
 
         conditions = [
             "tenant_id = :tenant_id",
@@ -149,6 +151,11 @@ class PgVectorStore:
             "query_vector": _vector_literal(query_vector),
             "top_k": top_k,
         }
+
+        # 文档级 ACL：在打分前过滤，避免无权结果占满 top_k
+        acl_sql, acl_params = acl_condition(user_tags)
+        conditions.append(acl_sql)
+        params.update(acl_params)
         if audience is not None:
             conditions.append("meta->>'audience' = :audience")
             params["audience"] = audience
@@ -234,6 +241,7 @@ def _meta_json(chunk: Chunk) -> str:
             "title": chunk.title,
             "audience": chunk.audience,
             "source_url": chunk.source_url,
+            "acl_tags": list(chunk.acl_tags),
         },
         ensure_ascii=False,
     )

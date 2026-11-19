@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Literal, Protocol
 
+from .acl import is_visible
 from .bm25 import BM25Index
 from .chunk import Chunk
 from .route import DEFAULT_ROUTE, Route, detect_route
@@ -99,9 +100,15 @@ class HybridRetriever:
         self, query: str, recall_k: int, filters: dict | None
     ) -> list[SearchHit]:
         hits: list[SearchHit] = []
-        for chunk_id, score in self._bm25.search(query, top_k=recall_k, filters=filters):
+        # user_tags 是 ACL 语义，不是文档元数据，不能交给 BM25 的精确匹配
+        user_tags = list((filters or {}).get("user_tags") or [])
+        bm25_filters = {k: v for k, v in (filters or {}).items() if k != "user_tags"} or None
+
+        for chunk_id, score in self._bm25.search(query, top_k=recall_k, filters=bm25_filters):
             chunk = self._bm25.get_chunk(chunk_id)
             if chunk is None:
+                continue
+            if not is_visible(user_tags, chunk.acl_tags):
                 continue
             hits.append(
                 SearchHit(
@@ -160,4 +167,5 @@ def _metadata_of(chunk: Chunk) -> dict:
         "title": chunk.title,
         "audience": chunk.audience,
         "source_url": chunk.source_url,
+        "acl_tags": list(chunk.acl_tags),
     }

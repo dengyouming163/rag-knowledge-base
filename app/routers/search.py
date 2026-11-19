@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.deps import EmbedderDep, EngineDep, TenantId
+from app.deps import EmbedderDep, EngineDep, TenantId, UserId, user_tags_of
 from app.schemas import HitOut, SearchRequest, SearchResponse
 from app.services import build_retriever, ensure_kb
 
@@ -19,10 +19,12 @@ def search(
     kb_id: str,
     payload: SearchRequest,
     tenant_id: TenantId,
+    user_id: UserId,
     engine: EngineDep,
     embed_client: EmbedderDep,
 ):
     ensure_kb(engine, tenant_id, kb_id)
+    user_tags = user_tags_of(engine, tenant_id, user_id)
 
     retriever = build_retriever(
         engine,
@@ -34,7 +36,7 @@ def search(
     hits = retriever.retrieve(
         payload.query,
         top_k=payload.top_k,
-        filters={"audience": payload.audience},
+        filters={"audience": payload.audience, "user_tags": user_tags},
         mode=payload.mode,
     )
 

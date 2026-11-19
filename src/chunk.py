@@ -55,6 +55,8 @@ class Chunk(BaseModel):
     # 父子分块：父块只用于给上下文，不参与向量检索
     parent_id: str | None = None
     is_parent: bool = False
+    # 文档级 ACL：空表示公开；非空则要求与用户标签有交集
+    acl_tags: list[str] = Field(default_factory=list)
 
 
 def _split_sections(text: str) -> list[tuple[list[str], str]]:
