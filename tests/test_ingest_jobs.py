@@ -22,6 +22,7 @@ from src.ingest_jobs import (
     mark_failed,
     mark_succeeded,
 )
+from src.parsers.pdf import ParserUnavailable
 from src.worker import worker_once
 
 TENANT = "t_jobs"
@@ -275,6 +276,39 @@ def test_worker_marks_document_failed_after_max_retries(
             {"t": TENANT},
         ).scalar_one()
     assert doc_status == "failed"
+
+
+def test_worker_fails_scanned_document_without_retry(
+    engine, tmp_path, monkeypatch
+) -> None:
+    class ScannedParser:
+        def parse(self, content: bytes, filename: str = ""):
+            raise ParserUnavailable("扫描件")
+
+    source_url = f"{TENANT}/{KB}/scanned.pdf"
+    _seed_document(engine, "scanned", source_url, "worker_scanned_doc_hash")
+    job_id = enqueue(engine, TENANT, KB, doc_id="scanned")
+    monkeypatch.setattr("src.worker.UPLOAD_ROOT", tmp_path)
+    path = tmp_path / TENANT / KB / "scanned.pdf"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"%PDF-1.4 scanned")
+
+    assert worker_once(engine, embed_client=FakeEmbed(), parser=ScannedParser()) == 1
+
+    job = get_job(engine, TENANT, job_id)
+    assert job["status"] == "failed"
+    assert job["attempts"] == 1
+    assert "扫描件" in job["error"]
+    assert "需要 OCR" in job["error"]
+    assert job["finished_at"] is not None
+    with engine.begin() as connection:
+        doc_status = connection.execute(
+            text("SELECT status FROM documents WHERE id = 'scanned' AND tenant_id = :t"),
+            {"t": TENANT},
+        ).scalar_one()
+    assert doc_status == "failed"
+
+    assert worker_once(engine, embed_client=FakeEmbed(), parser=ScannedParser()) == 0
 
 
 def test_worker_once_returns_zero_when_idle(engine) -> None:

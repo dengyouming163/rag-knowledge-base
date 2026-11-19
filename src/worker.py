@@ -13,7 +13,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from .ingest import ingest_document
+from .ingest import NonRetryableIngestError, ingest_document
 from .ingest_jobs import (
     claim_next,
     get_job,
@@ -66,7 +66,12 @@ def worker_once(
         mark_succeeded(engine, job_id)
     except Exception as exc:  # noqa: BLE001
         error = f"{type(exc).__name__}: {exc}"
-        mark_failed(engine, job_id, error)
+        mark_failed(
+            engine,
+            job_id,
+            error,
+            retry=not isinstance(exc, NonRetryableIngestError),
+        )
         failed_job = get_job(engine, job["tenant_id"], job_id)
         if failed_job is not None and failed_job["status"] == "failed":
             # 重试期间文档保持 pending；只有任务终态失败时才同步文档状态，

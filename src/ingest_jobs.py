@@ -3,7 +3,7 @@
 状态流转：
     queued -> running -> succeeded
                       -> queued（未达重试上限）
-                      -> failed（达到 MAX_ATTEMPTS）
+                      -> failed（不可重试或达到 MAX_ATTEMPTS）
 
 约定：所有返回的 dict 由 `dict(row._mapping)` 构造，时间字段（created_at /
 updated_at / finished_at）保留为带时区的 datetime 对象，不转 ISO 字符串。
@@ -116,19 +116,21 @@ def mark_succeeded(engine: Engine, job_id: int) -> None:
         )
 
 
-def mark_failed(engine: Engine, job_id: int, error: str) -> None:
-    """记录失败：未达重试上限回到 queued；达到上限进入终态 failed。"""
+def mark_failed(engine: Engine, job_id: int, error: str, *, retry: bool = True) -> None:
+    """记录失败：可重试且未达上限回到 queued，否则进入终态 failed。"""
     with engine.begin() as connection:
         connection.execute(
             text(
                 "UPDATE ingest_jobs "
-                "SET status = CASE WHEN attempts < :max THEN 'queued' ELSE 'failed' END, "
+                "SET status = CASE WHEN :retry AND attempts < :max "
+                "THEN 'queued' ELSE 'failed' END, "
                 "error = :error, "
-                "finished_at = CASE WHEN attempts < :max THEN NULL ELSE now() END, "
+                "finished_at = CASE WHEN :retry AND attempts < :max "
+                "THEN NULL ELSE now() END, "
                 "updated_at = now() "
                 "WHERE id = :id"
             ),
-            {"max": MAX_ATTEMPTS, "error": error, "id": job_id},
+            {"max": MAX_ATTEMPTS, "error": error, "id": job_id, "retry": retry},
         )
 
 

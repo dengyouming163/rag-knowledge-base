@@ -12,8 +12,8 @@ from sqlalchemy import text
 from src.bm25_store import BM25Store
 from src.chunk import split_document
 from src.db.base import create_db_engine
-from src.ingest import ingest_document
-from src.parsers.pdf import PdfBlock
+from src.ingest import NonRetryableIngestError, ingest_document
+from src.parsers.pdf import ParserUnavailable, PdfBlock
 
 TENANT = "t_ingest"
 KB = "kb_ingest"
@@ -195,6 +195,51 @@ def test_ingest_pdf_uses_parser_client(engine, tmp_path) -> None:
     assert fake_parser.called is True
     assert result["chunks"] >= 1
     assert _doc_status(engine) == "ready"
+
+
+def test_scanned_pdf_raises_non_retryable_ingest_error(tmp_path) -> None:
+    class ScannedParser:
+        def parse(self, content: bytes, filename: str = "") -> list[PdfBlock]:
+            raise ParserUnavailable("扫描件")
+
+    path = tmp_path / "scanned.pdf"
+    path.write_bytes(b"%PDF-1.4 scanned")
+
+    with pytest.raises(NonRetryableIngestError) as exc_info:
+        ingest_document(
+            None,  # type: ignore[arg-type]
+            tenant_id=TENANT,
+            kb_id=KB,
+            doc_id=DOC,
+            path=path,
+            embed_client=FakeEmbed(),
+            parser=ScannedParser(),
+        )
+
+    assert "扫描件" in str(exc_info.value)
+    assert "需要 OCR" in str(exc_info.value)
+
+
+def test_other_parser_unavailable_is_not_non_retryable(tmp_path) -> None:
+    class UnavailableParser:
+        def parse(self, content: bytes, filename: str = "") -> list[PdfBlock]:
+            raise ParserUnavailable("解析服务不可用；本地解析失败")
+
+    path = tmp_path / "unavailable.pdf"
+    path.write_bytes(b"%PDF-1.4 unavailable")
+
+    with pytest.raises(ParserUnavailable) as exc_info:
+        ingest_document(
+            None,  # type: ignore[arg-type]
+            tenant_id=TENANT,
+            kb_id=KB,
+            doc_id=DOC,
+            path=path,
+            embed_client=FakeEmbed(),
+            parser=UnavailableParser(),
+        )
+
+    assert type(exc_info.value) is ParserUnavailable
 
 
 def test_reingest_same_doc_does_not_duplicate_chunks(engine, tmp_path) -> None:

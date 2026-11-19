@@ -23,10 +23,14 @@ from sqlalchemy.engine import Engine
 
 from .bm25_store import BM25Store
 from .chunk import split_document
-from .parsers.pdf import PdfParserClient, blocks_to_text
+from .parsers.pdf import ParserUnavailable, PdfParserClient, blocks_to_text
 from .store_pg import PgVectorStore
 
 _TEXT_SUFFIXES = {".md", ".txt"}
+
+
+class NonRetryableIngestError(RuntimeError):
+    """文档本身无法通过重试恢复，需要用户处理后重新上传。"""
 
 
 def _extract_text(file_path: Path, parser: Any) -> str:
@@ -36,11 +40,21 @@ def _extract_text(file_path: Path, parser: Any) -> str:
         content = file_path.read_bytes()
         # 只在真正解析 PDF 时才创建客户端：构造本身不联网，
         # 但没必要为 Markdown 上传也持有一个 httpx.Client。
-        if parser is None:
-            with PdfParserClient() as client:
-                blocks = client.parse(content, filename=file_path.name)
-        else:
-            blocks = parser.parse(content, filename=file_path.name)
+        try:
+            if parser is None:
+                with PdfParserClient() as client:
+                    blocks = client.parse(content, filename=file_path.name)
+            else:
+                blocks = parser.parse(content, filename=file_path.name)
+        except ParserUnavailable as exc:
+            message = str(exc)
+            if "扫描件" not in message and "需要 OCR" not in message:
+                raise
+            if "扫描件" not in message:
+                message = f"扫描件：{message}"
+            if "需要 OCR" not in message:
+                message = f"{message}；需要 OCR"
+            raise NonRetryableIngestError(message) from exc
         return blocks_to_text(blocks)
 
     if suffix in _TEXT_SUFFIXES:
