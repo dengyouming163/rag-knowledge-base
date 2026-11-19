@@ -51,3 +51,20 @@
 ## 版本
 
 - `v1`（2026-11-18）：首版 50 条，基线为 numpy + BM25 混合检索。
+
+## 压测报告（loadtest_report.json）
+
+先启动 API，并确认目标租户、知识库及可用语料已存在，再运行：
+
+```bash
+py -3.13 scripts/loadtest.py --concurrency 20 --requests 200
+```
+
+可用 `--base-url`、`--kb`、`--tenant`、`--user-id`、`--query`、`--top-k`、`--mode`、`--audience`、`--timeout` 覆盖运行条件，用 `--out` 修改输出路径；默认写入 `eval/loadtest_report.json`。`--requests` 是**每个端点各自的请求数**：search 与 chat 各 200 个，默认合计 400 个；`--concurrency` 是两类请求共享的全局 worker 上限。
+
+指标口径：
+
+- 延迟从请求开始计到完整响应或 SSE 流结束，**成功和失败请求均计入** p50/p95/p99，单位毫秒。percentile 使用升序样本 `(n-1)*q` 位置的线性插值。
+- `error_rate = failed / total`。HTTP 非 2xx、连接或超时异常、SSE `error` 事件、无效/缺失 `hits`、缺少 `[DONE]` 都计为失败；失败样本不会被丢弃。
+- `rerank_degradation_rate = rerank_degraded / rerank_observed`，分母仅为**成功且包含有效 `hits` 事件的 chat 响应**。search 不参与，失败 chat 也不参与，避免稀释降级率。
+- 空样本的比率和 percentile 均为 `null`，不伪造 0 ms。报告保留全部错误分类计数，并最多列出每端点前 20 条错误样本。
