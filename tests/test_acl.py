@@ -170,5 +170,40 @@ def test_restrict_public_chunk_hides_it(engine, seeded) -> None:
     assert f"{KB}#public" in _ids(legal)
 
 
+def test_admin_sees_everything(seeded) -> None:
+    hits = seeded.search([1.0] * DIM, top_k=10, filters={"user_tags": [], "is_admin": True})
+
+    assert _ids(hits) == {f"{KB}#public", f"{KB}#legal", f"{KB}#finance"}
+
+
+def test_admin_still_scoped_to_tenant(engine, seeded) -> None:
+    """管理员能跳过内容 ACL，但跳不过租户与知识库作用域。"""
+    hits = seeded.search([1.0] * DIM, top_k=10, filters={"user_tags": [], "is_admin": True})
+    other = PgVectorStore(engine, tenant_id="t_other", kb_id=KB)
+
+    assert _ids(hits)
+    assert other.search([1.0] * DIM, top_k=10, filters={"is_admin": True}) == []
+
+
+def test_load_user_context_admin_flag(engine, seeded) -> None:
+    from src.acl import load_user_context
+
+    with engine.begin() as connection:
+        connection.execute(text("DELETE FROM users WHERE tenant_id = :t"), {"t": TENANT})
+        connection.execute(
+            text(
+                "INSERT INTO users (user_id, tenant_id, display_name, tags, role) "
+                "VALUES ('u_admin', :t, '管理员', ARRAY[]::text[], 'admin')"
+            ),
+            {"t": TENANT},
+        )
+
+    tags, is_admin = load_user_context(engine, TENANT, "u_admin")
+    assert tags == [] and is_admin is True
+
+    visitor_tags, visitor_admin = load_user_context(engine, TENANT, "u_ghost")
+    assert visitor_tags == [] and visitor_admin is False
+
+
 def test_set_chunk_acl_empty_ids_is_noop(engine) -> None:
     assert set_chunk_acl(engine, [], ["dept:legal"]) == 0

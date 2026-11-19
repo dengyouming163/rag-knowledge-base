@@ -84,7 +84,7 @@ def test_migration_applied(engine) -> None:
             )
         ).scalar_one()
 
-    assert revision == "0005"
+    assert revision == "0006"
     assert column_type == "vector(1024)"
 
 

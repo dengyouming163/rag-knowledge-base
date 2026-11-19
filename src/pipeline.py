@@ -57,13 +57,14 @@ class RagPipeline:
         audience: str = "public",
         top_k: int = 5,
         user_tags: list[str] | None = None,
+        is_admin: bool = False,
     ) -> dict:
         """返回 {"answer": 回答文本, "chunks": [chunk_id...], "rewritten": 检索用问题}。"""
         rewritten = rewrite_query(question, history or [], self.chat_client)
         hits = self.retriever.retrieve(
             rewritten,
             top_k=top_k,
-            filters={"audience": audience, "user_tags": list(user_tags or [])},
+            filters={"audience": audience, "user_tags": list(user_tags or []), "is_admin": is_admin},
         )
         if not hits or hits[0].score < self.min_score:
             return _refusal(rewritten, [])

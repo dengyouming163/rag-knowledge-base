@@ -101,3 +101,10 @@ def user_tags_of(engine: Engine, tenant_id: str, user_id: str) -> list[str]:
     from src.acl import load_user_tags
 
     return load_user_tags(engine, tenant_id, user_id)
+
+
+def user_context_of(engine: Engine, tenant_id: str, user_id: str) -> tuple[list[str], bool]:
+    """取 (标签, 是否管理员)。角色只能来自用户表，不能由请求头声明。"""
+    from src.acl import load_user_context
+
+    return load_user_context(engine, tenant_id, user_id)

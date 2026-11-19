@@ -137,6 +137,7 @@ class PgVectorStore:
         tenant_id, kb_ids = self._resolve_scope(filters)
         audience = (filters or {}).get("audience")
         user_tags = list((filters or {}).get("user_tags") or [])
+        is_admin = bool((filters or {}).get("is_admin"))
 
         conditions = [
             "tenant_id = :tenant_id",
@@ -153,7 +154,7 @@ class PgVectorStore:
         }
 
         # 文档级 ACL：在打分前过滤，避免无权结果占满 top_k
-        acl_sql, acl_params = acl_condition(user_tags)
+        acl_sql, acl_params = acl_condition(user_tags, is_admin)
         conditions.append(acl_sql)
         params.update(acl_params)
         if audience is not None:

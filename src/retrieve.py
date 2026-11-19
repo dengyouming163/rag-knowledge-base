@@ -102,13 +102,18 @@ class HybridRetriever:
         hits: list[SearchHit] = []
         # user_tags 是 ACL 语义，不是文档元数据，不能交给 BM25 的精确匹配
         user_tags = list((filters or {}).get("user_tags") or [])
-        bm25_filters = {k: v for k, v in (filters or {}).items() if k != "user_tags"} or None
+        is_admin = bool((filters or {}).get("is_admin"))
+        bm25_filters = {
+            k: v
+            for k, v in (filters or {}).items()
+            if k not in ("user_tags", "is_admin")
+        } or None
 
         for chunk_id, score in self._bm25.search(query, top_k=recall_k, filters=bm25_filters):
             chunk = self._bm25.get_chunk(chunk_id)
             if chunk is None:
                 continue
-            if not is_visible(user_tags, chunk.acl_tags):
+            if not is_admin and not is_visible(user_tags, chunk.acl_tags):
                 continue
             hits.append(
                 SearchHit(

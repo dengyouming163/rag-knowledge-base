@@ -23,7 +23,7 @@ from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 
-from app.deps import ChatClientDep, EmbedderDep, EngineDep, RerankerDep, TenantId, UserId, user_tags_of
+from app.deps import ChatClientDep, EmbedderDep, EngineDep, RerankerDep, TenantId, UserId, user_context_of
 from app.schemas import ChatRequest
 from app.services import build_pipeline, ensure_kb
 
@@ -60,7 +60,7 @@ async def chat_stream(
 ):
     # kb 由请求体指定，但归属必须在生成器外校验：错误直接走 HTTP 404
     ensure_kb(engine, tenant_id, payload.kb_id)
-    user_tags = user_tags_of(engine, tenant_id, user_id)
+    user_tags, is_admin = user_context_of(engine, tenant_id, user_id)
 
     pipeline = build_pipeline(
         engine, tenant_id, payload.kb_id, embed_client, chat_client, reranker
@@ -75,6 +75,7 @@ async def chat_stream(
                 payload.audience,
                 payload.top_k,
                 user_tags,
+                is_admin,
             )
         except Exception as exc:  # noqa: BLE001 - 任何失败都要显式告知前端
             message = str(exc)[:300] or exc.__class__.__name__

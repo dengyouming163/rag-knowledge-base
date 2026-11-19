@@ -20,12 +20,16 @@ from sqlalchemy.engine import Engine
 PUBLIC_CONDITION = "coalesce(meta->'acl_tags', '[]'::jsonb) = '[]'::jsonb"
 
 
-def acl_condition(user_tags: Sequence[str] | None) -> tuple[str, dict]:
+def acl_condition(
+    user_tags: Sequence[str] | None, is_admin: bool = False
+) -> tuple[str, dict]:
     """返回 (SQL 片段, 参数)。片段直接拼进 WHERE，参数走绑定变量。
 
-    用户没有任何标签时，`?| '{}'` 恒为假，只会命中公开块——
-    这是刻意的 fail-closed，而不是"没传就放行"。
+    管理员：返回常量 TRUE，跳过内容可见性判断（租户与 kb 作用域仍然生效）。
+    普通用户：无标签时 `?| '{}'` 恒为假，只会命中公开块——刻意 fail-closed。
     """
+    if is_admin:
+        return "TRUE", {}
     return (
         f"({PUBLIC_CONDITION} OR meta->'acl_tags' ?| CAST(:user_tags AS text[]))",
         {"user_tags": list(user_tags or [])},
@@ -39,16 +43,23 @@ def is_visible(user_tags: Sequence[str] | None, acl_tags: Sequence[str] | None) 
     return bool(set(acl_tags) & set(user_tags or []))
 
 
-def load_user_tags(engine: Engine, tenant_id: str, user_id: str) -> list[str]:
-    """查用户标签。用户不存在时返回空列表（等价于只能看公开内容）。"""
+def load_user_context(engine: Engine, tenant_id: str, user_id: str) -> tuple[list[str], bool]:
+    """一次查出 (标签, 是否管理员)。用户不存在时是 ([], False)，只能看公开内容。"""
     with engine.connect() as connection:
         row = connection.execute(
-            text("SELECT tags FROM users WHERE tenant_id = :tenant_id AND user_id = :user_id"),
+            text("SELECT tags, role FROM users WHERE tenant_id = :tenant_id AND user_id = :user_id"),
             {"tenant_id": tenant_id, "user_id": user_id},
-        ).scalar_one_or_none()
+        ).first()
     if row is None:
-        return []
-    return list(row)
+        return [], False
+    tags, role = row
+    return list(tags or []), role == "admin"
+
+
+def load_user_tags(engine: Engine, tenant_id: str, user_id: str) -> list[str]:
+    """查用户标签。用户不存在时返回空列表（等价于只能看公开内容）。"""
+    tags, _ = load_user_context(engine, tenant_id, user_id)
+    return tags
 
 
 def set_chunk_acl(engine: Engine, chunk_ids: Iterable[str], tags: Sequence[str]) -> int:
