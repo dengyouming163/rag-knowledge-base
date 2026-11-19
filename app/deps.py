@@ -14,6 +14,7 @@ from fastapi import Depends, Header
 from sqlalchemy.engine import Engine
 
 from src.db.base import create_db_engine
+from src.trace import TraceStore
 
 DEFAULT_TENANT = "demo"
 
@@ -40,6 +41,14 @@ def current_tenant(
 
 TenantId = Annotated[str, Depends(current_tenant)]
 EngineDep = Annotated[Engine, Depends(get_engine)]
+
+
+@lru_cache(maxsize=1)
+def get_trace_store() -> TraceStore:
+    return TraceStore(os.environ.get("TRACE_ROOT", "data/traces"))
+
+
+TraceStoreDep = Annotated[TraceStore, Depends(get_trace_store)]
 
 
 @lru_cache(maxsize=1)

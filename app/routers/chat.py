@@ -18,14 +18,25 @@
 from __future__ import annotations
 
 import json
+import time
 
 from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 
-from app.deps import ChatClientDep, EmbedderDep, EngineDep, RerankerDep, TenantId, UserId, user_context_of
+from app.deps import (
+    ChatClientDep,
+    EmbedderDep,
+    EngineDep,
+    RerankerDep,
+    TenantId,
+    TraceStoreDep,
+    UserId,
+    user_context_of,
+)
 from app.schemas import ChatRequest
 from app.services import build_pipeline, ensure_kb
+from src.trace import new_trace_id
 
 router = APIRouter(prefix="/v1", tags=["chat"])
 
@@ -57,7 +68,9 @@ async def chat_stream(
     chat_client: ChatClientDep,
     reranker: RerankerDep,
     user_id: UserId,
+    trace_store: TraceStoreDep,
 ):
+    trace_id = new_trace_id()
     # kb 由请求体指定，但归属必须在生成器外校验：错误直接走 HTTP 404
     ensure_kb(engine, tenant_id, payload.kb_id)
     user_tags, is_admin = user_context_of(engine, tenant_id, user_id)
@@ -67,6 +80,7 @@ async def chat_stream(
     )
 
     async def event_stream():
+        started = time.perf_counter()
         try:
             result = await run_in_threadpool(
                 pipeline.answer,
@@ -78,15 +92,38 @@ async def chat_stream(
                 is_admin,
             )
         except Exception as exc:  # noqa: BLE001 - 任何失败都要显式告知前端
+            trace_store.record(
+                trace_id=trace_id,
+                tenant=tenant_id,
+                kb=payload.kb_id,
+                stage="error",
+                ms=(time.perf_counter() - started) * 1000,
+                hits=0,
+                refused=False,
+                mode="error",
+                query=payload.question,
+            )
             message = str(exc)[:300] or exc.__class__.__name__
             yield f"event: error\ndata: {json.dumps({'message': message}, ensure_ascii=False)}\n\n"
             return
 
+        chunks = result["chunks"]
+        trace_store.record(
+            trace_id=trace_id,
+            tenant=tenant_id,
+            kb=payload.kb_id,
+            stage="answer",
+            ms=(time.perf_counter() - started) * 1000,
+            hits=len(chunks),
+            refused=not chunks,
+            mode="chat",
+            query=payload.question,
+        )
         yield (
             "event: hits\ndata: "
             + json.dumps(
                 {
-                    "chunks": result["chunks"],
+                    "chunks": chunks,
                     "rewritten": result["rewritten"],
                     "rerank_degraded": result.get("rerank_degraded", False),
                     "citation_ok": result.get("citation_ok", True),
@@ -99,4 +136,5 @@ async def chat_stream(
             yield _frame({"delta": piece})
         yield _frame("[DONE]")
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream", headers=SSE_HEADERS)
+    headers = {**SSE_HEADERS, "X-Trace-Id": trace_id}
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers=headers)
