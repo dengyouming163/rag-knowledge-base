@@ -52,7 +52,7 @@ def _extract_text(file_path: Path, parser: Any) -> str:
                 raise
             if exc.retryable is None and "扫描件" not in message:
                 raise
-            if "需要 OCR" not in message:
+            if ("扫描件" in message or "OCR" in message) and "需要 OCR" not in message:
                 message = f"{message}；需要 OCR"
             raise NonRetryableIngestError(message) from exc
         return blocks_to_text(blocks)

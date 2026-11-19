@@ -222,6 +222,30 @@ def test_scanned_pdf_raises_non_retryable_ingest_error(tmp_path) -> None:
     assert "需要 OCR" in str(exc_info.value)
 
 
+def test_non_retryable_parser_error_without_ocr_context_keeps_message(tmp_path) -> None:
+    message = "请求格式错误；本地降级需要 pypdf"
+
+    class InvalidParser:
+        def parse(self, content: bytes, filename: str = "") -> list[PdfBlock]:
+            raise ParserUnavailable(message, retryable=False)
+
+    path = tmp_path / "invalid.pdf"
+    path.write_bytes(b"%PDF-1.4 invalid")
+
+    with pytest.raises(NonRetryableIngestError) as exc_info:
+        ingest_document(
+            None,  # type: ignore[arg-type]
+            tenant_id=TENANT,
+            kb_id=KB,
+            doc_id=DOC,
+            path=path,
+            embed_client=FakeEmbed(),
+            parser=InvalidParser(),
+        )
+
+    assert str(exc_info.value) == message
+
+
 @pytest.mark.parametrize("message", ["解析服务不可用；本地解析失败", "需要 OCR"])
 def test_other_parser_unavailable_is_not_non_retryable(tmp_path, message) -> None:
     class UnavailableParser:
