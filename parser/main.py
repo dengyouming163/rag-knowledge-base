@@ -1,0 +1,206 @@
+"""PDF 解析微服务（独立容器）。
+
+为什么单独一个容器：
+PDF 解析依赖只活在这个容器里，主服务用 HTTP 调它（见 src/parsers/pdf.py），
+主镜像体积不变；早期 unstructured 方案还会连带装入 pdfminer / layoutparser / torch，
+让镜像从 400MB 涨到 2GB+。
+
+切换原因：unstructured fast 不做表格结构识别，真实 PDF 验收不达标，
+因此改用无需模型、镜像更小的 pdfplumber，并显式输出去重后的文本与表格块。
+
+接口：
+    GET  /health   → {"status": "ok"}
+    POST /parse    → {"blocks": [{type, text, page, section}]}
+"""
+
+from __future__ import annotations
+
+import html
+import io
+from typing import Any
+
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from pydantic import BaseModel
+
+app = FastAPI(title="kb-parser", version="0.1.0")
+
+# 旧元素类型 → 我们的块类型。保留该纯函数以兼容现有调用方和单元测试；
+# HTTP 解析流程已不再依赖 unstructured。
+TYPE_MAP = {
+    "Title": "title",
+    "Header": "header",
+    "Footer": "footer",
+    "NarrativeText": "text",
+    "Text": "text",
+    "ListItem": "list",
+    "Table": "table",
+    "FigureCaption": "text",
+}
+
+
+class Block(BaseModel):
+    type: str
+    text: str
+    page: int
+    section: str
+
+
+class ParseResponse(BaseModel):
+    blocks: list[Block]
+
+
+def to_blocks(elements: list[Any]) -> list[Block]:
+    """把旧式元素列表转成稳定的块结构，并继承最近一个标题。"""
+    blocks: list[Block] = []
+    section = ""
+    for element in elements:
+        text = (getattr(element, "text", "") or "").strip()
+        if not text:
+            continue
+
+        raw = getattr(element, "category", None) or getattr(element, "type", None) or "Text"
+        block_type = TYPE_MAP.get(str(raw), "text")
+        if block_type == "title":
+            section = text
+
+        metadata = getattr(element, "metadata", None)
+        page = int(getattr(metadata, "page_number", 1) or 1)
+        blocks.append(Block(type=block_type, text=text, page=page, section=section))
+    return blocks
+
+
+def _table_to_html(table: Any) -> str:
+    rows = [
+        ["" if cell is None else str(cell).strip() for cell in row]
+        for row in (table.extract() or [])
+    ]
+    rows = [row for row in rows if any(row)]
+    if not rows:
+        return ""
+
+    body = "".join(
+        "<tr>" + "".join(f"<td>{html.escape(cell)}</td>" for cell in row) + "</tr>"
+        for row in rows
+    )
+    return f"<table>{body}</table>"
+
+
+def _inside_any_table(word: dict[str, Any], boxes: list[tuple[float, float, float, float]]) -> bool:
+    x = (float(word["x0"]) + float(word["x1"])) / 2
+    y = (float(word["top"]) + float(word["bottom"])) / 2
+    return any(x0 <= x <= x1 and top <= y <= bottom for x0, top, x1, bottom in boxes)
+
+
+def _group_lines(words: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    lines: list[dict[str, Any]] = []
+    for word in sorted(words, key=lambda item: (float(item["top"]), float(item["x0"]))):
+        top = float(word["top"])
+        if not lines or abs(top - lines[-1]["top"]) > 3.0:
+            lines.append({"top": top, "words": [word]})
+        else:
+            lines[-1]["words"].append(word)
+
+    result = []
+    for line in lines:
+        line_words = sorted(line["words"], key=lambda item: float(item["x0"]))
+        text = " ".join(str(word["text"]) for word in line_words).strip()
+        if not text:
+            continue
+        result.append(
+            {
+                "kind": "line",
+                "top": line["top"],
+                "x0": min(float(word["x0"]) for word in line_words),
+                "text": text,
+                "size": sum(float(word.get("size", 0)) for word in line_words) / len(line_words),
+            }
+        )
+    return result
+
+
+def _parse_pdf(content: bytes) -> list[Block]:
+    import pdfplumber
+
+    blocks: list[Block] = []
+    section = ""
+    with pdfplumber.open(io.BytesIO(content)) as pdf:
+        for page_number, page in enumerate(pdf.pages, start=1):
+            tables = list(page.find_tables())
+            boxes = [tuple(table.bbox) for table in tables]
+            events: list[dict[str, Any]] = []
+            for table in tables:
+                table_html = _table_to_html(table)
+                if table_html:
+                    events.append(
+                        {
+                            "kind": "table",
+                            "top": float(table.bbox[1]),
+                            "x0": float(table.bbox[0]),
+                            "text": table_html,
+                        }
+                    )
+
+            words = page.extract_words(extra_attrs=["size"])
+            remaining_words = [word for word in words if not _inside_any_table(word, boxes)]
+            events.extend(_group_lines(remaining_words))
+            events.sort(key=lambda event: (event["top"], event["x0"]))
+
+            text_lines: list[str] = []
+
+            def flush_text() -> None:
+                nonlocal text_lines
+                if text_lines:
+                    blocks.append(
+                        Block(
+                            type="text",
+                            text="\n".join(text_lines),
+                            page=page_number,
+                            section=section,
+                        )
+                    )
+                    text_lines = []
+
+            for event in events:
+                if event["kind"] == "table":
+                    flush_text()
+                    blocks.append(
+                        Block(
+                            type="table",
+                            text=event["text"],
+                            page=page_number,
+                            section=section,
+                        )
+                    )
+                # 样本标题为 18/14pt、正文为 11pt；13pt 是轻量启发式阈值。
+                elif event["size"] >= 13.0:
+                    flush_text()
+                    section = event["text"]
+                    blocks.append(
+                        Block(type="title", text=section, page=page_number, section=section)
+                    )
+                else:
+                    text_lines.append(event["text"])
+            flush_text()
+    return blocks
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.post("/parse", response_model=ParseResponse)
+async def parse(file: UploadFile = File(...)) -> ParseResponse:
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="空文件")
+
+    try:
+        blocks = _parse_pdf(content)
+    except Exception as exc:  # noqa: BLE001 - 解析失败要给出可读原因
+        raise HTTPException(status_code=422, detail=f"PDF 解析失败：{exc}") from exc
+
+    if not blocks:
+        # 最常见的原因是纯扫描件（没有文字层）；OCR 由后续任务接入。
+        raise HTTPException(status_code=422, detail="未解析出文本，可能是扫描件，需要 OCR")
+    return ParseResponse(blocks=blocks)
