@@ -52,6 +52,7 @@ class ChatRequest(BaseModel):
 class UploadDocumentResponse(BaseModel):
     job_id: int
     doc_id: str
+    duplicated: bool = False
 
 
 class JobOut(BaseModel):

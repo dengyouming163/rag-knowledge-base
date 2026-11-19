@@ -1,10 +1,11 @@
 """文档上传接口测试：`POST /v1/kbs/{kb_id}/documents`。
 
-覆盖四类风险：
+覆盖的风险：
 1. 合法 PDF 上传返回 202（异步处理），并带回 job_id / doc_id；
 2. 上传到其他租户的知识库返回 404，不能跨租户写入；
-3. 后缀不在白名单内返回 422；
-4. 空文件返回 422。
+3. 后缀不在白名单内返回 422，空文件 422，超过大小上限 413；
+4. 同一份文件重复上传幂等：复用 doc_id，只落一份文件；
+5. 成功后 documents 行是 pending，且文件真实存在。
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from app.main import create_app
+from app.routers import documents
 from src.db.base import create_db_engine
 
 TENANT = "t_docs"
@@ -32,7 +34,7 @@ def sample_pdf_bytes() -> bytes:
 
 
 @pytest.fixture()
-def client() -> TestClient:
+def engine():
     db_engine = create_db_engine()
     try:
         with db_engine.connect() as connection:
@@ -41,6 +43,7 @@ def client() -> TestClient:
         pytest.skip(f"数据库不可用，跳过接口集成测试：{exc}")
 
     _cleanup(db_engine)
+    shutil.rmtree(UPLOAD_ROOT / TENANT, ignore_errors=True)
     with db_engine.begin() as connection:
         connection.execute(
             text("INSERT INTO tenants (id, name) VALUES (:t, 'docs')"), {"t": TENANT}
@@ -53,11 +56,16 @@ def client() -> TestClient:
             {"kb": KB, "t": TENANT},
         )
 
-    yield TestClient(create_app())
+    yield db_engine
 
     _cleanup(db_engine)
     db_engine.dispose()
     shutil.rmtree(UPLOAD_ROOT / TENANT, ignore_errors=True)
+
+
+@pytest.fixture()
+def client(engine) -> TestClient:
+    return TestClient(create_app())
 
 
 def _cleanup(engine) -> None:
@@ -71,17 +79,22 @@ def _cleanup(engine) -> None:
         connection.execute(text("DELETE FROM tenants WHERE id = :t"), {"t": TENANT})
 
 
-def test_upload_pdf_returns_202_and_job(client: TestClient, sample_pdf_bytes: bytes) -> None:
-    response = client.post(
+def _upload(client: TestClient, content: bytes, filename: str = "policy.pdf"):
+    return client.post(
         f"/v1/kbs/{KB}/documents",
-        files={"file": ("policy.pdf", sample_pdf_bytes, "application/pdf")},
+        files={"file": (filename, content, "application/pdf")},
         headers={"X-Tenant-Id": TENANT},
     )
+
+
+def test_upload_pdf_returns_202_and_job(client: TestClient, sample_pdf_bytes: bytes) -> None:
+    response = _upload(client, sample_pdf_bytes)
 
     assert response.status_code == 202
     body = response.json()
     assert body["job_id"] > 0
     assert body["doc_id"].startswith(f"{KB}-")
+    assert body["duplicated"] is False
 
 
 def test_upload_to_other_tenant_kb_returns_404(
@@ -97,20 +110,68 @@ def test_upload_to_other_tenant_kb_returns_404(
 
 
 def test_upload_rejects_non_pdf(client: TestClient) -> None:
-    response = client.post(
-        f"/v1/kbs/{KB}/documents",
-        files={"file": ("policy.docx", b"not a pdf", "application/octet-stream")},
-        headers={"X-Tenant-Id": TENANT},
-    )
+    response = _upload(client, b"not a pdf", filename="policy.docx")
 
     assert response.status_code == 422
 
 
 def test_upload_rejects_empty_file(client: TestClient) -> None:
-    response = client.post(
-        f"/v1/kbs/{KB}/documents",
-        files={"file": ("empty.pdf", b"", "application/pdf")},
-        headers={"X-Tenant-Id": TENANT},
-    )
+    response = _upload(client, b"")
 
     assert response.status_code == 422
+
+
+def test_duplicate_upload_reuses_document_and_file(
+    client: TestClient, engine, sample_pdf_bytes: bytes
+) -> None:
+    first = _upload(client, sample_pdf_bytes)
+    second = _upload(client, sample_pdf_bytes)
+
+    assert first.status_code == 202
+    assert second.status_code == 202
+    assert second.json()["doc_id"] == first.json()["doc_id"]
+    assert second.json()["duplicated"] is True
+
+    with engine.begin() as connection:
+        count = connection.execute(
+            text(
+                "SELECT count(*) FROM documents "
+                "WHERE tenant_id = :t AND kb_id = :kb"
+            ),
+            {"t": TENANT, "kb": KB},
+        ).scalar_one()
+    assert count == 1
+
+    files = [path for path in (UPLOAD_ROOT / TENANT / KB).rglob("*") if path.is_file()]
+    assert len(files) == 1
+    assert files[0].name == f"{first.json()['doc_id']}.pdf"
+
+
+def test_upload_too_large_returns_413(client: TestClient, monkeypatch) -> None:
+    assert documents.MAX_UPLOAD_BYTES == 20 * 1024 * 1024
+    monkeypatch.setattr(documents, "MAX_UPLOAD_BYTES", 10)
+
+    response = _upload(client, b"x" * 11)
+
+    assert response.status_code == 413
+
+
+def test_upload_persists_pending_document_and_file(
+    client: TestClient, engine, sample_pdf_bytes: bytes
+) -> None:
+    response = _upload(client, sample_pdf_bytes)
+    doc_id = response.json()["doc_id"]
+
+    with engine.begin() as connection:
+        row = connection.execute(
+            text(
+                "SELECT status, content_hash FROM documents "
+                "WHERE id = :id AND tenant_id = :t"
+            ),
+            {"id": doc_id, "t": TENANT},
+        ).mappings().one()
+    assert row["status"] == "pending"
+    assert len(row["content_hash"]) == 16
+
+    # 落盘文件名只由服务端的 doc_id + 后缀组成
+    assert (UPLOAD_ROOT / TENANT / KB / f"{doc_id}.pdf").is_file()
