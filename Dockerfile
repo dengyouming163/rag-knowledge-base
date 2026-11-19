@@ -22,6 +22,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
         "fastapi>=0.110" \
         "uvicorn[standard]>=0.30" \
         "httpx>=0.27" \
+        "pypdf>=4.0" \
         "numpy>=1.26" \
         "pydantic>=2.0" \
         "sqlalchemy>=2.0" \

@@ -45,6 +45,8 @@ services:
       db:
         condition: service_healthy
 
+  # worker 设计为单副本串行消费；多副本并发重建同一 KB 的 BM25 快照时，
+  # 存在旧快照后写的已知限制，扩副本前需先解决。
   worker:
     build:
       context: ..
@@ -52,7 +54,9 @@ services:
       args:
         PIP_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
     container_name: rag-kb-worker
+    restart: unless-stopped
     command: ["python", "scripts/run_worker.py", "--interval", "5"]
+    healthcheck: {disable: true}
     environment:
       DB_HOST: db
       DB_PORT: "5432"
