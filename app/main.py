@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from src.store_pg import MissingTenantFilterError
 
 from .errors import ScopeNotFoundError
-from .routers import chat, documents, health, search
+from .routers import chat, documents, health, jobs, search
 
 
 def create_app() -> FastAPI:
@@ -23,6 +23,7 @@ def create_app() -> FastAPI:
     app.include_router(search.router)
     app.include_router(chat.router)
     app.include_router(documents.router)
+    app.include_router(jobs.router)
 
     @app.exception_handler(MissingTenantFilterError)
     async def missing_scope_handler(request: Request, exc: MissingTenantFilterError):

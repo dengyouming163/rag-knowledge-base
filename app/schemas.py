@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -51,3 +52,22 @@ class ChatRequest(BaseModel):
 class UploadDocumentResponse(BaseModel):
     job_id: int
     doc_id: str
+
+
+class JobOut(BaseModel):
+    id: int
+    tenant_id: str
+    kb_id: str
+    doc_id: str
+    status: str
+    error: str
+    source: str
+    attempts: int
+    progress: int
+    finished_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class JobListResponse(BaseModel):
+    jobs: list[JobOut]
