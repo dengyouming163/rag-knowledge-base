@@ -22,15 +22,29 @@ from src.ingest_jobs import (
     mark_failed,
     mark_succeeded,
 )
+from src.worker import worker_once
 
 TENANT = "t_jobs"
 KB = "kb_jobs"
 
 
 def _cleanup(engine) -> None:
+    """按外键依赖顺序清理；chunks 开了 RLS，删除前必须声明租户。"""
     with engine.begin() as connection:
         connection.execute(
+            text("SELECT set_config('app.tenant_id', :t, true)"), {"t": TENANT}
+        )
+        connection.execute(
             text("DELETE FROM ingest_jobs WHERE tenant_id = :t"), {"t": TENANT}
+        )
+        connection.execute(
+            text("DELETE FROM kb_bm25 WHERE tenant_id = :t"), {"t": TENANT}
+        )
+        connection.execute(
+            text("DELETE FROM chunks WHERE tenant_id = :t"), {"t": TENANT}
+        )
+        connection.execute(
+            text("DELETE FROM documents WHERE tenant_id = :t"), {"t": TENANT}
         )
         connection.execute(
             text("DELETE FROM knowledge_bases WHERE tenant_id = :t"), {"t": TENANT}
@@ -178,3 +192,90 @@ def test_mark_succeeded_sets_finished_at(engine) -> None:
     assert job["status"] == "succeeded"
     assert job["progress"] == 100
     assert job["finished_at"] is not None
+
+
+class FakeEmbed:
+    """返回与 chunks.embedding 列维度一致的确定性假向量，不访问网络。"""
+
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        return [[0.01] * 1024 for _ in texts]
+
+
+def _seed_document(engine, doc_id: str, source_url: str, content_hash: str) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO documents "
+                "(id, tenant_id, kb_id, title, source_url, content_hash, status, meta) "
+                "VALUES (:doc, :t, :kb, :doc, :url, :hash, 'pending', '{}'::jsonb)"
+            ),
+            {
+                "doc": doc_id,
+                "t": TENANT,
+                "kb": KB,
+                "url": source_url,
+                "hash": content_hash,
+            },
+        )
+
+
+def test_worker_once_processes_one_job(engine, tmp_path, monkeypatch) -> None:
+    source_url = f"{TENANT}/{KB}/d1.md"
+    _seed_document(engine, "d1", source_url, "worker_doc_hash_1")
+    job_id = enqueue(engine, TENANT, KB, doc_id="d1")
+    monkeypatch.setattr("src.worker.UPLOAD_ROOT", tmp_path)
+    path = tmp_path / TENANT / KB / "d1.md"
+    path.parent.mkdir(parents=True)
+    path.write_text("# 售后政策\n\n## 退款\n\n支持七天无理由退款。", encoding="utf-8")
+
+    assert worker_once(engine, embed_client=FakeEmbed()) == 1
+
+    job = get_job(engine, TENANT, job_id)
+    assert job["status"] == "succeeded"
+    assert job["progress"] == 100
+    with engine.begin() as connection:
+        connection.execute(
+            text("SELECT set_config('app.tenant_id', :t, true)"), {"t": TENANT}
+        )
+        doc_status = connection.execute(
+            text("SELECT status FROM documents WHERE id = 'd1' AND tenant_id = :t"),
+            {"t": TENANT},
+        ).scalar_one()
+        child_count = connection.execute(
+            text(
+                "SELECT count(*) FROM chunks "
+                "WHERE tenant_id = :t AND doc_id = 'd1' AND is_parent = false"
+            ),
+            {"t": TENANT},
+        ).scalar_one()
+    assert doc_status == "ready"
+    assert child_count > 0
+
+    assert worker_once(engine, embed_client=FakeEmbed()) == 0
+
+
+def test_worker_marks_document_failed_after_max_retries(
+    engine, tmp_path, monkeypatch
+) -> None:
+    source_url = f"{TENANT}/{KB}/missing.md"
+    _seed_document(engine, "d2", source_url, "worker_doc_hash_2")
+    job_id = enqueue(engine, TENANT, KB, doc_id="d2")
+    monkeypatch.setattr("src.worker.UPLOAD_ROOT", tmp_path)
+
+    for _ in range(3):
+        assert worker_once(engine, embed_client=FakeEmbed()) == 1
+
+    job = get_job(engine, TENANT, job_id)
+    assert job["status"] == "failed"
+    assert job["finished_at"] is not None
+    assert job["error"]
+    with engine.begin() as connection:
+        doc_status = connection.execute(
+            text("SELECT status FROM documents WHERE id = 'd2' AND tenant_id = :t"),
+            {"t": TENANT},
+        ).scalar_one()
+    assert doc_status == "failed"
+
+
+def test_worker_once_returns_zero_when_idle(engine) -> None:
+    assert worker_once(engine, embed_client=FakeEmbed()) == 0

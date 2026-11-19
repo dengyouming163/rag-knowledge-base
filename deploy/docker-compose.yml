@@ -38,9 +38,35 @@ services:
       EMBED_MODE: mock
     ports:
       - "8000:8000"
+    # api 与 worker 是不同容器，上传文件必须通过 named volume 共享，
+    # 否则 worker 读不到 api 容器里落盘的文件。
+    volumes: ["uploads:/app/data/uploads"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        PIP_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
+    container_name: rag-kb-worker
+    command: ["python", "scripts/run_worker.py", "--interval", "5"]
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: kb
+      DB_PASSWORD: kb
+      DB_NAME: kb
+      DEFAULT_TENANT: demo
+      EMBED_MODE: mock
+      PARSER_BASE_URL: http://parser:8000
+    volumes: ["uploads:/app/data/uploads"]
     depends_on:
       db:
         condition: service_healthy
 
 volumes:
   pgdata: {}
+  uploads: {}

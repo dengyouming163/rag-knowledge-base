@@ -48,6 +48,10 @@ COPY scripts ./scripts
 COPY migrations ./migrations
 COPY alembic.ini ./
 
+# named volume 首次挂载会继承镜像内目录的属主；预建并 chown 后，
+# 非 root 的 api/worker 才能写入共享上传目录。
+RUN mkdir -p /app/data/uploads && chown -R appuser:appuser /app/data
+
 USER appuser
 EXPOSE 8000
 
