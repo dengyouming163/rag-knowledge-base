@@ -20,6 +20,7 @@ COPY pyproject.toml ./
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir \
         "fastapi>=0.110" \
+        "python-multipart>=0.0.9" \
         "uvicorn[standard]>=0.30" \
         "httpx>=0.27" \
         "pypdf>=4.0" \
