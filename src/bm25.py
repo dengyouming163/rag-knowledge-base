@@ -59,6 +59,48 @@ class BM25Index:
         total = len(self._freqs)
         self._avg_len = sum(self._lengths.values()) / total if total else 0.0
 
+    def to_payload(self) -> dict:
+        """导出可 JSON 序列化的快照：chunks 全量 + 倒排表。
+
+        `_freqs`、`_lengths`、`_avg_len` 都不存——它们能从倒排表精确还原，
+        存下来只会让快照大两三倍。这是"存最小充分集"的原则。
+        """
+        return {
+            "k1": self.k1,
+            "b": self.b,
+            "chunks": [chunk.model_dump() for chunk in self._chunks.values()],
+            "inverted": self._inverted,
+        }
+
+    @classmethod
+    def from_payload(cls, payload: dict) -> "BM25Index":
+        """从快照还原索引，不重新分词（分词是最耗时的一步）。
+
+        用 `__new__` 跳过 `__init__` 的分词循环，再从倒排表反推词频与长度：
+        某个 chunk 的长度 = 它所有词频之和。
+        """
+        index = cls.__new__(cls)
+        index.k1 = float(payload["k1"])
+        index.b = float(payload["b"])
+        index._chunks = {
+            item["chunk_id"]: Chunk.model_validate(item) for item in payload["chunks"]
+        }
+        index._inverted = {
+            term: dict(postings) for term, postings in payload["inverted"].items()
+        }
+
+        freqs: dict[str, Counter[str]] = {chunk_id: Counter() for chunk_id in index._chunks}
+        lengths: dict[str, int] = {chunk_id: 0 for chunk_id in index._chunks}
+        for term, postings in index._inverted.items():
+            for chunk_id, term_freq in postings.items():
+                freqs[chunk_id][term] = term_freq
+                lengths[chunk_id] += term_freq
+        index._freqs = freqs
+        index._lengths = lengths
+        total = len(lengths)
+        index._avg_len = sum(lengths.values()) / total if total else 0.0
+        return index
+
     def __len__(self) -> int:
         return len(self._chunks)
 

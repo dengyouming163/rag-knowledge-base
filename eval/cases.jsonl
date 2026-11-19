@@ -1,0 +1,50 @@
+{"case_id":"c001","kb_id":"kb_demo","query":"退款一般几天到账","expected_chunk_ids":["kb-after-sale#1"],"answer":"退款审核通过后按原支付路径退回，通常 1-3 个工作日到账。","answerable":true,"type":"fact","difficulty":"easy"}
+{"case_id":"c002","kb_id":"kb_demo","query":"支持七天无理由退款吗","expected_chunk_ids":["kb-after-sale#1"],"answer":"支持七天无理由退款。","answerable":true,"type":"fact","difficulty":"easy"}
+{"case_id":"c003","kb_id":"kb_demo","query":"退款退回到哪里","expected_chunk_ids":["kb-after-sale#1"],"answer":"按原支付路径退回。","answerable":true,"type":"fact","difficulty":"easy"}
+{"case_id":"c004","kb_id":"kb_demo","query":"退款必须原路退回吗","expected_chunk_ids":["kb-after-sale#1"],"answer":"是，按原支付路径退回。","answerable":true,"type":"fact","difficulty":"medium"}
+{"case_id":"c005","kb_id":"kb_demo","query":"钱什么时候能回来","expected_chunk_ids":["kb-after-sale#1"],"answer":"审核通过后 1-3 个工作日按原路退回。","answerable":true,"type":"fact","difficulty":"medium","adversarial":true}
+{"case_id":"c006","kb_id":"kb_demo","query":"买完不想要了能退吗","expected_chunk_ids":["kb-after-sale#1"],"answer":"可以，支持七天无理由退款。","answerable":true,"type":"fact","difficulty":"easy","adversarial":true}
+{"case_id":"c007","kb_id":"kb_demo","query":"换货要在几天内申请","expected_chunk_ids":["kb-after-sale#2"],"answer":"需在签收后七天内申请。","answerable":true,"type":"fact","difficulty":"easy"}
+{"case_id":"c008","kb_id":"kb_demo","query":"换货的运费谁承担","expected_chunk_ids":["kb-after-sale#2"],"answer":"换货产生的物流费用由商家承担。","answerable":true,"type":"fact","difficulty":"easy"}
+{"case_id":"c009","kb_id":"kb_demo","query":"换货对商品状态有什么要求","expected_chunk_ids":["kb-after-sale#2"],"answer":"商品需保持完好。","answerable":true,"type":"fact","difficulty":"medium"}
+{"case_id":"c010","kb_id":"kb_demo","query":"签收后第八天还能申请换货吗","expected_chunk_ids":["kb-after-sale#2"],"answer":"不能，换货需在签收后七天内申请。","answerable":true,"type":"fact","difficulty":"hard","adversarial":true}
+{"case_id":"c011","kb_id":"kb_demo","query":"现货订单多久发出","expected_chunk_ids":["kb-logistics#1"],"answer":"现货订单 48 小时内发出。","answerable":true,"type":"fact","difficulty":"easy"}
+{"case_id":"c012","kb_id":"kb_demo","query":"偏远地区会延迟几天","expected_chunk_ids":["kb-logistics#1"],"answer":"偏远地区可能延迟 1-2 天。","answerable":true,"type":"fact","difficulty":"easy"}
+{"case_id":"c013","kb_id":"kb_demo","query":"节假日配送会顺延吗","expected_chunk_ids":["kb-logistics#1"],"answer":"会，节假日顺延。","answerable":true,"type":"fact","difficulty":"easy"}
+{"case_id":"c014","kb_id":"kb_demo","query":"没发货可以自己改地址吗","expected_chunk_ids":["kb-logistics#2"],"answer":"可以，在订单详情页自助修改收货地址。","answerable":true,"type":"fact","difficulty":"easy"}
+{"case_id":"c015","kb_id":"kb_demo","query":"已发货了怎么改地址","expected_chunk_ids":["kb-logistics#2"],"answer":"需联系快递拦截后重新派送。","answerable":true,"type":"fact","difficulty":"medium"}
+{"case_id":"c016","kb_id":"kb_demo","query":"改地址需要联系谁","expected_chunk_ids":["kb-logistics#2"],"answer":"未发货在订单详情页自助修改；已发货联系快递。","answerable":true,"type":"fact","difficulty":"medium"}
+{"case_id":"c017","kb_id":"kb_demo","query":"E102 是什么意思","expected_chunk_ids":["kb-device#1"],"answer":"表示滤芯未安装到位。","answerable":true,"type":"fact","difficulty":"easy"}
+{"case_id":"c018","kb_id":"kb_demo","query":"E102 怎么处理","expected_chunk_ids":["kb-device#1"],"answer":"重新安装滤芯后长按复位键 3 秒。","answerable":true,"type":"fact","difficulty":"medium"}
+{"case_id":"c019","kb_id":"kb_demo","query":"E102 复位键要按多久","expected_chunk_ids":["kb-device#1"],"answer":"长按 3 秒。","answerable":true,"type":"fact","difficulty":"easy"}
+{"case_id":"c020","kb_id":"kb_demo","query":"E205 是什么故障","expected_chunk_ids":["kb-device#2"],"answer":"表示水箱缺水。","answerable":true,"type":"fact","difficulty":"easy"}
+{"case_id":"c021","kb_id":"kb_demo","query":"E205 怎么解决","expected_chunk_ids":["kb-device#2"],"answer":"加水至最高水位线以下后重新启动。","answerable":true,"type":"fact","difficulty":"medium"}
+{"case_id":"c022","kb_id":"kb_demo","query":"E205 加水加到什么位置","expected_chunk_ids":["kb-device#2"],"answer":"加到最高水位线以下。","answerable":true,"type":"fact","difficulty":"medium"}
+{"case_id":"c023","kb_id":"kb_demo","query":"水箱多久洗一回","expected_chunk_ids":["kb-device#3"],"answer":"建议每两周清洗一次水箱与滤芯支架。","answerable":true,"type":"fact","difficulty":"easy","adversarial":true}
+{"case_id":"c024","kb_id":"kb_demo","query":"水箱能用洗碗机洗吗","expected_chunk_ids":["kb-device#3"],"answer":"不要使用洗碗机清洗。","answerable":true,"type":"fact","difficulty":"easy"}
+{"case_id":"c025","kb_id":"kb_demo","query":"清洁时不能用什么清洁剂","expected_chunk_ids":["kb-device#3"],"answer":"不要使用强酸清洁剂。","answerable":true,"type":"fact","difficulty":"easy"}
+{"case_id":"c026","kb_id":"kb_demo","query":"退款和换货的申请期限分别是多久","expected_chunk_ids":["kb-after-sale#1","kb-after-sale#2"],"answer":"退款为七天无理由；换货需在签收后七天内申请。","answerable":true,"type":"compare","difficulty":"medium"}
+{"case_id":"c027","kb_id":"kb_demo","query":"E102 和 E205 分别代表什么故障","expected_chunk_ids":["kb-device#1","kb-device#2"],"answer":"E102 是滤芯未安装到位；E205 是水箱缺水。","answerable":true,"type":"compare","difficulty":"medium"}
+{"case_id":"c028","kb_id":"kb_demo","query":"未发货和已发货改地址的方式有什么不同","expected_chunk_ids":["kb-logistics#2"],"answer":"未发货可在订单详情页自助修改；已发货需联系快递拦截后重新派送。","answerable":true,"type":"compare","difficulty":"medium"}
+{"case_id":"c029","kb_id":"kb_demo","query":"偏远地区和节假日对配送时效的影响","expected_chunk_ids":["kb-logistics#1"],"answer":"偏远地区可能延迟 1-2 天，节假日顺延。","answerable":true,"type":"compare","difficulty":"medium"}
+{"case_id":"c030","kb_id":"kb_demo","query":"退款到账要多久，换货运费谁出","expected_chunk_ids":["kb-after-sale#1","kb-after-sale#2"],"answer":"退款 1-3 个工作日到账；换货物流费由商家承担。","answerable":true,"type":"compare","difficulty":"medium"}
+{"case_id":"c031","kb_id":"kb_demo","query":"E102 和 E205 分别该怎么处理","expected_chunk_ids":["kb-device#1","kb-device#2"],"answer":"E102 重新安装滤芯并长按复位键 3 秒；E205 加水后重新启动。","answerable":true,"type":"compare","difficulty":"medium"}
+{"case_id":"c032","kb_id":"kb_demo","query":"洗碗机和强酸清洁剂都能用来清洁吗","expected_chunk_ids":["kb-device#3"],"answer":"都不能，文档明确要求不要使用。","answerable":true,"type":"compare","difficulty":"easy"}
+{"case_id":"c033","kb_id":"kb_demo","query":"平时发货要多久，节假日呢","expected_chunk_ids":["kb-logistics#1"],"answer":"现货 48 小时内发出；节假日顺延。","answerable":true,"type":"compare","difficulty":"easy"}
+{"case_id":"c034","kb_id":"kb_demo","query":"换货商品已经发货了，运费谁出、地址怎么改","expected_chunk_ids":["kb-after-sale#2","kb-logistics#2"],"answer":"换货物流费由商家承担；已发货需联系快递拦截后重新派送。","answerable":true,"type":"multi_hop","difficulty":"hard"}
+{"case_id":"c035","kb_id":"kb_demo","query":"签收第 8 天发现 E102，还能换货吗，机器先怎么处理","expected_chunk_ids":["kb-after-sale#2","kb-device#1"],"answer":"已超出七天换货期限；机器可按 E102 处理：重新安装滤芯后长按复位键 3 秒。","answerable":true,"type":"multi_hop","difficulty":"hard"}
+{"case_id":"c036","kb_id":"kb_demo","query":"E205 处理时需要按复位键吗","expected_chunk_ids":["kb-device#1","kb-device#2"],"answer":"E205 只需加水后重新启动；复位键 3 秒是 E102 的处理步骤。","answerable":true,"type":"multi_hop","difficulty":"hard"}
+{"case_id":"c037","kb_id":"kb_demo","query":"节假日下单，发货和退款到账都会顺延吗","expected_chunk_ids":["kb-logistics#1","kb-after-sale#1"],"answer":"配送会顺延；退款条款未提到节假日顺延，按 1-3 个工作日。","answerable":true,"type":"multi_hop","difficulty":"hard"}
+{"case_id":"c038","kb_id":"kb_demo","query":"未发货的订单想退款，还需要先改地址吗","expected_chunk_ids":["kb-after-sale#1","kb-logistics#2"],"answer":"退款政策未要求改地址；未发货订单也可在详情页自助改地址，两者独立。","answerable":true,"type":"multi_hop","difficulty":"hard"}
+{"case_id":"c039","kb_id":"kb_demo","query":"发票怎么开","expected_chunk_ids":[],"answer":"文档未覆盖，应拒答并转人工。","answerable":false,"type":"unanswerable","difficulty":"easy"}
+{"case_id":"c040","kb_id":"kb_demo","query":"保修期是多久","expected_chunk_ids":[],"answer":"文档未覆盖，应拒答并转人工。","answerable":false,"type":"unanswerable","difficulty":"easy"}
+{"case_id":"c041","kb_id":"kb_demo","query":"会员积分怎么用","expected_chunk_ids":[],"answer":"文档未覆盖，应拒答并转人工。","answerable":false,"type":"unanswerable","difficulty":"easy"}
+{"case_id":"c042","kb_id":"kb_demo","query":"支持海外配送吗","expected_chunk_ids":[],"answer":"文档未覆盖，应拒答并转人工。","answerable":false,"type":"unanswerable","difficulty":"medium"}
+{"case_id":"c043","kb_id":"kb_demo","query":"有上门安装服务吗","expected_chunk_ids":[],"answer":"文档未覆盖，应拒答并转人工。","answerable":false,"type":"unanswerable","difficulty":"easy"}
+{"case_id":"c044","kb_id":"kb_demo","query":"这个产品多少钱","expected_chunk_ids":[],"answer":"文档未覆盖，应拒答并转人工。","answerable":false,"type":"unanswerable","difficulty":"easy"}
+{"case_id":"c045","kb_id":"kb_demo","query":"有几种颜色可选","expected_chunk_ids":[],"answer":"文档未覆盖，应拒答并转人工。","answerable":false,"type":"unanswerable","difficulty":"easy"}
+{"case_id":"c046","kb_id":"kb_demo","query":"退货寄回地址是什么","expected_chunk_ids":[],"answer":"文档未覆盖，应拒答并转人工。","answerable":false,"type":"unanswerable","difficulty":"medium"}
+{"case_id":"c047","kb_id":"kb_demo","query":"客服电话多少","expected_chunk_ids":[],"answer":"文档未覆盖，应拒答并转人工。","answerable":false,"type":"unanswerable","difficulty":"easy"}
+{"case_id":"c048","kb_id":"kb_demo","query":"支持哪些支付方式","expected_chunk_ids":[],"answer":"文档未覆盖，应拒答并转人工。","answerable":false,"type":"unanswerable","difficulty":"easy"}
+{"case_id":"c049","kb_id":"kb_demo","query":"优惠券能和满减叠加吗","expected_chunk_ids":[],"answer":"文档未覆盖，应拒答并转人工。","answerable":false,"type":"unanswerable","difficulty":"medium"}
+{"case_id":"c050","kb_id":"kb_demo","query":"企业批量采购有折扣吗","expected_chunk_ids":[],"answer":"文档未覆盖，应拒答并转人工。","answerable":false,"type":"unanswerable","difficulty":"medium"}

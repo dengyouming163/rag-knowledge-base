@@ -89,9 +89,9 @@ def test_rrf_fuses_two_routes_by_rank():
     hits = retriever.retrieve("退款", top_k=3)
 
     assert [hit.chunk_id for hit in hits] == ["doc1#1", "doc1#2", "doc1#3"]
-    assert hits[0].score == pytest.approx(1 / (RRF_K + 2) + 1 / (RRF_K + 1))
-    assert hits[1].score == pytest.approx(1 / (RRF_K + 1))
-    assert hits[2].score == pytest.approx(1 / (RRF_K + 2))
+    assert hits[0].score == pytest.approx(0.5 / (RRF_K + 2) + 0.5 / (RRF_K + 1))
+    assert hits[1].score == pytest.approx(0.5 / (RRF_K + 1))
+    assert hits[2].score == pytest.approx(0.5 / (RRF_K + 2))
     assert hits[0].score > hits[1].score > hits[2].score
 
 
@@ -122,7 +122,7 @@ def test_duplicate_chunk_appears_once_with_summed_score():
     ids = [hit.chunk_id for hit in hits]
     assert ids.count("doc1#1") == 1
     assert hits[0].chunk_id == "doc1#1"
-    assert hits[0].score == pytest.approx(2 / (RRF_K + 1))
+    assert hits[0].score == pytest.approx(1 / (RRF_K + 1))
     assert hits[0].score > hits[1].score
 
 

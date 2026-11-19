@@ -9,6 +9,11 @@ import pytest
 from src.chunk import estimate_tokens, load_markdown_file, split_document
 
 
+def _children(chunks):
+    """只取子块：父块是 Task 2.1 引入的"上下文层"，不参与检索断言。"""
+    return [chunk for chunk in chunks if not chunk.is_parent]
+
+
 @pytest.mark.parametrize("text", ["", "   ", "\n\n\t\n"])
 def test_empty_document_returns_empty_list(text):
     assert split_document(text, doc_id="empty") == []
@@ -61,13 +66,13 @@ def test_markdown_headings_build_section_path():
         overlap_tokens=0,
     )
 
-    assert [chunk.section_path for chunk in chunks] == [
+    assert [chunk.section_path for chunk in _children(chunks)] == [
         ["售后政策"],
         ["售后政策", "退款流程"],
         ["售后政策", "退款流程", "异常处理"],
         ["售后政策", "换货政策"],
     ]
-    assert all(chunk.title == "售后政策" for chunk in chunks)
+    assert all(chunk.title == "售后政策" for chunk in _children(chunks))
 
 
 def test_long_paragraph_is_split_and_respects_max_tokens():
@@ -79,7 +84,7 @@ def test_long_paragraph_is_split_and_respects_max_tokens():
     )
 
     assert len(chunks) >= 2
-    for chunk in chunks:
+    for chunk in _children(chunks):
         assert estimate_tokens(chunk.text) <= int(200 * 1.1)
 
 
@@ -90,8 +95,9 @@ def test_overlap_exists_between_adjacent_chunks():
         text, doc_id="overlap", target_tokens=12, max_tokens=24, overlap_tokens=8
     )
 
-    assert len(chunks) >= 2
-    assert chunks[0].text.splitlines()[-1] in chunks[1].text
+    children = _children(chunks)
+    assert len(children) >= 2
+    assert children[0].text.splitlines()[-1] in children[1].text
 
 
 def test_overlap_not_less_than_target_raises_value_error():
@@ -145,10 +151,11 @@ def test_chunk_id_and_content_hash_are_stable():
     second = split_document(text, doc_id="doc", target_tokens=8, max_tokens=32, overlap_tokens=0)
 
     assert [chunk.model_dump() for chunk in first] == [chunk.model_dump() for chunk in second]
-    assert [chunk.chunk_id for chunk in first] == [f"doc#{i}" for i in range(1, len(first) + 1)]
-    assert len(first) >= 2
-    for chunk in first:
-        assert chunk.content_hash == hashlib.sha256(chunk.text.encode("utf-8")).hexdigest()[:16]
+    children = _children(first)
+    assert [chunk.chunk_id for chunk in children] == [f"doc#{i}" for i in range(1, len(children) + 1)]
+    assert len(children) >= 2
+    for chunk in children:
+        assert chunk.content_hash == hashlib.sha256(f"c:{chunk.text}".encode("utf-8")).hexdigest()[:16]
         assert chunk.audience == "public"
 
 

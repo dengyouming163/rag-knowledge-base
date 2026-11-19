@@ -6,6 +6,7 @@ from typing import Literal, Protocol
 
 from .bm25 import BM25Index
 from .chunk import Chunk
+from .route import DEFAULT_ROUTE, Route, detect_route
 from .store import SearchHit, VectorStore
 
 RRF_K = 60
@@ -44,8 +45,9 @@ class HybridRetriever:
         recall_k: int = 40,
         filters: dict | None = None,
         mode: Mode = "hybrid",
+        route: Route | None = None,
     ) -> list[SearchHit]:
-        """两路各取 recall_k 条；hybrid 用 RRF 融合后取 top_k，单路模式返回原始分数。"""
+        """两路各取 recall_k 条；hybrid 用加权 RRF 融合后取 top_k，单路模式返回原始分数。"""
         if mode not in MODES:
             raise ValueError(f"mode 只能是 {MODES}")
         if top_k < 1 or recall_k < 1:
@@ -56,9 +58,16 @@ class HybridRetriever:
         if mode == "bm25":
             return self._bm25_route(query, recall_k, filters)[:top_k]
 
+        # 没有显式指定时按规则自动路由：含型号/错误码的问题偏向 BM25
+        active_route = route or detect_route(query)
         vector_hits = self._vector_route(query, recall_k, filters)
         bm25_hits = self._bm25_route(query, recall_k, filters)
-        return self._fuse(vector_hits, bm25_hits)[:top_k]
+        return self._fuse(
+            vector_hits,
+            bm25_hits,
+            weights=(active_route.vector_weight, active_route.bm25_weight),
+            route_name=active_route.name,
+        )[:top_k]
 
     def compare_routes(
         self,
@@ -106,13 +115,28 @@ class HybridRetriever:
         return hits
 
     @staticmethod
-    def _fuse(*routes: list[SearchHit]) -> list[SearchHit]:
-        """score = Σ 1/(RRF_K + rank)，rank 从 1 起；同分按 chunk_id 升序。"""
+    def _fuse(
+        *routes: list[SearchHit],
+        weights: tuple[float, ...] | None = None,
+        route_name: str = DEFAULT_ROUTE.name,
+    ) -> list[SearchHit]:
+        """score = Σ weight_i / (RRF_K + rank_i)，rank 从 1 起；同分按 chunk_id 升序。
+
+        仍然只用名次：权重只放大某一路的名次贡献，不让原始分数的量纲进来。
+        """
+        if weights is None:
+            # 未指定权重时均分：与 DEFAULT_ROUTE 的 0.5/0.5 语义一致
+            weights = tuple(1.0 / len(routes) for _ in routes)
+        if len(weights) != len(routes):
+            raise ValueError("weights 数量必须与召回路数一致")
+
         scores: dict[str, float] = {}
         best: dict[str, SearchHit] = {}
-        for hits in routes:
+        for weight, hits in zip(weights, routes):
             for rank, hit in enumerate(hits, start=1):
-                scores[hit.chunk_id] = scores.get(hit.chunk_id, 0.0) + 1.0 / (RRF_K + rank)
+                scores[hit.chunk_id] = (
+                    scores.get(hit.chunk_id, 0.0) + weight / (RRF_K + rank)
+                )
                 # 先到先得：向量库的 metadata 优先，BM25 独有条目用索引里的元数据补全
                 best.setdefault(hit.chunk_id, hit)
 
@@ -122,7 +146,7 @@ class HybridRetriever:
                 doc_id=best[chunk_id].doc_id,
                 text=best[chunk_id].text,
                 score=score,
-                metadata=dict(best[chunk_id].metadata),
+                metadata={**best[chunk_id].metadata, "route": route_name},
             )
             for chunk_id, score in scores.items()
         ]

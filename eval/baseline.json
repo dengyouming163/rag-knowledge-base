@@ -1,0 +1,910 @@
+{
+  "run_at": "2026-11-18T20:52:06",
+  "mock": true,
+  "mode": "hybrid",
+  "top_k": 5,
+  "suite": "eval\\cases.jsonl",
+  "corpus": "eval\\demo_corpus.json",
+  "corpus_chunks": 26,
+  "elapsed_ms": 21.5,
+  "metrics": {
+    "recall_at_k": 0.9342,
+    "mrr": 0.8575,
+    "hit_rate": 0.9474,
+    "refusal_accuracy": null,
+    "answer_coverage": null,
+    "citation_accuracy": null
+  },
+  "counts": {
+    "cases": 50,
+    "answerable": 38,
+    "unanswerable": 12
+  },
+  "cases": [
+    {
+      "case_id": "c001",
+      "query": "退款一般几天到账",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#1"
+      ],
+      "predicted": [
+        "kb-after-sale#1",
+        "kb-spec#3",
+        "kb-maintenance#2",
+        "kb-spec#6",
+        "kb-fault#3"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c002",
+      "query": "支持七天无理由退款吗",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#1"
+      ],
+      "predicted": [
+        "kb-after-sale#1",
+        "kb-maintenance#5",
+        "kb-spec#3",
+        "kb-spec#6",
+        "kb-spec#5"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c003",
+      "query": "退款退回到哪里",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#1"
+      ],
+      "predicted": [
+        "kb-after-sale#1",
+        "kb-fault#3",
+        "kb-device#1",
+        "kb-maintenance#2",
+        "kb-logistics#2"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c004",
+      "query": "退款必须原路退回吗",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#1"
+      ],
+      "predicted": [
+        "kb-after-sale#1",
+        "kb-logistics#2",
+        "kb-fault#6",
+        "kb-fault#2",
+        "kb-fault#3"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c005",
+      "query": "钱什么时候能回来",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#1"
+      ],
+      "predicted": [
+        "kb-spec#6",
+        "kb-logistics#1",
+        "kb-fault#6",
+        "kb-maintenance#4",
+        "kb-spec#5"
+      ],
+      "recall": 0.0,
+      "mrr": 0.0
+    },
+    {
+      "case_id": "c006",
+      "query": "买完不想要了能退吗",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#1"
+      ],
+      "predicted": [
+        "kb-spec#5",
+        "kb-maintenance#6",
+        "kb-device#3",
+        "kb-maintenance#5",
+        "kb-fault#3"
+      ],
+      "recall": 0.0,
+      "mrr": 0.0
+    },
+    {
+      "case_id": "c007",
+      "query": "换货要在几天内申请",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#2"
+      ],
+      "predicted": [
+        "kb-after-sale#2",
+        "kb-fault#3",
+        "kb-logistics#1",
+        "kb-logistics#2",
+        "kb-fault#4"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c008",
+      "query": "换货的运费谁承担",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#2"
+      ],
+      "predicted": [
+        "kb-after-sale#2",
+        "kb-maintenance#1",
+        "kb-logistics#2",
+        "kb-spec#4",
+        "kb-maintenance#3"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c009",
+      "query": "换货对商品状态有什么要求",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#2"
+      ],
+      "predicted": [
+        "kb-after-sale#2",
+        "kb-logistics#2",
+        "kb-fault#3",
+        "kb-maintenance#3",
+        "kb-logistics#4"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c010",
+      "query": "签收后第八天还能申请换货吗",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#2"
+      ],
+      "predicted": [
+        "kb-after-sale#2",
+        "kb-logistics#4",
+        "kb-maintenance#4",
+        "kb-logistics#2",
+        "kb-fault#3"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c011",
+      "query": "现货订单多久发出",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-logistics#1"
+      ],
+      "predicted": [
+        "kb-logistics#1",
+        "kb-logistics#2",
+        "kb-logistics#4",
+        "kb-spec#3",
+        "kb-fault#6"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c012",
+      "query": "偏远地区会延迟几天",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-logistics#1"
+      ],
+      "predicted": [
+        "kb-logistics#1",
+        "kb-maintenance#1",
+        "kb-spec#6",
+        "kb-fault#5",
+        "kb-after-sale#1"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c013",
+      "query": "节假日配送会顺延吗",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-logistics#1"
+      ],
+      "predicted": [
+        "kb-logistics#1",
+        "kb-maintenance#4",
+        "kb-fault#5",
+        "kb-logistics#2",
+        "kb-maintenance#5"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c014",
+      "query": "没发货可以自己改地址吗",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-logistics#2"
+      ],
+      "predicted": [
+        "kb-fault#5",
+        "kb-logistics#2",
+        "kb-spec#5",
+        "kb-logistics#4",
+        "kb-logistics#1"
+      ],
+      "recall": 1.0,
+      "mrr": 0.5
+    },
+    {
+      "case_id": "c015",
+      "query": "已发货了怎么改地址",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-logistics#2"
+      ],
+      "predicted": [
+        "kb-logistics#2",
+        "kb-logistics#1",
+        "kb-logistics#4",
+        "kb-after-sale#2",
+        "kb-fault#6"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c016",
+      "query": "改地址需要联系谁",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-logistics#2"
+      ],
+      "predicted": [
+        "kb-logistics#2",
+        "kb-fault#3",
+        "kb-fault#6",
+        "kb-logistics#1",
+        "kb-spec#5"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c017",
+      "query": "E102 是什么意思",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-device#1"
+      ],
+      "predicted": [
+        "kb-device#1",
+        "kb-fault#2",
+        "kb-spec#6",
+        "kb-fault#5",
+        "kb-fault#1"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c018",
+      "query": "E102 怎么处理",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-device#1"
+      ],
+      "predicted": [
+        "kb-spec#5",
+        "kb-after-sale#1",
+        "kb-device#1",
+        "kb-fault#3",
+        "kb-after-sale#2"
+      ],
+      "recall": 1.0,
+      "mrr": 0.3333333333333333
+    },
+    {
+      "case_id": "c019",
+      "query": "E102 复位键要按多久",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-device#1"
+      ],
+      "predicted": [
+        "kb-device#1",
+        "kb-maintenance#2",
+        "kb-fault#5",
+        "kb-device#3",
+        "kb-fault#3"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c020",
+      "query": "E205 是什么故障",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-device#2"
+      ],
+      "predicted": [
+        "kb-fault#5",
+        "kb-device#2",
+        "kb-fault#2",
+        "kb-fault#4",
+        "kb-maintenance#5"
+      ],
+      "recall": 1.0,
+      "mrr": 0.5
+    },
+    {
+      "case_id": "c021",
+      "query": "E205 怎么解决",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-device#2"
+      ],
+      "predicted": [
+        "kb-device#2",
+        "kb-logistics#1",
+        "kb-fault#2",
+        "kb-logistics#4",
+        "kb-logistics#2"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c022",
+      "query": "E205 加水加到什么位置",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-device#2"
+      ],
+      "predicted": [
+        "kb-device#2",
+        "kb-maintenance#2",
+        "kb-device#1",
+        "kb-fault#1",
+        "kb-spec#5"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c023",
+      "query": "水箱多久洗一回",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-device#3"
+      ],
+      "predicted": [
+        "kb-device#3",
+        "kb-spec#3",
+        "kb-fault#2",
+        "kb-spec#4",
+        "kb-spec#1"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c024",
+      "query": "水箱能用洗碗机洗吗",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-device#3"
+      ],
+      "predicted": [
+        "kb-spec#1",
+        "kb-maintenance#4",
+        "kb-device#2",
+        "kb-device#3",
+        "kb-spec#5"
+      ],
+      "recall": 1.0,
+      "mrr": 0.25
+    },
+    {
+      "case_id": "c025",
+      "query": "清洁时不能用什么清洁剂",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-device#3"
+      ],
+      "predicted": [
+        "kb-device#3",
+        "kb-spec#6",
+        "kb-maintenance#6",
+        "kb-maintenance#5",
+        "kb-spec#5"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c026",
+      "query": "退款和换货的申请期限分别是多久",
+      "type": "compare",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#1",
+        "kb-after-sale#2"
+      ],
+      "predicted": [
+        "kb-after-sale#2",
+        "kb-after-sale#1",
+        "kb-fault#2",
+        "kb-logistics#2",
+        "kb-maintenance#1"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c027",
+      "query": "E102 和 E205 分别代表什么故障",
+      "type": "compare",
+      "answerable": true,
+      "expected": [
+        "kb-device#1",
+        "kb-device#2"
+      ],
+      "predicted": [
+        "kb-fault#5",
+        "kb-device#1",
+        "kb-device#2",
+        "kb-fault#3",
+        "kb-fault#1"
+      ],
+      "recall": 1.0,
+      "mrr": 0.5
+    },
+    {
+      "case_id": "c028",
+      "query": "未发货和已发货改地址的方式有什么不同",
+      "type": "compare",
+      "answerable": true,
+      "expected": [
+        "kb-logistics#2"
+      ],
+      "predicted": [
+        "kb-logistics#2",
+        "kb-fault#6",
+        "kb-logistics#4",
+        "kb-fault#5",
+        "kb-after-sale#2"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c029",
+      "query": "偏远地区和节假日对配送时效的影响",
+      "type": "compare",
+      "answerable": true,
+      "expected": [
+        "kb-logistics#1"
+      ],
+      "predicted": [
+        "kb-logistics#1",
+        "kb-fault#6",
+        "kb-maintenance#1",
+        "kb-spec#6",
+        "kb-maintenance#3"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c030",
+      "query": "退款到账要多久，换货运费谁出",
+      "type": "compare",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#1",
+        "kb-after-sale#2"
+      ],
+      "predicted": [
+        "kb-after-sale#1",
+        "kb-logistics#1",
+        "kb-spec#4",
+        "kb-maintenance#2",
+        "kb-logistics#2"
+      ],
+      "recall": 0.5,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c031",
+      "query": "E102 和 E205 分别该怎么处理",
+      "type": "compare",
+      "answerable": true,
+      "expected": [
+        "kb-device#1",
+        "kb-device#2"
+      ],
+      "predicted": [
+        "kb-device#1",
+        "kb-spec#5",
+        "kb-after-sale#1",
+        "kb-device#2",
+        "kb-spec#4"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c032",
+      "query": "洗碗机和强酸清洁剂都能用来清洁吗",
+      "type": "compare",
+      "answerable": true,
+      "expected": [
+        "kb-device#3"
+      ],
+      "predicted": [
+        "kb-device#3",
+        "kb-maintenance#6",
+        "kb-spec#5",
+        "kb-spec#3",
+        "kb-spec#1"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c033",
+      "query": "平时发货要多久，节假日呢",
+      "type": "compare",
+      "answerable": true,
+      "expected": [
+        "kb-logistics#1"
+      ],
+      "predicted": [
+        "kb-logistics#1",
+        "kb-logistics#4",
+        "kb-maintenance#4",
+        "kb-maintenance#3",
+        "kb-logistics#2"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c034",
+      "query": "换货商品已经发货了，运费谁出、地址怎么改",
+      "type": "multi_hop",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#2",
+        "kb-logistics#2"
+      ],
+      "predicted": [
+        "kb-after-sale#2",
+        "kb-logistics#2",
+        "kb-logistics#4",
+        "kb-spec#4",
+        "kb-maintenance#1"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c035",
+      "query": "签收第 8 天发现 E102，还能换货吗，机器先怎么处理",
+      "type": "multi_hop",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#2",
+        "kb-device#1"
+      ],
+      "predicted": [
+        "kb-after-sale#2",
+        "kb-logistics#4",
+        "kb-device#1",
+        "kb-fault#3",
+        "kb-maintenance#1"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c036",
+      "query": "E205 处理时需要按复位键吗",
+      "type": "multi_hop",
+      "answerable": true,
+      "expected": [
+        "kb-device#1",
+        "kb-device#2"
+      ],
+      "predicted": [
+        "kb-fault#3",
+        "kb-device#1",
+        "kb-spec#5",
+        "kb-maintenance#2",
+        "kb-device#2"
+      ],
+      "recall": 1.0,
+      "mrr": 0.5
+    },
+    {
+      "case_id": "c037",
+      "query": "节假日下单，发货和退款到账都会顺延吗",
+      "type": "multi_hop",
+      "answerable": true,
+      "expected": [
+        "kb-logistics#1",
+        "kb-after-sale#1"
+      ],
+      "predicted": [
+        "kb-logistics#1",
+        "kb-after-sale#1",
+        "kb-logistics#2",
+        "kb-logistics#4",
+        "kb-fault#5"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c038",
+      "query": "未发货的订单想退款，还需要先改地址吗",
+      "type": "multi_hop",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#1",
+        "kb-logistics#2"
+      ],
+      "predicted": [
+        "kb-logistics#2",
+        "kb-after-sale#1",
+        "kb-spec#5",
+        "kb-spec#4",
+        "kb-fault#3"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "case_id": "c039",
+      "query": "发票怎么开",
+      "type": "unanswerable",
+      "answerable": false,
+      "expected": [],
+      "predicted": [
+        "kb-logistics#4",
+        "kb-maintenance#4",
+        "kb-logistics#1",
+        "kb-maintenance#2",
+        "kb-logistics#2"
+      ],
+      "recall": null,
+      "mrr": null
+    },
+    {
+      "case_id": "c040",
+      "query": "保修期是多久",
+      "type": "unanswerable",
+      "answerable": false,
+      "expected": [],
+      "predicted": [
+        "kb-fault#2",
+        "kb-logistics#2",
+        "kb-after-sale#2",
+        "kb-maintenance#1",
+        "kb-fault#6"
+      ],
+      "recall": null,
+      "mrr": null
+    },
+    {
+      "case_id": "c041",
+      "query": "会员积分怎么用",
+      "type": "unanswerable",
+      "answerable": false,
+      "expected": [],
+      "predicted": [
+        "kb-spec#4",
+        "kb-spec#6",
+        "kb-spec#1",
+        "kb-fault#5",
+        "kb-fault#1"
+      ],
+      "recall": null,
+      "mrr": null
+    },
+    {
+      "case_id": "c042",
+      "query": "支持海外配送吗",
+      "type": "unanswerable",
+      "answerable": false,
+      "expected": [],
+      "predicted": [
+        "kb-maintenance#5",
+        "kb-fault#4",
+        "kb-maintenance#6",
+        "kb-device#3",
+        "kb-spec#3"
+      ],
+      "recall": null,
+      "mrr": null
+    },
+    {
+      "case_id": "c043",
+      "query": "有上门安装服务吗",
+      "type": "unanswerable",
+      "answerable": false,
+      "expected": [],
+      "predicted": [
+        "kb-device#1",
+        "kb-logistics#4",
+        "kb-maintenance#2",
+        "kb-maintenance#3",
+        "kb-spec#3"
+      ],
+      "recall": null,
+      "mrr": null
+    },
+    {
+      "case_id": "c044",
+      "query": "这个产品多少钱",
+      "type": "unanswerable",
+      "answerable": false,
+      "expected": [],
+      "predicted": [
+        "kb-after-sale#2",
+        "kb-logistics#4",
+        "kb-after-sale#1",
+        "kb-maintenance#1",
+        "kb-spec#1"
+      ],
+      "recall": null,
+      "mrr": null
+    },
+    {
+      "case_id": "c045",
+      "query": "有几种颜色可选",
+      "type": "unanswerable",
+      "answerable": false,
+      "expected": [],
+      "predicted": [
+        "kb-maintenance#3",
+        "kb-logistics#2",
+        "kb-logistics#1",
+        "kb-fault#5",
+        "kb-logistics#4"
+      ],
+      "recall": null,
+      "mrr": null
+    },
+    {
+      "case_id": "c046",
+      "query": "退货寄回地址是什么",
+      "type": "unanswerable",
+      "answerable": false,
+      "expected": [],
+      "predicted": [
+        "kb-logistics#2",
+        "kb-after-sale#1",
+        "kb-fault#2",
+        "kb-logistics#1",
+        "kb-after-sale#2"
+      ],
+      "recall": null,
+      "mrr": null
+    },
+    {
+      "case_id": "c047",
+      "query": "客服电话多少",
+      "type": "unanswerable",
+      "answerable": false,
+      "expected": [],
+      "predicted": [
+        "kb-fault#5",
+        "kb-fault#6",
+        "kb-fault#4",
+        "kb-spec#3",
+        "kb-spec#2"
+      ],
+      "recall": null,
+      "mrr": null
+    },
+    {
+      "case_id": "c048",
+      "query": "支持哪些支付方式",
+      "type": "unanswerable",
+      "answerable": false,
+      "expected": [],
+      "predicted": [
+        "kb-after-sale#1",
+        "kb-spec#3",
+        "kb-device#3",
+        "kb-fault#5",
+        "kb-maintenance#5"
+      ],
+      "recall": null,
+      "mrr": null
+    },
+    {
+      "case_id": "c049",
+      "query": "优惠券能和满减叠加吗",
+      "type": "unanswerable",
+      "answerable": false,
+      "expected": [],
+      "predicted": [
+        "kb-maintenance#4",
+        "kb-device#2",
+        "kb-logistics#1",
+        "kb-fault#1",
+        "kb-spec#5"
+      ],
+      "recall": null,
+      "mrr": null
+    },
+    {
+      "case_id": "c050",
+      "query": "企业批量采购有折扣吗",
+      "type": "unanswerable",
+      "answerable": false,
+      "expected": [],
+      "predicted": [
+        "kb-spec#1",
+        "kb-fault#2",
+        "kb-maintenance#3",
+        "kb-maintenance#6",
+        "kb-logistics#1"
+      ],
+      "recall": null,
+      "mrr": null
+    }
+  ]
+}

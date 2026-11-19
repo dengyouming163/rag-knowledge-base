@@ -36,6 +36,15 @@
     "source_url": "https://example.invalid/docs/logistics"
   },
   {
+    "chunk_id": "kb-logistics#4",
+    "doc_id": "kb-logistics",
+    "title": "物流配送",
+    "text": "签收验货\n\n建议当面验货。发现外包装破损或商品损坏，可拒收并联系商家重新发货。",
+    "section_path": ["物流配送", "签收验货"],
+    "audience": "public",
+    "source_url": "https://example.invalid/docs/logistics"
+  },
+  {
     "chunk_id": "kb-device#1",
     "doc_id": "kb-device",
     "title": "设备使用",
@@ -61,5 +70,167 @@
     "section_path": ["设备使用", "清洁保养"],
     "audience": "public",
     "source_url": "https://example.invalid/docs/device"
+  },
+  {
+    "chunk_id": "kb-spec#1",
+    "doc_id": "kb-spec",
+    "title": "产品参数",
+    "text": "型号与容量\n\nX200-Pro 水箱容量 4.5L，适用面积 20-40 平方米。",
+    "section_path": ["产品参数", "容量"],
+    "audience": "public",
+    "source_url": "https://example.invalid/docs/spec"
+  },
+  {
+    "chunk_id": "kb-spec#2",
+    "doc_id": "kb-spec",
+    "title": "产品参数",
+    "text": "额定功率\n\n使用 220V/50Hz 电源，额定功率 1200W。",
+    "section_path": ["产品参数", "功率"],
+    "audience": "public",
+    "source_url": "https://example.invalid/docs/spec"
+  },
+  {
+    "chunk_id": "kb-spec#3",
+    "doc_id": "kb-spec",
+    "title": "产品参数",
+    "text": "包装清单\n\n包装内含主机一台、滤芯一支、说明书一份、电源线一根。",
+    "section_path": ["产品参数", "包装清单"],
+    "audience": "public",
+    "source_url": "https://example.invalid/docs/spec"
+  },
+  {
+    "chunk_id": "kb-spec#4",
+    "doc_id": "kb-spec",
+    "title": "产品参数",
+    "text": "首次使用\n\n首次使用前请先冲洗滤芯 10 分钟，排出的水倒掉后再正常使用。",
+    "section_path": ["产品参数", "首次使用"],
+    "audience": "public",
+    "source_url": "https://example.invalid/docs/spec"
+  },
+  {
+    "chunk_id": "kb-spec#5",
+    "doc_id": "kb-spec",
+    "title": "产品参数",
+    "text": "水质要求\n\n建议使用市政自来水，不要直接使用地下水或未经处理的水源。",
+    "section_path": ["产品参数", "水质要求"],
+    "audience": "public",
+    "source_url": "https://example.invalid/docs/spec"
+  },
+  {
+    "chunk_id": "kb-spec#6",
+    "doc_id": "kb-spec",
+    "title": "产品参数",
+    "text": "长期停用\n\n超过 7 天不使用时，请排空水箱并取出滤芯晾干后存放。",
+    "section_path": ["产品参数", "长期停用"],
+    "audience": "public",
+    "source_url": "https://example.invalid/docs/spec"
+  },
+  {
+    "chunk_id": "kb-fault#1",
+    "doc_id": "kb-fault",
+    "title": "故障代码",
+    "text": "错误码 E301\n\nE301 表示进水温度过高，请停止使用，等待水温降至 40 摄氏度以下。",
+    "section_path": ["故障代码", "E301"],
+    "audience": "public",
+    "source_url": "https://example.invalid/docs/fault"
+  },
+  {
+    "chunk_id": "kb-fault#2",
+    "doc_id": "kb-fault",
+    "title": "故障代码",
+    "text": "错误码 E402\n\nE402 表示废水比异常，请检查废水管是否弯折或被压住。",
+    "section_path": ["故障代码", "E402"],
+    "audience": "public",
+    "source_url": "https://example.invalid/docs/fault"
+  },
+  {
+    "chunk_id": "kb-fault#3",
+    "doc_id": "kb-fault",
+    "title": "故障代码",
+    "text": "错误码 E507\n\nE507 表示滤芯寿命到期，需要更换新滤芯。",
+    "section_path": ["故障代码", "E507"],
+    "audience": "public",
+    "source_url": "https://example.invalid/docs/fault"
+  },
+  {
+    "chunk_id": "kb-fault#4",
+    "doc_id": "kb-fault",
+    "title": "故障代码",
+    "text": "错误码 E610\n\nE610 表示通信异常，请断电重启后重新完成配网。",
+    "section_path": ["故障代码", "E610"],
+    "audience": "public",
+    "source_url": "https://example.invalid/docs/fault"
+  },
+  {
+    "chunk_id": "kb-fault#5",
+    "doc_id": "kb-fault",
+    "title": "故障代码",
+    "text": "故障自检\n\n长按电源键 5 秒可进入自检模式，屏幕会依次显示各项状态。",
+    "section_path": ["故障代码", "自检"],
+    "audience": "public",
+    "source_url": "https://example.invalid/docs/fault"
+  },
+  {
+    "chunk_id": "kb-fault#6",
+    "doc_id": "kb-fault",
+    "title": "故障代码",
+    "text": "报修前准备\n\n联系客服前请记录错误码、发生时间以及当时的操作步骤。",
+    "section_path": ["故障代码", "报修准备"],
+    "audience": "public",
+    "source_url": "https://example.invalid/docs/fault"
+  },
+  {
+    "chunk_id": "kb-maintenance#1",
+    "doc_id": "kb-maintenance",
+    "title": "日常维护",
+    "text": "滤芯更换周期\n\n建议 6-12 个月更换一次滤芯，水质较差的地区应适当缩短周期。",
+    "section_path": ["日常维护", "滤芯更换"],
+    "audience": "public",
+    "source_url": "https://example.invalid/docs/maintenance"
+  },
+  {
+    "chunk_id": "kb-maintenance#2",
+    "doc_id": "kb-maintenance",
+    "title": "日常维护",
+    "text": "更换滤芯后的复位\n\n装入新滤芯后，长按复位键 5 秒，直到指示灯闪烁后松开。",
+    "section_path": ["日常维护", "滤芯复位"],
+    "audience": "public",
+    "source_url": "https://example.invalid/docs/maintenance"
+  },
+  {
+    "chunk_id": "kb-maintenance#3",
+    "doc_id": "kb-maintenance",
+    "title": "日常维护",
+    "text": "运行噪音\n\n正常运行时噪音低于 50 分贝，制水时略有升高属于正常现象。",
+    "section_path": ["日常维护", "噪音"],
+    "audience": "public",
+    "source_url": "https://example.invalid/docs/maintenance"
+  },
+  {
+    "chunk_id": "kb-maintenance#4",
+    "doc_id": "kb-maintenance",
+    "title": "日常维护",
+    "text": "节能模式\n\n开启节能模式后，待机功率低于 1W。",
+    "section_path": ["日常维护", "节能"],
+    "audience": "public",
+    "source_url": "https://example.invalid/docs/maintenance"
+  },
+  {
+    "chunk_id": "kb-maintenance#5",
+    "doc_id": "kb-maintenance",
+    "title": "日常维护",
+    "text": "App 配网\n\nApp 配网仅支持 2.4GHz Wi-Fi，暂不支持 5GHz 频段。",
+    "section_path": ["日常维护", "配网"],
+    "audience": "public",
+    "source_url": "https://example.invalid/docs/maintenance"
+  },
+  {
+    "chunk_id": "kb-maintenance#6",
+    "doc_id": "kb-maintenance",
+    "title": "日常维护",
+    "text": "外壳清洁\n\n用微湿软布擦拭外壳，不要直接用水冲淋机身。",
+    "section_path": ["日常维护", "外壳清洁"],
+    "audience": "public",
+    "source_url": "https://example.invalid/docs/maintenance"
   }
 ]

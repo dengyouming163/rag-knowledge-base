@@ -52,6 +52,9 @@ class Chunk(BaseModel):
     content_hash: str
     audience: Audience = "public"
     token_count: int
+    # 父子分块：父块只用于给上下文，不参与向量检索
+    parent_id: str | None = None
+    is_parent: bool = False
 
 
 def _split_sections(text: str) -> list[tuple[list[str], str]]:
@@ -165,6 +168,11 @@ def _tail_by_tokens(text: str, tokens: int) -> str:
     return tail.strip()
 
 
+def _content_hash(role: str, text: str) -> str:
+    """内容指纹带角色前缀，避免父块与同文子块在唯一约束上相互覆盖。"""
+    return hashlib.sha256(f"{role}:{text}".encode("utf-8")).hexdigest()[:16]
+
+
 def split_document(
     text: str,
     *,
@@ -175,6 +183,7 @@ def split_document(
     target_tokens: int = 500,
     max_tokens: int = 800,
     overlap_tokens: int = 50,
+    parent_max_tokens: int = 1500,
 ) -> list[Chunk]:
     """把文档切分为带稳定 chunk_id 与重叠上下文的知识块。
 
@@ -189,6 +198,8 @@ def split_document(
         raise ValueError("overlap_tokens 必须非负且小于 target_tokens")
     if audience not in ("public", "internal"):
         raise ValueError("audience 只能是 public 或 internal")
+    if parent_max_tokens <= 0:
+        raise ValueError("parent_max_tokens 必须为正整数")
     if not text or not text.strip():
         return []
 
@@ -221,26 +232,66 @@ def split_document(
 
     chunks: list[Chunk] = []
     previous_body = ""
-    for index, (section_path, body) in enumerate(drafts, start=1):
-        chunk_text = body
-        if previous_body and overlap_tokens > 0:
-            tail = _tail_by_tokens(previous_body, overlap_tokens)
-            if tail:
-                chunk_text = f"{tail}\n{chunk_text}"
+    previous_section: list[str] | None = None
+    child_index = 0
+    parent_index = 0
+    position = 0
+
+    # 同一章节可能被切成多个 draft，它们共享一个父块：
+    # 子块负责"被搜到"（粒度小、向量准），父块负责"给上下文"（信息完整）。
+    while position < len(drafts):
+        section_path = drafts[position][0]
+        group: list[str] = []
+        while position < len(drafts) and drafts[position][0] == section_path:
+            group.append(drafts[position][1])
+            position += 1
+
+        parent_index += 1
+        parent_id = f"{doc_id}#p{parent_index}"
+        parent_text = "\n\n".join(group)
+        if estimate_tokens(parent_text) > parent_max_tokens:
+            parent_text = _hard_split(parent_text, parent_max_tokens)[0]
         chunks.append(
             Chunk(
-                chunk_id=f"{doc_id}#{index}",
+                chunk_id=parent_id,
                 doc_id=doc_id,
-                text=chunk_text,
+                text=parent_text,
                 title=title,
-                section_path=section_path,
+                section_path=list(section_path),
                 source_url=source_url,
-                content_hash=hashlib.sha256(chunk_text.encode("utf-8")).hexdigest()[:16],
+                # 角色前缀避免父块与内容相同的子块撞 content_hash（否则会被去重成一行）
+                content_hash=_content_hash("p", parent_text),
                 audience=audience,
-                token_count=estimate_tokens(chunk_text),
+                token_count=estimate_tokens(parent_text),
+                is_parent=True,
             )
         )
-        previous_body = body
+
+        for body in group:
+            child_index += 1
+            chunk_text = body
+            # 只有同一章节内才做重叠：跨章节重叠会把上一节内容混进本节，
+            # 既破坏语义，也会让"子块正文必须被父块包含"不成立
+            if previous_body and overlap_tokens > 0 and previous_section == section_path:
+                tail = _tail_by_tokens(previous_body, overlap_tokens)
+                if tail:
+                    chunk_text = f"{tail}\n{chunk_text}"
+            chunks.append(
+                Chunk(
+                    chunk_id=f"{doc_id}#{child_index}",
+                    doc_id=doc_id,
+                    text=chunk_text,
+                    title=title,
+                    section_path=list(section_path),
+                    source_url=source_url,
+                    content_hash=_content_hash("c", chunk_text),
+                    audience=audience,
+                    token_count=estimate_tokens(chunk_text),
+                    parent_id=parent_id,
+                )
+            )
+            previous_body = body
+            previous_section = section_path
 
     return chunks
 

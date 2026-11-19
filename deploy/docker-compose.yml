@@ -1,0 +1,46 @@
+services:
+  db:
+    # 国内直连 Docker Hub 会超时，这里用 daocloud 镜像源；国内网络可复现
+    image: docker.m.daocloud.io/pgvector/pgvector:pg16
+    container_name: rag-kb-pg
+    environment:
+      POSTGRES_USER: kb
+      POSTGRES_PASSWORD: kb
+      POSTGRES_DB: kb
+    ports:
+      # 宿主 5433 -> 容器 5432，避开本机可能已有的 Postgres
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kb -d kb"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      # compose 文件在 deploy/ 下，构建上下文要指到项目根
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        PIP_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
+    container_name: rag-kb-api
+    environment:
+      # 容器内用服务名 db + 5432，而不是宿主机的 5433
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: kb
+      DB_PASSWORD: kb
+      DB_NAME: kb
+      DEFAULT_TENANT: demo
+      # 没有 EMBED_API_KEY 时用 1024 维哈希向量，保证链路可用
+      EMBED_MODE: mock
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata: {}
