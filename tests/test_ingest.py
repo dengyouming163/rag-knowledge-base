@@ -220,10 +220,11 @@ def test_scanned_pdf_raises_non_retryable_ingest_error(tmp_path) -> None:
     assert "需要 OCR" in str(exc_info.value)
 
 
-def test_other_parser_unavailable_is_not_non_retryable(tmp_path) -> None:
+@pytest.mark.parametrize("message", ["解析服务不可用；本地解析失败", "需要 OCR"])
+def test_other_parser_unavailable_is_not_non_retryable(tmp_path, message) -> None:
     class UnavailableParser:
         def parse(self, content: bytes, filename: str = "") -> list[PdfBlock]:
-            raise ParserUnavailable("解析服务不可用；本地解析失败")
+            raise ParserUnavailable(message)
 
     path = tmp_path / "unavailable.pdf"
     path.write_bytes(b"%PDF-1.4 unavailable")

@@ -311,5 +311,41 @@ def test_worker_fails_scanned_document_without_retry(
     assert worker_once(engine, embed_client=FakeEmbed(), parser=ScannedParser()) == 0
 
 
+def test_worker_retries_ocr_only_parser_unavailable(
+    engine, tmp_path, monkeypatch
+) -> None:
+    class OcrOnlyParser:
+        def parse(self, content: bytes, filename: str = ""):
+            raise ParserUnavailable("需要 OCR")
+
+    source_url = f"{TENANT}/{KB}/ocr-only.pdf"
+    _seed_document(engine, "ocr-only", source_url, "worker_ocr_only_doc_hash")
+    job_id = enqueue(engine, TENANT, KB, doc_id="ocr-only")
+    monkeypatch.setattr("src.worker.UPLOAD_ROOT", tmp_path)
+    path = tmp_path / TENANT / KB / "ocr-only.pdf"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"%PDF-1.4 ocr only")
+
+    assert worker_once(engine, embed_client=FakeEmbed(), parser=OcrOnlyParser()) == 1
+
+    job = get_job(engine, TENANT, job_id)
+    assert job["status"] == "queued"
+    assert job["attempts"] == 1
+    assert job["finished_at"] is None
+    assert job["error"] == "ParserUnavailable: 需要 OCR"
+    with engine.begin() as connection:
+        doc_status = connection.execute(
+            text("SELECT status FROM documents WHERE id = 'ocr-only' AND tenant_id = :t"),
+            {"t": TENANT},
+        ).scalar_one()
+    assert doc_status == "pending"
+
+    assert worker_once(engine, embed_client=FakeEmbed(), parser=OcrOnlyParser()) == 1
+    assert worker_once(engine, embed_client=FakeEmbed(), parser=OcrOnlyParser()) == 1
+    job = get_job(engine, TENANT, job_id)
+    assert job["status"] == "failed"
+    assert job["attempts"] == 3
+
+
 def test_worker_once_returns_zero_when_idle(engine) -> None:
     assert worker_once(engine, embed_client=FakeEmbed()) == 0
