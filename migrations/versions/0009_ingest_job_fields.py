@@ -18,7 +18,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TABLE ingest_jobs ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT ''")
+    op.execute(
+        "ALTER TABLE ingest_jobs ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'upload'"
+    )
     op.execute(
         "ALTER TABLE ingest_jobs ADD COLUMN IF NOT EXISTS attempts integer NOT NULL DEFAULT 0"
     )
