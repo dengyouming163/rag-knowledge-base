@@ -196,7 +196,7 @@ def health() -> dict[str, str]:
 
 @app.post("/parse", response_model=ParseResponse)
 async def parse(file: UploadFile = File(...)) -> ParseResponse:
-    content = await file.read()
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(content) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="文件超过 20MB 大小限制")
     if not content:
