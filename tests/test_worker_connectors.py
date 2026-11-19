@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -149,6 +150,20 @@ def _document_and_job(engine, doc_id: str) -> dict:
 def test_received_document_uses_upload_layout_and_existing_worker(
     engine, tmp_path, monkeypatch
 ) -> None:
+    def enqueue_running(engine, tenant_id, kb_id, doc_id, *, source):
+        with engine.begin() as connection:
+            return int(
+                connection.execute(
+                    text(
+                        "INSERT INTO ingest_jobs "
+                        "(tenant_id, kb_id, doc_id, status, error, source, attempts, progress) "
+                        "VALUES (:t, :kb, :d, 'running', '', :source, 1, 10) RETURNING id"
+                    ),
+                    {"t": tenant_id, "kb": kb_id, "d": doc_id, "source": source},
+                ).scalar_one()
+            )
+
+    monkeypatch.setattr(ingest_jobs, "enqueue", enqueue_running)
     content = b"# connector policy\n\nsupport refunds within seven days."
     uri = "file:///source/policy.md"
 
@@ -166,15 +181,20 @@ def test_received_document_uses_upload_layout_and_existing_worker(
     row = _document_and_job(engine, received["doc_id"])
     assert row["content_hash"] == hashlib.sha256(content).hexdigest()[:16]
     assert row["doc_status"] == "pending"
-    assert row["job_status"] == "queued"
+    assert row["job_status"] == "running"
     assert row["source"] == "local_dir"
     assert (tmp_path / row["source_url"]).read_bytes() == content
 
+    running_job = ingest_jobs.get_job(engine, TENANT, received["job_id"])
+    assert running_job is not None and running_job["status"] == "running"
+    claims = iter([running_job, None])
+    monkeypatch.setattr("src.worker.claim_next", lambda *args, **kwargs: next(claims))
     monkeypatch.setattr("src.worker.UPLOAD_ROOT", tmp_path)
     assert worker_once(engine, embed_client=FakeEmbed()) == 1
     row = _document_and_job(engine, received["doc_id"])
     assert row["doc_status"] == "ready"
     assert row["job_status"] == "succeeded"
+    assert worker_once(engine, embed_client=FakeEmbed()) == 0
 
     duplicate = _receive(
         engine,
@@ -409,6 +429,64 @@ def test_enqueue_failure_preserves_concurrent_document_state(
     assert (tmp_path / row["source_url"]).read_bytes() == content
 
 
+def test_failure_update_and_enqueue_are_serialized_across_threads(
+    engine, tmp_path, monkeypatch
+) -> None:
+    original_enqueue = ingest_jobs.enqueue
+    thread_state = threading.local()
+    success_at_enqueue = threading.Event()
+    failure_finished = threading.Event()
+    outcomes = {}
+
+    def controlled_enqueue(*args, **kwargs):
+        if thread_state.role == "success":
+            success_at_enqueue.set()
+            if not failure_finished.wait(10):
+                raise TimeoutError("failure thread did not finish")
+            return original_enqueue(*args, **kwargs)
+        raise RuntimeError("injected enqueue failure")
+
+    monkeypatch.setattr(ingest_jobs, "enqueue", controlled_enqueue)
+    kwargs = {
+        "source_name": "local_dir",
+        "uri": "file:///source/thread-race.txt",
+        "content": b"same complete content",
+        "upload_root": tmp_path,
+    }
+
+    def succeed() -> None:
+        thread_state.role = "success"
+        try:
+            outcomes["success"] = _receive(engine, **kwargs)
+        except Exception as exc:  # noqa: BLE001
+            outcomes["success_error"] = exc
+
+    def fail() -> None:
+        thread_state.role = "failure"
+        try:
+            _receive(engine, **kwargs)
+        except Exception as exc:  # noqa: BLE001
+            outcomes["failure_error"] = str(exc)
+        finally:
+            failure_finished.set()
+
+    success_thread = threading.Thread(target=succeed)
+    failure_thread = threading.Thread(target=fail)
+    success_thread.start()
+    assert success_at_enqueue.wait(10)
+    failure_thread.start()
+    failure_thread.join(10)
+    success_thread.join(10)
+
+    assert not failure_thread.is_alive()
+    assert not success_thread.is_alive()
+    assert outcomes.get("failure_error") == "injected enqueue failure"
+    assert outcomes.get("success_error") is None
+    assert outcomes["success"]["job_id"] > 0
+    row = _document_and_job(engine, outcomes["success"]["doc_id"])
+    assert (row["doc_status"], row["job_status"]) == ("pending", "queued")
+
+
 def test_file_write_failure_marks_document_failed_without_a_job(
     engine, tmp_path
 ) -> None:
@@ -579,7 +657,32 @@ def test_source_sync_interval_is_separate_and_immediately_due(engine) -> None:
     assert source.sync_calls == 2
 
 
-@pytest.mark.parametrize(("now", "expected_sleep"), [(101.5, 0.5), (103.0, 0.0)])
+@pytest.mark.parametrize("option", ["--interval", "--source-interval"])
+@pytest.mark.parametrize("value", ["0", "-1"])
+def test_worker_rejects_nonpositive_intervals_before_startup(
+    monkeypatch, option, value
+) -> None:
+    engine_calls = []
+    monkeypatch.setattr(
+        run_worker,
+        "create_db_engine",
+        lambda: engine_calls.append("engine") or object(),
+    )
+    monkeypatch.setattr(run_worker, "get_embedder", lambda: object())
+    monkeypatch.setattr(
+        run_worker,
+        "load_connector_config",
+        lambda: (None, None, []),
+    )
+    monkeypatch.setattr(run_worker, "worker_once", lambda *args, **kwargs: 0)
+
+    with pytest.raises(SystemExit) as error:
+        run_worker.main(["--once", option, value])
+    assert error.value.code == 2
+    assert engine_calls == []
+
+
+@pytest.mark.parametrize(("now", "expected_sleep"), [(101.5, 0.5), (103.0, 0.1)])
 def test_idle_sleep_uses_time_until_source_due(
     monkeypatch, now, expected_sleep
 ) -> None:

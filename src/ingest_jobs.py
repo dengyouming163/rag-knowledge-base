@@ -144,14 +144,6 @@ def receive_source_document(
                     "job_id": int(active_job_id),
                     "duplicated": True,
                 }
-            if existing["status"] != "pending":
-                connection.execute(
-                    text(
-                        "UPDATE documents SET status = 'pending', updated_at = now() "
-                        "WHERE id = :id AND tenant_id = :t AND kb_id = :kb"
-                    ),
-                    {"id": doc_id, "t": tenant_id, "kb": kb_id},
-                )
 
     destination = (Path(upload_root) if upload_root is not None else UPLOAD_ROOT) / relative_path
     try:
@@ -167,6 +159,10 @@ def receive_source_document(
         job_id = enqueue(engine, tenant_id, kb_id, doc_id, source=source_name)
     except Exception:
         with engine.begin() as connection:
+            connection.execute(
+                text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+                {"key": f"{tenant_id}:{kb_id}:{doc_id}"},
+            )
             connection.execute(
                 text(
                     "UPDATE documents AS d SET status = 'failed', updated_at = now() "
@@ -202,6 +198,13 @@ def enqueue(
             ),
             {"t": tenant_id, "kb": kb_id, "d": doc_id},
         ).scalar_one_or_none()
+        connection.execute(
+            text(
+                "UPDATE documents SET status = 'pending', updated_at = now() "
+                "WHERE id = :d AND tenant_id = :t AND kb_id = :kb AND status = 'failed'"
+            ),
+            {"d": doc_id, "t": tenant_id, "kb": kb_id},
+        )
         if existing is not None:
             return int(existing)
 

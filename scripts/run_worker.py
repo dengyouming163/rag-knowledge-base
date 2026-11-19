@@ -24,6 +24,7 @@ from src.worker import worker_once
 
 logger = logging.getLogger(__name__)
 DEFAULT_SOURCE_INTERVAL = 300.0
+MIN_SOURCE_SLEEP = 0.1
 RetryRefs = dict[str, dict[str, DocumentRef]]
 
 
@@ -163,6 +164,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--once", action="store_true", help="只跑一轮就退出")
     args = parser.parse_args(argv)
+    if args.interval <= 0:
+        parser.error("--interval 必须大于 0")
+    if args.source_interval <= 0:
+        parser.error("--source-interval 必须大于 0")
 
     engine = create_db_engine()
     embed_client = get_embedder()
@@ -189,7 +194,9 @@ def main(argv: list[str] | None = None) -> int:
                     source_remaining = args.source_interval - (
                         time.monotonic() - last_source_sync
                     )
-                    sleep_seconds = min(sleep_seconds, max(0.0, source_remaining))
+                    sleep_seconds = min(
+                        sleep_seconds, max(MIN_SOURCE_SLEEP, source_remaining)
+                    )
                 time.sleep(sleep_seconds)
     except KeyboardInterrupt:
         print("worker 收到中断信号，已停止。")
