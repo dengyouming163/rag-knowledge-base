@@ -91,6 +91,42 @@ def test_find_merges_file_when_first_stage_leaves_1000_record_ring(tmp_path) -> 
     assert len(stages) == 2
 
 
+def test_find_preserves_record_order_when_first_append_fails_with_same_ts(
+    tmp_path, monkeypatch
+) -> None:
+    from src import trace as trace_module
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 11, 19, 12, 0, 0, 123000, tzinfo=tz)
+
+    monkeypatch.setattr(trace_module, "datetime", FrozenDateTime)
+    original_open = Path.open
+    append_attempts = 0
+
+    def fail_first_append(self, mode="r", *args, **kwargs):
+        nonlocal append_attempts
+        if mode == "a":
+            append_attempts += 1
+            if append_attempts == 1:
+                raise OSError("first append failed")
+        return original_open(self, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", fail_first_append)
+    store = trace_module.TraceStore(tmp_path)
+    answer = _record(store, "abc123def456", stage="answer")
+    cancelled = _record(store, "abc123def456", stage="cancelled")
+
+    assert answer["ts"] == cancelled["ts"]
+    path = tmp_path / "2026-11-19.jsonl"
+    persisted = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    assert [item["stage"] for item in persisted] == ["cancelled"]
+    assert [item["stage"] for item in store._records] == ["answer", "cancelled"]
+    stages = store.find("abc123def456", TENANT)
+    assert [item["stage"] for item in stages] == ["answer", "cancelled"]
+
+
 def test_concurrent_records_are_complete_json_lines(tmp_path) -> None:
     from src.trace import TraceStore
 

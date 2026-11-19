@@ -25,6 +25,7 @@ class TraceStore:
         self._records: deque[dict] = deque(maxlen=1000)
         self._memory_lock = threading.Lock()
         self._file_lock = threading.Lock()
+        self._seq = 0
 
     def record(
         self,
@@ -53,6 +54,8 @@ class TraceStore:
             "ts": now.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
         }
         with self._memory_lock:
+            item["seq"] = self._seq
+            self._seq += 1
             self._records.append(item)
         try:
             with self._file_lock:
@@ -65,7 +68,7 @@ class TraceStore:
         return dict(item)
 
     def find(self, trace_id: str, tenant: str) -> list[dict]:
-        """先复制内存，再读当天文件补齐已淘汰阶段，去重后按时间稳定排序。"""
+        """先复制内存，再读当天文件补齐已淘汰阶段，去重后按时间和序号排序。"""
         with self._memory_lock:
             memory = [dict(item) for item in self._records if item["trace_id"] == trace_id]
         with self._file_lock:
@@ -78,7 +81,7 @@ class TraceStore:
             if identity not in seen:
                 seen.add(identity)
                 merged.append(item)
-        merged.sort(key=lambda item: item["ts"])
+        merged.sort(key=lambda item: (item["ts"], item.get("seq", -1)))
         return [item for item in merged if item.get("tenant") == tenant]
 
     def _read_today(self, trace_id: str) -> list[dict]:
