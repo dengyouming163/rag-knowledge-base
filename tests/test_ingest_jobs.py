@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+import threading
+
 import pytest
 from sqlalchemy import text
 
@@ -67,11 +69,81 @@ def engine():
 
 
 def test_claim_is_idempotent_under_concurrency(engine) -> None:
+    """一个连接持锁不提交，另一个 engine 的 worker 必须被 SKIP LOCKED 跳过。"""
     job_id = enqueue(engine, TENANT, KB, doc_id="d1", source="upload")
-    first = claim_next(engine, worker="w1")
-    second = claim_next(engine, worker="w2")
-    assert first["id"] == job_id
-    assert second is None or second["id"] != job_id
+    holder_engine = create_db_engine()
+    worker_engine = create_db_engine()
+    claimed: list[dict | None] = []
+    errors: list[BaseException] = []
+    try:
+        with holder_engine.connect() as holder:
+            transaction = holder.begin()
+            locked = holder.execute(
+                text(
+                    "SELECT id FROM ingest_jobs WHERE status = 'queued' "
+                    "ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1"
+                )
+            ).scalar_one()
+            assert locked == job_id
+
+            def work() -> None:
+                try:
+                    claimed.append(claim_next(worker_engine, worker="w2"))
+                except BaseException as exc:  # noqa: BLE001
+                    errors.append(exc)
+
+            thread = threading.Thread(target=work, daemon=True)
+            thread.start()
+            thread.join(timeout=5)
+            assert not thread.is_alive(), "claim_next 在持锁期间被阻塞，SKIP LOCKED 未生效"
+            assert not errors, errors
+            assert claimed == [None]
+            transaction.rollback()
+
+        after = claim_next(worker_engine, worker="w1")
+        assert after is not None and after["id"] == job_id
+    finally:
+        holder_engine.dispose()
+        worker_engine.dispose()
+
+
+def test_enqueue_is_concurrency_safe(engine) -> None:
+    """同一文档并发入队，咨询锁保证最终只有一条任务。"""
+    workers = 4
+    barrier = threading.Barrier(workers)
+    ids: list[int] = []
+    errors: list[BaseException] = []
+    lock = threading.Lock()
+
+    def work() -> None:
+        try:
+            barrier.wait(timeout=5)
+            job_id = enqueue(engine, TENANT, KB, doc_id="d6")
+            with lock:
+                ids.append(job_id)
+        except BaseException as exc:  # noqa: BLE001
+            with lock:
+                errors.append(exc)
+
+    threads = [threading.Thread(target=work, daemon=True) for _ in range(workers)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+
+    assert all(not thread.is_alive() for thread in threads), "并发 enqueue 超时"
+    assert not errors, errors
+    assert len(ids) == workers and len(set(ids)) == 1, ids
+
+    with engine.begin() as connection:
+        count = connection.execute(
+            text(
+                "SELECT count(*) FROM ingest_jobs "
+                "WHERE tenant_id = :t AND kb_id = :kb AND doc_id = 'd6'"
+            ),
+            {"t": TENANT, "kb": KB},
+        ).scalar_one()
+    assert count == 1
 
 
 def test_failure_after_three_attempts_marks_failed(engine) -> None:

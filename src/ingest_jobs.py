@@ -32,6 +32,11 @@ def enqueue(
 ) -> int:
     """入队一条任务；同一文档已有 queued/running 任务时复用该任务 id。"""
     with engine.begin() as connection:
+        # 事务级咨询锁：同一文档的并发入队串行化，避免 SELECT 与 INSERT 之间插入重复行
+        connection.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+            {"key": f"{tenant_id}:{kb_id}:{doc_id}"},
+        )
         existing = connection.execute(
             text(
                 "SELECT id FROM ingest_jobs "
@@ -78,7 +83,7 @@ def claim_next(engine: Engine, *, worker: str = "w1") -> dict | None:
                 "UPDATE ingest_jobs "
                 "SET status = 'running', progress = 10, attempts = attempts + 1, "
                 "updated_at = now() "
-                f"WHERE id = :id RETURNING {_JOB_COLUMNS}"
+                f"WHERE id = :id AND status = 'queued' RETURNING {_JOB_COLUMNS}"
             ),
             {"id": row["id"]},
         ).mappings().one()
