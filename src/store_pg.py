@@ -17,6 +17,7 @@ from sqlalchemy.engine import Engine
 
 from .acl import acl_condition
 from .chunk import Chunk
+from .db.session import tenant_scope
 from .store import SearchHit
 
 
@@ -109,14 +110,14 @@ class PgVectorStore:
             for chunk, vector in zip(chunks, vectors)
         ]
 
-        with self._engine.begin() as connection:
+        with tenant_scope(self._engine, tenant_id, write=True) as connection:
             connection.execute(sql, rows)
         return len(rows)
 
     def delete_by_doc(self, doc_id: str) -> int:
         tenant_id, kb_ids = self._resolve_scope(None)
         condition = "tenant_id = :tenant_id AND doc_id = :doc_id AND kb_id = ANY(CAST(:kb_ids AS text[]))"
-        with self._engine.begin() as connection:
+        with tenant_scope(self._engine, tenant_id, write=True) as connection:
             result = connection.execute(
                 text(f"DELETE FROM chunks WHERE {condition}"),
                 {"tenant_id": tenant_id, "doc_id": doc_id, "kb_ids": kb_ids},
@@ -172,7 +173,7 @@ class PgVectorStore:
             """
         )
 
-        with self._engine.connect() as connection:
+        with tenant_scope(self._engine, tenant_id) as connection:
             rows = connection.execute(sql, params).mappings().all()
 
         return [
@@ -191,7 +192,7 @@ class PgVectorStore:
 
     def count(self) -> int:
         tenant_id, kb_ids = self._resolve_scope(None)
-        with self._engine.connect() as connection:
+        with tenant_scope(self._engine, tenant_id) as connection:
             return int(
                 connection.execute(
                     text(

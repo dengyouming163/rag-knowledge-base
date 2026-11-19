@@ -19,6 +19,7 @@ from sqlalchemy.engine import Engine
 
 from .bm25 import BM25Index
 from .chunk import Chunk
+from .db.session import tenant_scope
 
 
 class IndexNotBuiltError(LookupError):
@@ -65,7 +66,7 @@ class BM25Store:
         return int(version)
 
     def _load_chunks(self, tenant_id: str, kb_id: str) -> list[Chunk]:
-        with self._engine.connect() as connection:
+        with tenant_scope(self._engine, tenant_id) as connection:
             rows = connection.execute(
                 text(
                     "SELECT chunk_id, doc_id, text, content_hash, token_count, meta "

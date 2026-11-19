@@ -1,4 +1,4 @@
-"""Task 3.1：文档级 ACL 测试。
+﻿"""Task 3.1：文档级 ACL 测试。
 
 两条底线：
 1. 无权的内容**不能出现在结果里**（不是"返回了再前端隐藏"）；
@@ -107,8 +107,8 @@ def seeded(engine):
     store = PgVectorStore(engine, tenant_id=TENANT, kb_id=KB, embed_model_version="test")
     store.upsert(chunks, _vectors(len(chunks)))
 
-    set_chunk_acl(engine, [f"{KB}#legal"], ["dept:legal"])
-    set_chunk_acl(engine, [f"{KB}#finance"], ["dept:finance"])
+    set_chunk_acl(engine, TENANT, [f"{KB}#legal"], ["dept:legal"])
+    set_chunk_acl(engine, TENANT, [f"{KB}#finance"], ["dept:finance"])
 
     yield store
     with engine.begin() as connection:
@@ -161,7 +161,7 @@ def test_load_user_tags(engine, seeded) -> None:
 
 
 def test_restrict_public_chunk_hides_it(engine, seeded) -> None:
-    set_chunk_acl(engine, [f"{KB}#public"], ["dept:legal"])
+    set_chunk_acl(engine, TENANT, [f"{KB}#public"], ["dept:legal"])
 
     anonymous = seeded.search([1.0] * DIM, top_k=10)
     legal = seeded.search([1.0] * DIM, top_k=10, filters={"user_tags": ["dept:legal"]})
@@ -206,4 +206,4 @@ def test_load_user_context_admin_flag(engine, seeded) -> None:
 
 
 def test_set_chunk_acl_empty_ids_is_noop(engine) -> None:
-    assert set_chunk_acl(engine, [], ["dept:legal"]) == 0
+    assert set_chunk_acl(engine, TENANT, [], ["dept:legal"]) == 0

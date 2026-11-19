@@ -77,6 +77,10 @@ def engine():
         pytest.skip(f"数据库不可用，跳过集成测试：{exc}")
 
     with db_engine.begin() as connection:
+        # chunks 开了 RLS：写数据前先声明租户作用域
+        connection.execute(
+            text("SELECT set_config('app.tenant_id', :t, true)"), {"t": TENANT}
+        )
         _cleanup(connection)
         connection.execute(
             text("INSERT INTO tenants (id, name) VALUES (:t, 'bm25')"), {"t": TENANT}

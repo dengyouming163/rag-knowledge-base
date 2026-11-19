@@ -16,6 +16,8 @@ from typing import Iterable, Sequence
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
+from .db.session import tenant_scope
+
 # 字段缺失或空数组都视为公开
 PUBLIC_CONDITION = "coalesce(meta->'acl_tags', '[]'::jsonb) = '[]'::jsonb"
 
@@ -62,13 +64,18 @@ def load_user_tags(engine: Engine, tenant_id: str, user_id: str) -> list[str]:
     return tags
 
 
-def set_chunk_acl(engine: Engine, chunk_ids: Iterable[str], tags: Sequence[str]) -> int:
-    """给一批块打标签（入库或后台授权时使用）。返回受影响行数。"""
+def set_chunk_acl(
+    engine: Engine, tenant_id: str, chunk_ids: Iterable[str], tags: Sequence[str]
+) -> int:
+    """给一批块打标签（入库或后台授权时使用）。返回受影响行数。
+
+    chunks 开了 RLS，必须带 tenant_id 走 tenant_scope，否则 UPDATE 命中 0 行。
+    """
     ids = list(chunk_ids)
     if not ids:
         return 0
     payload = '["' + '","'.join(tags) + '"]' if tags else "[]"
-    with engine.begin() as connection:
+    with tenant_scope(engine, tenant_id, write=True) as connection:
         result = connection.execute(
             text(
                 "UPDATE chunks SET meta = jsonb_set(meta, '{acl_tags}', CAST(:payload AS jsonb)), "

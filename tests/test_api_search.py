@@ -51,6 +51,9 @@ def client() -> TestClient:
     vector = "[" + ",".join(str(0.02 * ((i % 9) + 1)) for i in range(DIM)) + "]"
     with db_engine.begin() as connection:
         connection.execute(
+            text("SELECT set_config('app.tenant_id', :t, true)"), {"t": TENANT}
+        )
+        connection.execute(
             text("INSERT INTO tenants (id, name) VALUES (:t, 'api')"), {"t": TENANT}
         )
         connection.execute(

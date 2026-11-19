@@ -142,6 +142,10 @@ def test_tenant_isolation(engine, seeded) -> None:
     """另一个租户写入同名向量后，当前租户检索不得看到它。"""
     _, vectors, pg_store = seeded
     with engine.begin() as connection:
+        # chunks 开了 RLS：跨租户写入必须先声明作用域
+        connection.execute(
+            text("SELECT set_config('app.tenant_id', :t, true)"), {"t": OTHER_TENANT}
+        )
         connection.execute(
             text(
                 "INSERT INTO knowledge_bases (id, tenant_id, name, description, status) "

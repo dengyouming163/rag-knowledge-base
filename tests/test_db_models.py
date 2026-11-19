@@ -84,13 +84,17 @@ def test_migration_applied(engine) -> None:
             )
         ).scalar_one()
 
-    assert revision == "0006"
+    assert revision == "0007"
     assert column_type == "vector(1024)"
 
 
 def test_wrong_dimension_rejected(engine) -> None:
     """用 64 维的 mock 向量插正式表必须报错——这是维度契约的兜底。"""
     with engine.begin() as connection:
+        # 声明作用域，确保接下来失败的原因是"维度不对"而不是 RLS 拦截
+        connection.execute(
+            text("SELECT set_config('app.tenant_id', 't_dim', true)")
+        )
         connection.execute(
             text(
                 "INSERT INTO tenants (id, name) VALUES ('t_dim', 'dim test') "

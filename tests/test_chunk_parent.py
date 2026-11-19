@@ -131,6 +131,10 @@ def test_store_persists_parent_without_embedding(db_engine) -> None:
     parents = [chunk.chunk_id for chunk in chunks if chunk.is_parent]
 
     with db_engine.connect() as connection:
+        # chunks 开了 RLS：读之前必须声明租户作用域
+        connection.execute(
+            text("SELECT set_config('app.tenant_id', :t, true)"), {"t": TENANT}
+        )
         rows = connection.execute(
             text(
                 "SELECT chunk_id, embedding IS NULL AS no_vec FROM chunks "

@@ -38,6 +38,10 @@ def seed(engine, total: int, kbs: int, docs_per_kb: int, reset: bool) -> None:
     chunks_per_doc = max(1, chunks_per_kb // docs_per_kb)
 
     with engine.begin() as connection:
+        # chunks 开了 RLS：整个事务声明租户作用域
+        connection.execute(
+            text("SELECT set_config('app.tenant_id', :t, true)"), {"t": TENANT_ID}
+        )
         if reset:
             connection.execute(
                 text("DELETE FROM chunks WHERE tenant_id = :t AND chunk_id LIKE 'bulk-%'"),
