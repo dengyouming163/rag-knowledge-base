@@ -11,7 +11,6 @@ from sqlalchemy import text
 from app.deps import get_trace_store
 from app.main import create_app
 from src.db.base import create_db_engine
-from src.ingest_jobs import enqueue, mark_failed, mark_succeeded
 from src.trace import TraceStore
 
 TENANT = "t_api_stats"
@@ -205,16 +204,22 @@ def test_trace_store_lists_all_dates_and_unpersisted_memory_without_duplicates(t
     assert sum(item["trace_id"] == persisted["trace_id"] for item in records) == 1
 
 
-def test_stats_api_aggregates_all_jobs_and_file_and_memory_traces(api, engine, tmp_path) -> None:
+def test_stats_api_aggregates_all_jobs_and_file_and_memory_traces(
+    api, engine, tmp_path, monkeypatch
+) -> None:
     client, store = api
-    job_ids = [enqueue(engine, TENANT, KB, doc_id=f"doc_stats_{index}") for index in range(22)]
-    with engine.begin() as connection:
-        connection.execute(
-            text("UPDATE ingest_jobs SET status = 'running' WHERE id = :id"),
-            {"id": job_ids[0]},
-        )
-    mark_succeeded(engine, job_ids[1])
-    mark_failed(engine, job_ids[2], "terminal", retry=False)
+    jobs = [{"status": "queued"} for _ in range(22)]
+    jobs[0]["status"] = "running"
+    jobs[1]["status"] = "succeeded"
+    jobs[2]["status"] = "failed"
+    list_jobs_calls = []
+
+    # 与 Task 14 一致，不把待处理的测试任务暴露给外部 worker；接口仍须读取全量任务。
+    def isolated_list_jobs(_engine, tenant_id, kb_id, limit):
+        list_jobs_calls.append((tenant_id, kb_id, limit))
+        return jobs
+
+    monkeypatch.setattr("app.routers.stats.ingest_jobs.list_jobs", isolated_list_jobs)
 
     _record(store, "zero-1", "retrieve", " 无理由 退款 ")
     _record(store, "zero-2", "retrieve", "无理由   退款")
@@ -231,6 +236,16 @@ def test_stats_api_aggregates_all_jobs_and_file_and_memory_traces(api, engine, t
         if json.loads(line)["trace_id"] != "memory-only"
     ]
     trace_path.write_text("\n".join(persisted_lines) + "\n", encoding="utf-8")
+
+    # 模拟外部 worker 在查询前覆盖已标记成功的任务；隔离后该测试不应暴露真实任务。
+    with engine.begin() as connection:
+        external_update_count = connection.execute(
+            text(
+                "UPDATE ingest_jobs SET status = 'failed', attempts = 3, progress = 10 "
+                "WHERE tenant_id = :t AND doc_id = 'doc_stats_1'"
+            ),
+            {"t": TENANT},
+        ).rowcount
 
     response = client.get(
         "/v1/stats", params={"kb_id": KB}, headers={"X-Tenant-Id": TENANT}
@@ -268,6 +283,8 @@ def test_stats_api_aggregates_all_jobs_and_file_and_memory_traces(api, engine, t
     assert limited.status_code == 200
     assert limited.json()["zero_result_top"] == [{"query": "无理由 退款", "count": 2}]
     assert len(limited.json()["gap_top"]) == 1
+    assert external_update_count == 0
+    assert list_jobs_calls == [(TENANT, KB, None), (TENANT, KB, None)]
 
 
 def test_stats_api_validates_top_n_and_hides_other_tenant_kb(api) -> None:
