@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -27,6 +28,7 @@ from src.db.base import create_db_engine
 TENANT = "t_smoke"
 KB = "kb_smoke"
 FIXTURE = ROOT / "eval" / "fixtures" / "pdf" / "policy_table.pdf"
+FIXTURE_HINT = "请先运行 py -3.13 scripts/make_pdf_fixtures.py 生成样本（需要 reportlab 与中文字体）"
 POLL_INTERVAL_SECONDS = 2
 JOB_TIMEOUT_SECONDS = 90
 STARTUP_HINT = (
@@ -113,7 +115,18 @@ def main() -> int:
             print(f"已确认租户与知识库存在：{TENANT}/{KB}")
 
             if not FIXTURE.is_file():
-                raise RuntimeError(f"测试文件不存在：{FIXTURE}")
+                print("PDF 样本不存在，正在自动生成...")
+                try:
+                    subprocess.run(
+                        [sys.executable, "scripts/make_pdf_fixtures.py"],
+                        cwd=ROOT,
+                        check=True,
+                    )
+                except (OSError, subprocess.CalledProcessError) as exc:
+                    raise RuntimeError(FIXTURE_HINT) from exc
+                if not FIXTURE.is_file():
+                    raise RuntimeError(FIXTURE_HINT)
+                print("PDF 样本生成完成。")
             upload = client.post(
                 f"/v1/kbs/{KB}/documents",
                 files={
@@ -151,6 +164,7 @@ def main() -> int:
                 )
             hits = search.json().get("hits") or []
             if not hits:
+                print(f"检索空响应原文：{search.text[:1000]}", file=sys.stderr)
                 raise RuntimeError("检索断言失败：hits 为空")
 
             print(f"检索命中 {len(hits)} 条：")
