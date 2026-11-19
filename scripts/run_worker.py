@@ -184,10 +184,21 @@ def main(argv: list[str] | None = None) -> int:
             if args.once:
                 return 0
             if processed == 0:
-                time.sleep(args.interval)
+                sleep_seconds = args.interval
+                if sources and last_source_sync is not None:
+                    source_remaining = args.source_interval - (
+                        time.monotonic() - last_source_sync
+                    )
+                    sleep_seconds = min(sleep_seconds, max(0.0, source_remaining))
+                time.sleep(sleep_seconds)
     except KeyboardInterrupt:
         print("worker 收到中断信号，已停止。")
         return 0
+    finally:
+        for source in sources:
+            close = getattr(source, "close", None)
+            if callable(close):
+                close()
 
 
 if __name__ == "__main__":

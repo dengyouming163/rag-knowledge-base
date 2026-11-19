@@ -129,6 +129,21 @@ def receive_source_document(
                 raise ValueError(f"已有文档 source_url 路径异常：{existing['source_url']}")
             if existing["status"] == "ready":
                 return {"doc_id": doc_id, "job_id": None, "duplicated": True}
+            active_job_id = connection.execute(
+                text(
+                    "SELECT id FROM ingest_jobs "
+                    "WHERE tenant_id = :t AND kb_id = :kb AND doc_id = :d "
+                    "AND status IN ('queued', 'running') "
+                    "ORDER BY id DESC LIMIT 1"
+                ),
+                {"t": tenant_id, "kb": kb_id, "d": doc_id},
+            ).scalar_one_or_none()
+            if active_job_id is not None:
+                return {
+                    "doc_id": doc_id,
+                    "job_id": int(active_job_id),
+                    "duplicated": True,
+                }
             if existing["status"] != "pending":
                 connection.execute(
                     text(
@@ -141,14 +156,25 @@ def receive_source_document(
     destination = (Path(upload_root) if upload_root is not None else UPLOAD_ROOT) / relative_path
     try:
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes(content)
+        temporary_path = destination.with_name(
+            f".{destination.name}.{uuid4().hex}.tmp"
+        )
+        try:
+            temporary_path.write_bytes(content)
+            temporary_path.replace(destination)
+        finally:
+            temporary_path.unlink(missing_ok=True)
         job_id = enqueue(engine, tenant_id, kb_id, doc_id, source=source_name)
     except Exception:
         with engine.begin() as connection:
             connection.execute(
                 text(
-                    "UPDATE documents SET status = 'failed', updated_at = now() "
-                    "WHERE id = :id AND tenant_id = :t AND kb_id = :kb"
+                    "UPDATE documents AS d SET status = 'failed', updated_at = now() "
+                    "WHERE d.id = :id AND d.tenant_id = :t AND d.kb_id = :kb "
+                    "AND d.status <> 'ready' AND NOT EXISTS ("
+                    "SELECT 1 FROM ingest_jobs j "
+                    "WHERE j.tenant_id = d.tenant_id AND j.kb_id = d.kb_id "
+                    "AND j.doc_id = d.id AND j.status IN ('queued', 'running'))"
                 ),
                 {"id": doc_id, "t": tenant_id, "kb": kb_id},
             )

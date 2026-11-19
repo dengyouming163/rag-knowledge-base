@@ -53,6 +53,15 @@ class FakeSource:
         return self.contents[ref.uri]
 
 
+class ClosableSource(FakeSource):
+    def __init__(self) -> None:
+        super().__init__()
+        self.close_calls = 0
+
+    def close(self) -> None:
+        self.close_calls += 1
+
+
 def _ref(uri: str, content: bytes) -> DocumentRef:
     return DocumentRef(
         uri=uri,
@@ -213,6 +222,91 @@ def test_duplicate_while_queued_reuses_job_and_feishu_is_markdown(
         ).scalar_one() == 1
 
 
+def test_active_duplicate_reuses_job_without_rewriting_file(
+    engine, tmp_path, monkeypatch
+) -> None:
+    kwargs = {
+        "source_name": "local_dir",
+        "uri": "file:///source/active.txt",
+        "content": b"complete content",
+        "upload_root": tmp_path,
+    }
+    first = _receive(engine, **kwargs)
+    original_write_bytes = Path.write_bytes
+    writes = []
+
+    def track_write(path, data):
+        writes.append(path)
+        return original_write_bytes(path, data)
+
+    monkeypatch.setattr(Path, "write_bytes", track_write)
+    duplicate = _receive(engine, **kwargs)
+
+    assert duplicate["job_id"] == first["job_id"]
+    assert duplicate["duplicated"] is True
+    assert writes == []
+
+
+def test_interleaved_reader_never_observes_partial_destination(
+    engine, tmp_path, monkeypatch
+) -> None:
+    content = b"complete atomic content"
+    observed = []
+
+    def interleaved_write(path, data):
+        with engine.begin() as connection:
+            source_url = connection.execute(
+                text("SELECT source_url FROM documents WHERE tenant_id = :t"),
+                {"t": TENANT},
+            ).scalar_one()
+        destination = tmp_path / source_url
+        with path.open("wb") as stream:
+            stream.write(data[:3])
+            stream.flush()
+            observed.append(destination.read_bytes() if destination.exists() else None)
+            stream.write(data[3:])
+        return len(data)
+
+    monkeypatch.setattr(Path, "write_bytes", interleaved_write)
+    received = _receive(
+        engine,
+        source_name="local_dir",
+        uri="file:///source/atomic.txt",
+        content=content,
+        upload_root=tmp_path,
+    )
+
+    row = _document_and_job(engine, received["doc_id"])
+    destination = tmp_path / row["source_url"]
+    assert observed == [None]
+    assert destination.read_bytes() == content
+    assert list(destination.parent.iterdir()) == [destination]
+
+
+def test_atomic_replace_failure_cleans_temporary_file(
+    engine, tmp_path, monkeypatch
+) -> None:
+    def fail_replace(path, target):
+        raise OSError("injected replace failure")
+
+    monkeypatch.setattr(Path, "replace", fail_replace)
+    with pytest.raises(OSError, match="injected replace failure"):
+        _receive(
+            engine,
+            source_name="local_dir",
+            uri="file:///source/replace-failure.txt",
+            content=b"content",
+            upload_root=tmp_path,
+        )
+
+    with engine.begin() as connection:
+        status = connection.execute(
+            text("SELECT status FROM documents WHERE tenant_id = :t"), {"t": TENANT}
+        ).scalar_one()
+    assert status == "failed"
+    assert list((tmp_path / TENANT / KB).iterdir()) == []
+
+
 def test_changed_content_creates_a_new_document_and_job(engine, tmp_path) -> None:
     uri = "file:///source/policy.txt"
     first = _receive(
@@ -268,6 +362,51 @@ def test_receive_rejects_unsafe_or_unsupported_input_without_db_rows(
         assert connection.execute(
             text("SELECT count(*) FROM documents WHERE tenant_id = :t"), {"t": TENANT}
         ).scalar_one() == 0
+
+
+@pytest.mark.parametrize("concurrent_state", ["active", "ready"])
+def test_enqueue_failure_preserves_concurrent_document_state(
+    engine, tmp_path, monkeypatch, concurrent_state
+) -> None:
+    original_enqueue = ingest_jobs.enqueue
+
+    def enqueue_then_fail(*args, **kwargs):
+        job_id = original_enqueue(*args, **kwargs)
+        if concurrent_state == "ready":
+            ingest_jobs.mark_succeeded(engine, job_id)
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "UPDATE documents SET status = 'ready', updated_at = now() "
+                        "WHERE tenant_id = :t"
+                    ),
+                    {"t": TENANT},
+                )
+        raise RuntimeError("injected enqueue failure")
+
+    monkeypatch.setattr(ingest_jobs, "enqueue", enqueue_then_fail)
+    content = b"complete content"
+    with pytest.raises(RuntimeError, match="injected enqueue failure"):
+        _receive(
+            engine,
+            source_name="local_dir",
+            uri="file:///source/concurrent.txt",
+            content=content,
+            upload_root=tmp_path,
+        )
+
+    with engine.begin() as connection:
+        row = connection.execute(
+            text(
+                "SELECT d.status AS doc_status, d.source_url, j.status AS job_status "
+                "FROM documents d JOIN ingest_jobs j ON j.doc_id = d.id "
+                "WHERE d.tenant_id = :t"
+            ),
+            {"t": TENANT},
+        ).mappings().one()
+    expected = {"active": ("pending", "queued"), "ready": ("ready", "succeeded")}
+    assert (row["doc_status"], row["job_status"]) == expected[concurrent_state]
+    assert (tmp_path / row["source_url"]).read_bytes() == content
 
 
 def test_file_write_failure_marks_document_failed_without_a_job(
@@ -440,6 +579,37 @@ def test_source_sync_interval_is_separate_and_immediately_due(engine) -> None:
     assert source.sync_calls == 2
 
 
+@pytest.mark.parametrize(("now", "expected_sleep"), [(101.5, 0.5), (103.0, 0.0)])
+def test_idle_sleep_uses_time_until_source_due(
+    monkeypatch, now, expected_sleep
+) -> None:
+    source = FakeSource()
+    monkeypatch.setattr(run_worker, "create_db_engine", lambda: object())
+    monkeypatch.setattr(run_worker, "get_embedder", lambda: object())
+    monkeypatch.setattr(
+        run_worker,
+        "load_connector_config",
+        lambda: (TENANT, KB, [source]),
+    )
+    monkeypatch.setattr(
+        run_worker,
+        "run_due_source_sync",
+        lambda *args, **kwargs: 100.0,
+    )
+    monkeypatch.setattr(run_worker, "worker_once", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(run_worker.time, "monotonic", lambda: now)
+    sleeps = []
+
+    def stop_after_sleep(seconds):
+        sleeps.append(seconds)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(run_worker.time, "sleep", stop_after_sleep)
+
+    assert run_worker.main(["--interval", "10", "--source-interval", "2"]) == 0
+    assert sleeps == [expected_sleep]
+
+
 def test_once_runs_due_source_sync_before_worker(
     monkeypatch, tmp_path
 ) -> None:
@@ -465,3 +635,34 @@ def test_once_runs_due_source_sync_before_worker(
 
     assert run_worker.main(["--once", "--source-interval", "12"]) == 0
     assert events == ["sync", "worker"]
+
+
+@pytest.mark.parametrize(
+    ("argv", "interrupt"),
+    [(["--once"], False), ([], True)],
+    ids=["once", "keyboard-interrupt"],
+)
+def test_main_closes_sources_on_exit(monkeypatch, argv, interrupt) -> None:
+    source = ClosableSource()
+    monkeypatch.setattr(run_worker, "create_db_engine", lambda: object())
+    monkeypatch.setattr(run_worker, "get_embedder", lambda: object())
+    monkeypatch.setattr(
+        run_worker,
+        "load_connector_config",
+        lambda: (TENANT, KB, [source]),
+    )
+    monkeypatch.setattr(
+        run_worker,
+        "run_due_source_sync",
+        lambda *args, **kwargs: 100.0,
+    )
+
+    def run_job(*args, **kwargs):
+        if interrupt:
+            raise KeyboardInterrupt
+        return 0
+
+    monkeypatch.setattr(run_worker, "worker_once", run_job)
+
+    assert run_worker.main(argv) == 0
+    assert source.close_calls == 1
