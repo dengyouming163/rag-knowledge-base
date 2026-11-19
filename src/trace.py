@@ -74,6 +74,25 @@ class TraceStore:
         with self._file_lock:
             persisted = self._read_today(trace_id)
 
+        merged = self._merge_records(persisted, memory)
+        return [item for item in merged if item.get("tenant") == tenant]
+
+    def list_records(self, tenant: str, kb: str) -> list[dict]:
+        """合并全部保留的日期文件和内存记录，供租户/知识库报表使用。"""
+        with self._memory_lock:
+            memory = [dict(item) for item in self._records]
+        with self._file_lock:
+            persisted = self._read_all()
+
+        merged = self._merge_records(persisted, memory)
+        return [
+            item
+            for item in merged
+            if item.get("tenant") == tenant and item.get("kb") == kb
+        ]
+
+    @staticmethod
+    def _merge_records(persisted: list[dict], memory: list[dict]) -> list[dict]:
         merged: list[dict] = []
         seen: set[str] = set()
         for item in [*persisted, *memory]:
@@ -82,11 +101,19 @@ class TraceStore:
                 seen.add(identity)
                 merged.append(item)
         merged.sort(key=lambda item: (item["ts"], item.get("seq", -1)))
-        return [item for item in merged if item.get("tenant") == tenant]
+        return merged
 
     def _read_today(self, trace_id: str) -> list[dict]:
         date = datetime.now(timezone.utc).date().isoformat()
-        path = self._root / f"{date}.jsonl"
+        return self._read_file(self._root / f"{date}.jsonl", trace_id)
+
+    def _read_all(self) -> list[dict]:
+        records: list[dict] = []
+        for path in sorted(self._root.glob("????-??-??.jsonl")):
+            records.extend(self._read_file(path))
+        return records
+
+    def _read_file(self, path: Path, trace_id: str | None = None) -> list[dict]:
         records: list[dict] = []
         try:
             with path.open("r", encoding="utf-8") as handle:
@@ -95,7 +122,9 @@ class TraceStore:
                         item = json.loads(line)
                     except json.JSONDecodeError:
                         continue
-                    if isinstance(item, dict) and item.get("trace_id") == trace_id:
+                    if isinstance(item, dict) and (
+                        trace_id is None or item.get("trace_id") == trace_id
+                    ):
                         records.append(item)
         except FileNotFoundError:
             return []

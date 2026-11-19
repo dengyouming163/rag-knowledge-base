@@ -308,17 +308,19 @@ def get_job(engine: Engine, tenant_id: str, job_id: int) -> dict | None:
 
 
 def list_jobs(
-    engine: Engine, tenant_id: str, kb_id: str, limit: int = 20
+    engine: Engine, tenant_id: str, kb_id: str, limit: int | None = 20
 ) -> list[dict]:
-    """按 id 倒序返回指定租户/知识库的最近任务。"""
+    """按 id 倒序返回指定租户/知识库的任务；limit=None 时返回全部。"""
+    query = (
+        f"SELECT {_JOB_COLUMNS} FROM ingest_jobs "
+        "WHERE tenant_id = :t AND kb_id = :kb ORDER BY id DESC"
+    )
+    params: dict[str, str | int] = {"t": tenant_id, "kb": kb_id}
+    if limit is not None:
+        query += " LIMIT :limit"
+        params["limit"] = limit
+
     with engine.begin() as connection:
-        rows = connection.execute(
-            text(
-                f"SELECT {_JOB_COLUMNS} FROM ingest_jobs "
-                "WHERE tenant_id = :t AND kb_id = :kb "
-                "ORDER BY id DESC LIMIT :limit"
-            ),
-            {"t": tenant_id, "kb": kb_id, "limit": limit},
-        ).mappings().all()
+        rows = connection.execute(text(query), params).mappings().all()
 
     return [dict(row) for row in rows]
