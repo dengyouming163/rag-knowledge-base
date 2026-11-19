@@ -6,14 +6,16 @@ tests/test_ingest_jobs.py 的策略：连不通就直接 skip，避免 CI 因缺
 
 from __future__ import annotations
 
+import httpx
 import pytest
+from pypdf import PdfWriter
 from sqlalchemy import text
 
 from src.bm25_store import BM25Store
 from src.chunk import split_document
 from src.db.base import create_db_engine
 from src.ingest import NonRetryableIngestError, ingest_document
-from src.parsers.pdf import ParserUnavailable, PdfBlock
+from src.parsers.pdf import ParserUnavailable, PdfBlock, PdfParserClient
 
 TENANT = "t_ingest"
 KB = "kb_ingest"
@@ -241,6 +243,66 @@ def test_other_parser_unavailable_is_not_non_retryable(tmp_path, message) -> Non
         )
 
     assert type(exc_info.value) is ParserUnavailable
+
+
+def _write_blank_pdf(path) -> None:
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    with path.open("wb") as stream:
+        writer.write(stream)
+
+
+def test_remote_503_with_empty_local_fallback_remains_retryable(tmp_path) -> None:
+    path = tmp_path / "remote-503.pdf"
+    _write_blank_pdf(path)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, text="parser temporarily unavailable")
+
+    with PdfParserClient(
+        "http://parser:8000", transport=httpx.MockTransport(handler)
+    ) as parser:
+        with pytest.raises(ParserUnavailable) as exc_info:
+            ingest_document(
+                None,  # type: ignore[arg-type]
+                tenant_id=TENANT,
+                kb_id=KB,
+                doc_id=DOC,
+                path=path,
+                embed_client=FakeEmbed(),
+                parser=parser,
+            )
+
+    assert exc_info.value.retryable is True
+    assert "扫描件" in str(exc_info.value)
+    assert "需要 OCR" in str(exc_info.value)
+
+
+def test_remote_ocr_422_with_empty_local_fallback_is_non_retryable(tmp_path) -> None:
+    path = tmp_path / "remote-422.pdf"
+    _write_blank_pdf(path)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(422, json={"detail": "扫描件 OCR 未识别出文本"})
+
+    with PdfParserClient(
+        "http://parser:8000", transport=httpx.MockTransport(handler)
+    ) as parser:
+        with pytest.raises(NonRetryableIngestError) as exc_info:
+            ingest_document(
+                None,  # type: ignore[arg-type]
+                tenant_id=TENANT,
+                kb_id=KB,
+                doc_id=DOC,
+                path=path,
+                embed_client=FakeEmbed(),
+                parser=parser,
+            )
+
+    assert "扫描件" in str(exc_info.value)
+    assert "需要 OCR" in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, ParserUnavailable)
+    assert exc_info.value.__cause__.retryable is False
 
 
 def test_reingest_same_doc_does_not_duplicate_chunks(engine, tmp_path) -> None:

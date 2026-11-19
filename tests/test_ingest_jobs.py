@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import threading
 
+import httpx
 import pytest
+from pypdf import PdfWriter
 from sqlalchemy import text
 
 from src.db.base import create_db_engine
@@ -22,7 +24,7 @@ from src.ingest_jobs import (
     mark_failed,
     mark_succeeded,
 )
-from src.parsers.pdf import ParserUnavailable
+from src.parsers.pdf import ParserUnavailable, PdfParserClient
 from src.worker import worker_once
 
 TENANT = "t_jobs"
@@ -309,6 +311,56 @@ def test_worker_fails_scanned_document_without_retry(
     assert doc_status == "failed"
 
     assert worker_once(engine, embed_client=FakeEmbed(), parser=ScannedParser()) == 0
+
+
+def test_worker_retries_remote_503_when_local_pdf_has_no_text(
+    engine, tmp_path, monkeypatch
+) -> None:
+    source_url = f"{TENANT}/{KB}/remote-503.pdf"
+    _seed_document(engine, "remote-503", source_url, "worker_remote_503_doc_hash")
+    job_id = enqueue(engine, TENANT, KB, doc_id="remote-503")
+    monkeypatch.setattr("src.worker.UPLOAD_ROOT", tmp_path)
+    path = tmp_path / TENANT / KB / "remote-503.pdf"
+    path.parent.mkdir(parents=True)
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    with path.open("wb") as stream:
+        writer.write(stream)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, text="parser temporarily unavailable")
+
+    with PdfParserClient(
+        "http://parser:8000", transport=httpx.MockTransport(handler)
+    ) as parser:
+        assert worker_once(engine, embed_client=FakeEmbed(), parser=parser) == 1
+
+        job = get_job(engine, TENANT, job_id)
+        assert job["status"] == "queued"
+        assert job["attempts"] == 1
+        assert job["finished_at"] is None
+        assert "扫描件" in job["error"]
+        with engine.begin() as connection:
+            doc_status = connection.execute(
+                text("SELECT status FROM documents WHERE id = 'remote-503' AND tenant_id = :t"),
+                {"t": TENANT},
+            ).scalar_one()
+        assert doc_status == "pending"
+
+        assert worker_once(engine, embed_client=FakeEmbed(), parser=parser) == 1
+        assert worker_once(engine, embed_client=FakeEmbed(), parser=parser) == 1
+        assert worker_once(engine, embed_client=FakeEmbed(), parser=parser) == 0
+
+    job = get_job(engine, TENANT, job_id)
+    assert job["status"] == "failed"
+    assert job["attempts"] == 3
+    assert job["finished_at"] is not None
+    with engine.begin() as connection:
+        doc_status = connection.execute(
+            text("SELECT status FROM documents WHERE id = 'remote-503' AND tenant_id = :t"),
+            {"t": TENANT},
+        ).scalar_one()
+    assert doc_status == "failed"
 
 
 def test_worker_retries_ocr_only_parser_unavailable(

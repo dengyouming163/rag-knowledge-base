@@ -20,7 +20,11 @@ from src.tables import html_table_to_rows, rows_to_markdown, split_markdown_tabl
 
 
 class ParserUnavailable(RuntimeError):
-    """解析服务与本地降级都不可用。"""
+    """解析服务与本地降级都不可用；retryable=None 表示未经远端分类。"""
+
+    def __init__(self, message: str, *, retryable: bool | None = None) -> None:
+        super().__init__(message)
+        self.retryable = retryable
 
 
 @dataclass(frozen=True)
@@ -74,7 +78,14 @@ class PdfParserClient:
             response.raise_for_status()
         except httpx.HTTPError as exc:
             # 容器挂了/超时/返回非 2xx：降级到本地，不让上传整体失败
-            return self._local(content, reason=f"解析服务不可用：{exc}")
+            retryable = (
+                exc.response.status_code >= 500
+                if isinstance(exc, httpx.HTTPStatusError)
+                else True
+            )
+            return self._local(
+                content, reason=f"解析服务不可用：{exc}", retryable=retryable
+            )
 
         return self._from_payload(response.json())
 
@@ -96,12 +107,15 @@ class PdfParserClient:
         return blocks
 
     @staticmethod
-    def _local(content: bytes, *, reason: str = "") -> list[PdfBlock]:
+    def _local(
+        content: bytes, *, reason: str = "", retryable: bool | None = None
+    ) -> list[PdfBlock]:
         try:
             from pypdf import PdfReader
         except ImportError as exc:
             raise ParserUnavailable(
-                f"{reason}；本地降级需要 pypdf（pip install pypdf）"
+                f"{reason}；本地降级需要 pypdf（pip install pypdf）",
+                retryable=retryable,
             ) from exc
 
         try:
@@ -112,10 +126,15 @@ class PdfParserClient:
                 if text:
                     blocks.append(PdfBlock(type="text", text=text, page=index))
         except Exception as exc:  # noqa: BLE001 - 损坏的 PDF 要给出可读原因
-            raise ParserUnavailable(f"{reason}；本地解析失败：{exc}") from exc
+            raise ParserUnavailable(
+                f"{reason}；本地解析失败：{exc}", retryable=retryable
+            ) from exc
 
         if not blocks:
-            raise ParserUnavailable(f"{reason}；未解析出文本（可能是扫描件，需要 OCR）")
+            raise ParserUnavailable(
+                f"{reason}；未解析出文本（可能是扫描件，需要 OCR）",
+                retryable=retryable,
+            )
         return blocks
 
 

@@ -48,7 +48,9 @@ def _extract_text(file_path: Path, parser: Any) -> str:
                 blocks = parser.parse(content, filename=file_path.name)
         except ParserUnavailable as exc:
             message = str(exc)
-            if "扫描件" not in message:
+            if exc.retryable is True:
+                raise
+            if exc.retryable is None and "扫描件" not in message:
                 raise
             if "需要 OCR" not in message:
                 message = f"{message}；需要 OCR"
