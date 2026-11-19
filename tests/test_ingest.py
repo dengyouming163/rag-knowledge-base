@@ -22,16 +22,34 @@ DIM = 1024
 
 MARKDOWN = "# 售后政策\n\n## 退款\n\n支持七天无理由退款。"
 
+# 多章节文档：父块与子块都不止一个，才能覆盖父子交错时的向量顺序
+MULTI_SECTION_MARKDOWN = (
+    "# 售后政策\n\n## 退款\n\n支持七天无理由退款。\n\n"
+    "## 换货\n\n签收后七天内可申请换货。\n\n"
+    "## 发票\n\n支持开具电子发票。"
+)
+
 
 class FakeEmbed:
-    """记录每次收到的文本，返回固定 1024 维向量（与 chunks.embedding 维度一致）。"""
+    """记录每次收到的文本，返回可区分的 1024 维向量（与 chunks.embedding 维度一致）。
+
+    每个向量按输入序号取不同值，落库后可用 `embedding::text` 去重来验证
+    每个子块拿到的是自己的向量，而不是整批共用同一个值。
+    """
 
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
 
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
         self.calls.append(list(texts))
-        return [[0.01] * DIM for _ in texts]
+        return [[float(index + 1)] * DIM for index, _ in enumerate(texts)]
+
+
+class FailingEmbed:
+    """模拟 embedding 服务故障：异常必须冒泡，不能被执行器吞掉。"""
+
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        raise RuntimeError("embed down")
 
 
 class FakeParser:
@@ -216,8 +234,9 @@ def test_reingest_same_doc_does_not_duplicate_chunks(engine, tmp_path) -> None:
 
 
 def test_embed_receives_only_child_chunks(engine, tmp_path) -> None:
+    """多章节文档：父块不参与 embedding，且每个子块拿到各自顺序的向量。"""
     path = tmp_path / "policy.md"
-    path.write_text(MARKDOWN, encoding="utf-8")
+    path.write_text(MULTI_SECTION_MARKDOWN, encoding="utf-8")
     fake_embed = FakeEmbed()
 
     ingest_document(
@@ -229,14 +248,53 @@ def test_embed_receives_only_child_chunks(engine, tmp_path) -> None:
         embed_client=fake_embed,
     )
 
-    chunks = split_document(MARKDOWN, doc_id=DOC)
+    chunks = split_document(MULTI_SECTION_MARKDOWN, doc_id=DOC)
     child_texts = [chunk.text for chunk in chunks if not chunk.is_parent]
     parent_count = sum(1 for chunk in chunks if chunk.is_parent)
 
-    assert parent_count >= 1
+    # 多章节才有多个父块与子块，父子交错时最容易把向量错位
+    assert parent_count >= 2
+    assert len(child_texts) >= 2
     # 只调用一次，且收到的文本序列与子块逐条一致——父块不会混进来
     assert fake_embed.calls == [child_texts]
     assert len(fake_embed.calls[0]) == len(chunks) - parent_count
+
+    rows = _scoped_rows(
+        engine,
+        "SELECT embedding::text AS embedding_text FROM chunks "
+        "WHERE tenant_id = :t AND doc_id = :doc AND is_parent = false",
+        {"t": TENANT, "doc": DOC},
+    )
+    # 子块各拿各的向量：落库后的向量文本去重数量必须等于子块数量。
+    # 若执行器把同一批向量整体错位/复用，这里会塌缩成更少的唯一值。
+    assert len(rows) == len(child_texts)
+    assert len({row["embedding_text"] for row in rows}) == len(child_texts)
+
+
+def test_embedding_failure_keeps_document_pending(engine, tmp_path) -> None:
+    """embedding 失败必须上抛，文档保持 pending，且不会清掉旧块（首次导入时块数为 0）。"""
+    path = tmp_path / "policy.md"
+    path.write_text(MARKDOWN, encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="embed down"):
+        ingest_document(
+            engine,
+            tenant_id=TENANT,
+            kb_id=KB,
+            doc_id=DOC,
+            path=path,
+            embed_client=FailingEmbed(),
+        )
+
+    # 不能假成功：文档仍是 pending，等待 worker 重试或标记 failed
+    assert _doc_status(engine) == "pending"
+    # embedding 在 delete/upsert 之前发生，所以首次导入不会留下任何块
+    rows = _scoped_rows(
+        engine,
+        "SELECT chunk_id FROM chunks WHERE tenant_id = :t AND doc_id = :doc",
+        {"t": TENANT, "doc": DOC},
+    )
+    assert rows == []
 
 
 def test_unsupported_extension_raises_before_touching_database(tmp_path) -> None:
