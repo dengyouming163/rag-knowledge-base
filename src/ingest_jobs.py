@@ -15,16 +15,146 @@ ingest_jobs 未开启 RLS，普通事务即可；读取 chunks 等受 RLS 保护
 
 from __future__ import annotations
 
+import hashlib
+import re
+from pathlib import Path
+from urllib.parse import urlsplit
+from uuid import uuid4
+
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 STATUSES = ("queued", "running", "succeeded", "failed")
 MAX_ATTEMPTS = 3
+ALLOWED_SOURCE_SUFFIXES = {".pdf", ".md", ".txt"}
+UPLOAD_ROOT = Path("data/uploads")
+_SAFE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 
 _JOB_COLUMNS = (
     "id, tenant_id, kb_id, doc_id, status, error, source, attempts, progress, "
     "finished_at, created_at, updated_at"
 )
+
+
+def _source_suffix(source_name: str, uri: str) -> str:
+    if source_name == "feishu":
+        return ".md"
+    parts = urlsplit(uri)
+    if parts.scheme != "file":
+        raise ValueError(f"来源文档 URI 不是 file URI：{uri}")
+    suffix = Path(parts.path).suffix.lower()
+    if suffix not in ALLOWED_SOURCE_SUFFIXES:
+        raise ValueError(f"不支持的来源文档后缀：{suffix or '(none)'}")
+    return suffix
+
+
+def _source_relative_path(
+    tenant_id: str, kb_id: str, doc_id: str, suffix: str
+) -> Path:
+    return Path(tenant_id) / kb_id / f"{doc_id}{suffix}"
+
+
+def receive_source_document(
+    engine: Engine,
+    tenant_id: str,
+    kb_id: str,
+    *,
+    source_name: str,
+    uri: str,
+    content: bytes,
+    upload_root: str | Path | None = None,
+) -> dict:
+    """接收一份 Source 内容、落盘并复用 enqueue；返回新增/重复及 job 信息。
+
+    content_hash、doc_id 与 source_url 均沿用上传 API 约定。ready 的重复内容
+    不再建任务，其他重复内容复用 queued/running 任务或重新入队失败任务。
+    """
+    if not _SAFE_ID.fullmatch(tenant_id):
+        raise ValueError("invalid tenant_id")
+    if not _SAFE_ID.fullmatch(kb_id):
+        raise ValueError("invalid kb_id")
+    if not content:
+        raise ValueError("来源文档内容为空")
+    suffix = _source_suffix(source_name, uri)
+    content_hash = hashlib.sha256(content).hexdigest()[:16]
+    duplicated = False
+
+    with engine.begin() as connection:
+        existing = connection.execute(
+            text(
+                "SELECT id, status, source_url FROM documents "
+                "WHERE tenant_id = :t AND kb_id = :kb AND content_hash = :hash"
+            ),
+            {"t": tenant_id, "kb": kb_id, "hash": content_hash},
+        ).mappings().first()
+
+        if existing is None:
+            doc_id = f"{kb_id}-{uuid4().hex[:8]}"
+            relative_path = _source_relative_path(tenant_id, kb_id, doc_id, suffix)
+            inserted = connection.execute(
+                text(
+                    "INSERT INTO documents "
+                    "(id, tenant_id, kb_id, title, source_url, content_hash, status, meta) "
+                    "VALUES (:id, :t, :kb, :id, :url, :hash, 'pending', '{}'::jsonb) "
+                    "ON CONFLICT (tenant_id, kb_id, content_hash) DO NOTHING "
+                    "RETURNING id"
+                ),
+                {
+                    "id": doc_id,
+                    "t": tenant_id,
+                    "kb": kb_id,
+                    "url": relative_path.as_posix(),
+                    "hash": content_hash,
+                },
+            ).scalar_one_or_none()
+            if inserted is None:
+                existing = connection.execute(
+                    text(
+                        "SELECT id, status, source_url FROM documents "
+                        "WHERE tenant_id = :t AND kb_id = :kb AND content_hash = :hash"
+                    ),
+                    {"t": tenant_id, "kb": kb_id, "hash": content_hash},
+                ).mappings().one()
+
+        if existing is not None:
+            duplicated = True
+            doc_id = existing["id"]
+            existing_suffix = Path(existing["source_url"]).suffix.lower()
+            if existing_suffix not in ALLOWED_SOURCE_SUFFIXES:
+                raise ValueError(f"已有文档 source_url 后缀异常：{existing['source_url']}")
+            relative_path = _source_relative_path(
+                tenant_id, kb_id, doc_id, existing_suffix
+            )
+            if existing["source_url"] != relative_path.as_posix():
+                raise ValueError(f"已有文档 source_url 路径异常：{existing['source_url']}")
+            if existing["status"] == "ready":
+                return {"doc_id": doc_id, "job_id": None, "duplicated": True}
+            if existing["status"] != "pending":
+                connection.execute(
+                    text(
+                        "UPDATE documents SET status = 'pending', updated_at = now() "
+                        "WHERE id = :id AND tenant_id = :t AND kb_id = :kb"
+                    ),
+                    {"id": doc_id, "t": tenant_id, "kb": kb_id},
+                )
+
+    destination = (Path(upload_root) if upload_root is not None else UPLOAD_ROOT) / relative_path
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(content)
+        job_id = enqueue(engine, tenant_id, kb_id, doc_id, source=source_name)
+    except Exception:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "UPDATE documents SET status = 'failed', updated_at = now() "
+                    "WHERE id = :id AND tenant_id = :t AND kb_id = :kb"
+                ),
+                {"id": doc_id, "t": tenant_id, "kb": kb_id},
+            )
+        raise
+
+    return {"doc_id": doc_id, "job_id": job_id, "duplicated": duplicated}
 
 
 def enqueue(
