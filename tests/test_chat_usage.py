@@ -37,11 +37,14 @@ def test_usage_recorder_records_every_call_with_origin(monkeypatch) -> None:
     inner = SimpleNamespace(chat=lambda *args, **kwargs: next(results))
     wrapper = UsageRecordingChatClient(inner, origin=1.5)
 
-    assert wrapper.chat("rewrite") is first
-    assert wrapper.chat("answer") is second
+    assert wrapper.chat("rewrite", max_tokens=200) is first
+    assert wrapper.chat("answer", temperature=0.0) is second
     assert wrapper.last is second
     assert len(wrapper.calls) == 2
-    assert all(set(call) == {"result", "start_ms", "duration_ms"} for call in wrapper.calls)
+    assert all(
+        {"result", "start_ms", "duration_ms"} <= set(call) for call in wrapper.calls
+    )
+    assert [call.get("stage") for call in wrapper.calls] == ["rewrite", "answer"]
     assert wrapper.calls[0]["result"] is first
     assert wrapper.calls[0]["start_ms"] == 500.0
     assert wrapper.calls[0]["duration_ms"] == pytest.approx(40.0)

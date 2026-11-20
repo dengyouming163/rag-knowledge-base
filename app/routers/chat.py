@@ -107,17 +107,16 @@ async def chat_stream(
     refused = False
 
     def build_metric_fields(outcome: str, **overrides) -> dict:
-        answer_call = usage_client.calls[-1] if chunks and usage_client.calls else None
-        rewrite_calls = (
-            usage_client.calls[:-1] if answer_call is not None else usage_client.calls
-        )
+        answer_calls = [call for call in usage_client.calls if call["stage"] == "answer"]
+        answer_call = answer_calls[-1] if answer_calls else None
+        rewrite_calls = [call for call in usage_client.calls if call["stage"] == "rewrite"]
         answer_result = answer_call["result"] if answer_call is not None else None
         answer_usage = (
             usage_from_chat_result(answer_result) if answer_result is not None else None
         )
         spans = [
             {
-                "stage": "answer" if call is answer_call else "rewrite",
+                "stage": call["stage"],
                 "start_ms": call["start_ms"],
                 "duration_ms": call["duration_ms"],
                 "status": "ok" if call["result"] is not None else "error",

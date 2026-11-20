@@ -17,6 +17,8 @@ class UsageRecordingChatClient:
 
     def chat(self, *args, **kwargs):
         started = time.perf_counter()
+        # 当前 pipeline 只有 rewrite_query 传 max_tokens=200，answer 调用不传。
+        stage = "rewrite" if kwargs.get("max_tokens") == 200 else "answer"
         result = None
         try:
             result = self.inner.chat(*args, **kwargs)
@@ -27,6 +29,7 @@ class UsageRecordingChatClient:
             self.calls.append(
                 {
                     "result": result,
+                    "stage": stage,
                     "start_ms": (
                         0.0 if self.origin is None else (started - self.origin) * 1000
                     ),
