@@ -30,16 +30,10 @@ export async function apiJson(path, { scope = {}, signal, ...options } = {}) {
   const { body, headers: suppliedHeaders = {}, ...rest } = options;
   const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
   const hasJsonBody = body !== undefined && body !== null && !isFormData;
-  const headers = {
-    ...scopeHeaders(scope, { json: hasJsonBody }),
-    ...suppliedHeaders,
-  };
+  const headers = new Headers(scopeHeaders(scope, { json: hasJsonBody }));
+  new Headers(suppliedHeaders).forEach((value, name) => headers.set(name, value));
 
-  if (isFormData) {
-    for (const name of Object.keys(headers)) {
-      if (name.toLowerCase() === "content-type") delete headers[name];
-    }
-  }
+  if (isFormData) headers.delete("content-type");
 
   const response = await fetch(path, {
     ...rest,

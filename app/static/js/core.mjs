@@ -9,7 +9,9 @@ export function escapeHtml(value) {
 }
 
 export function formatMetric(value, unit = "", digits = 1) {
-  if (value === null || value === undefined) return "—";
+  const isNumber = typeof value === "number";
+  const isNumericString = typeof value === "string" && value.trim() !== "";
+  if (!isNumber && !isNumericString) return "—";
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return "—";
   const formatted = numeric.toFixed(digits);
@@ -25,9 +27,10 @@ export class ScopeGuard {
   }
 
   invalidate() {
-    this.#epoch += 1;
-    this.#controller.abort();
+    const previous = this.#controller;
     this.#controller = new AbortController();
+    this.#epoch += 1;
+    previous.abort();
   }
 
   isCurrent(snapshot) {

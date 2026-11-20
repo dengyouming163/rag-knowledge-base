@@ -109,7 +109,8 @@ function initializeWorkbench() {
 
   document.getElementById("scope-form")?.addEventListener("submit", (event) => {
     event.preventDefault();
-    applyScope();
+    if (applyScope()) return;
+    scopeGuard.invalidate();
     const view = viewFromHash(window.location.hash);
     const snapshot = scopeGuard.snapshot();
     setStatus(`Refresh requested for ${view}.`);

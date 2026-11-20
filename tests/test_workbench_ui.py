@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -62,3 +64,24 @@ def test_workbench_core_modules(client: TestClient) -> None:
         "ScopeGuard",
     ):
         assert marker in app_response.text
+
+
+def _relative_luminance(color: str) -> float:
+    channels = [int(color[index:index + 2], 16) / 255 for index in (1, 3, 5)]
+    linear = [value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4 for value in channels]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def _contrast_ratio(foreground: str, background: str) -> float:
+    lighter = max(_relative_luminance(foreground), _relative_luminance(background))
+    darker = min(_relative_luminance(foreground), _relative_luminance(background))
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def test_workbench_muted_token_meets_aa_on_shell_backgrounds(client: TestClient) -> None:
+    css = client.get("/ui/css/workbench.css").text
+    tokens = dict(re.findall(r"(--wb-[\w-]+):\s*(#[0-9a-fA-F]{6});", css))
+
+    for background_token in ("--wb-surface", "--wb-bg"):
+        ratio = _contrast_ratio(tokens["--wb-muted"], tokens[background_token])
+        assert ratio >= 4.5, f"--wb-muted on {background_token} has contrast {ratio:.2f}:1"
