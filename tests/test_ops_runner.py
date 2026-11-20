@@ -109,21 +109,60 @@ def test_run_once_marks_eval_succeeded(engine, artifacts) -> None:
 
     assert run_once(engine, runner=fake_runner, kind="eval_mock") is True
     run = get_run(engine, TENANT, run_id)
+    assert run["attempts"] == 1  # 领取到的正是本用例入队的那条
     assert run["status"] == "succeeded"
     assert run["summary"]["metrics"]["recall_at_k"] == 1.0
     assert run["artifact_path"].startswith("data/ops/eval/")
 
 
-def test_runner_timeout_marks_failed(engine) -> None:
+def test_run_once_reports_nonzero_exit_and_stderr(engine, artifacts) -> None:
+    run_id = enqueue(engine, TENANT, KB, "eval_mock", requested_by="u_admin")
+
+    def failing_runner(args, **kwargs):
+        artifact = Path(args[args.index("--out") + 1])
+        artifacts.append(str(artifact))
+        return subprocess.CompletedProcess(
+            args, 1, "collecting...", "E   AssertionError: boom"
+        )
+
+    assert run_once(engine, runner=failing_runner, kind="eval_mock") is True
+    run = get_run(engine, TENANT, run_id)
+    assert run["attempts"] == 1
+    assert run["status"] == "failed"
+    assert run["exit_code"] == 1
+    assert "AssertionError: boom" in run["output_tail"]
+
+
+def test_unreadable_artifact_keeps_success(engine, artifacts) -> None:
+    run_id = enqueue(engine, TENANT, KB, "eval_mock", requested_by="u_admin")
+
+    def corrupt_artifact_runner(args, **kwargs):
+        out = Path(args[args.index("--out") + 1])
+        artifacts.append(str(out))
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("{not json", encoding="utf-8")
+        return subprocess.CompletedProcess(args, 0, "ok", "")
+
+    assert run_once(engine, runner=corrupt_artifact_runner, kind="eval_mock") is True
+    run = get_run(engine, TENANT, run_id)
+    assert run["attempts"] == 1
+    assert run["status"] == "succeeded"
+    assert run["summary"]["artifact_unreadable"] is True
+    assert run["summary"]["passed"] is True
+
+
+def test_runner_timeout_marks_failed_and_keeps_output(engine) -> None:
     run_id = enqueue(engine, TENANT, KB, "loadtest", requested_by="u_admin")
 
     def timeout_runner(args, **kwargs):
-        raise subprocess.TimeoutExpired(args, 1)
+        raise subprocess.TimeoutExpired(args, 1, output="partial stdout")
 
     assert run_once(engine, runner=timeout_runner, kind="loadtest") is True
     run = get_run(engine, TENANT, run_id)
+    assert run["attempts"] == 1
     assert run["status"] == "failed"
     assert run["error"] == "timeout"
+    assert "partial stdout" in run["output_tail"]
 
 
 def test_runner_exception_marks_failed(engine) -> None:
@@ -134,8 +173,28 @@ def test_runner_exception_marks_failed(engine) -> None:
 
     assert run_once(engine, runner=boom_runner, kind="drill_llm") is True
     run = get_run(engine, TENANT, run_id)
+    assert run["attempts"] == 1
     assert run["status"] == "failed"
     assert run["error"] == "spawn failed"
+
+
+def test_build_command_error_marks_failed(engine, monkeypatch) -> None:
+    # 库里有 kind CHECK 约束，无法入队非法 kind；直接让命令构造抛错覆盖该兜底分支
+    run_id = enqueue(engine, TENANT, KB, "eval_mock", requested_by="u_admin")
+
+    def broken_build(kind, run):
+        raise ValueError(f"unsupported ops kind: {kind}")
+
+    monkeypatch.setattr("scripts.run_ops.build_command", broken_build)
+
+    def never_runner(args, **kwargs):
+        raise AssertionError("命令构造失败时不应执行命令")
+
+    assert run_once(engine, runner=never_runner, kind="eval_mock") is True
+    run = get_run(engine, TENANT, run_id)
+    assert run["attempts"] == 1
+    assert run["status"] == "failed"
+    assert "unsupported ops kind" in run["error"]
 
 
 def test_run_once_returns_false_when_queue_empty(engine) -> None:
