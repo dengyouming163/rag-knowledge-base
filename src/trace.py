@@ -6,7 +6,7 @@ import json
 import logging
 import threading
 from collections import deque
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -39,6 +39,12 @@ class TraceStore:
         refused: bool,
         mode: str,
         query: str,
+        prompt_tokens: int | None = None,
+        completion_tokens: int | None = None,
+        model: str | None = None,
+        llm_ms: float | None = None,
+        rerank_degraded: bool | None = None,
+        citation_ok: bool | None = None,
     ) -> dict:
         now = datetime.now(timezone.utc)
         item = {
@@ -53,6 +59,16 @@ class TraceStore:
             "query": query,
             "ts": now.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
         }
+        # 可选指标只在有值时写入，兼容旧记录不含这些字段的读取
+        optional = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "model": model,
+            "llm_ms": round(float(llm_ms), 3) if llm_ms is not None else None,
+            "rerank_degraded": rerank_degraded,
+            "citation_ok": citation_ok,
+        }
+        item.update({key: value for key, value in optional.items() if value is not None})
         with self._memory_lock:
             item["seq"] = self._seq
             self._seq += 1
@@ -90,6 +106,19 @@ class TraceStore:
             for item in merged
             if item.get("tenant") == tenant and item.get("kb") == kb
         ]
+
+    def list_recent(
+        self, tenant: str, kb: str, *, limit: int = 50, days: int = 7
+    ) -> list[dict]:
+        """按时间倒序返回最近的记录，只保留最近 `days` 天的数据。"""
+        records = self.list_records(tenant, kb)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+        def parsed_ts(item: dict) -> datetime:
+            return datetime.fromisoformat(item["ts"].replace("Z", "+00:00"))
+
+        fresh = [item for item in records if parsed_ts(item) >= cutoff]
+        return list(reversed(fresh[-limit:]))
 
     @staticmethod
     def _merge_records(persisted: list[dict], memory: list[dict]) -> list[dict]:

@@ -9,12 +9,12 @@ from __future__ import annotations
 import os
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from app.deps import EngineDep, TenantId, TraceStoreDep
 from app.services import ensure_kb
 from src import ingest_jobs, ops_runs
-from src.ingest_events import list_workers
+from src.ingest_events import list_job_events, list_workers
 from src.ops_metrics import build_ops_summary
 
 router = APIRouter(prefix="/v1", tags=["ops"])
@@ -55,3 +55,67 @@ def ops_summary(
         runs=ops_runs.list_runs(engine, tenant_id, kb_id, limit=5),
         workers=workers,
     )
+
+
+def _job_metrics(job: dict) -> dict:
+    created = job.get("created_at")
+    started = job.get("started_at")
+    finished = job.get("finished_at")
+    job["wait_seconds"] = (
+        round((started - created).total_seconds(), 3) if created and started else None
+    )
+    job["duration_seconds"] = (
+        round((finished - started).total_seconds(), 3)
+        if started and finished
+        else None
+    )
+    return job
+
+
+@router.get("/ops/jobs")
+def ops_jobs(
+    kb_id: str,
+    tenant_id: TenantId,
+    engine: EngineDep,
+    status: str | None = None,
+    limit: int = 50,
+) -> dict:
+    ensure_kb(engine, tenant_id, kb_id)
+    all_jobs = ingest_jobs.list_jobs(engine, tenant_id, kb_id, limit=500)
+    counts = {
+        key: sum(1 for job in all_jobs if job["status"] == key)
+        for key in ("queued", "running", "succeeded", "failed")
+    }
+    jobs = all_jobs
+    if status:
+        jobs = [job for job in jobs if job["status"] == status]
+    jobs = [_job_metrics(job) for job in jobs[: max(1, min(limit, 200))]]
+    return {"jobs": jobs, "counts": counts}
+
+
+@router.get("/ops/jobs/{job_id}/events")
+def ops_job_events(
+    job_id: int,
+    tenant_id: TenantId,
+    engine: EngineDep,
+) -> dict:
+    job = ingest_jobs.get_job(engine, tenant_id, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    return {"job_id": job_id, "events": list_job_events(engine, tenant_id, job_id)}
+
+
+@router.get("/ops/traces")
+def ops_traces(
+    kb_id: str,
+    tenant_id: TenantId,
+    engine: EngineDep,
+    trace_store: TraceStoreDep,
+    limit: int = 20,
+) -> dict:
+    ensure_kb(engine, tenant_id, kb_id)
+    return {
+        "traces": trace_store.list_recent(
+            tenant_id, kb_id, limit=max(1, min(limit, 200))
+        )
+    }

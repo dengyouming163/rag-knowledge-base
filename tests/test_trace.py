@@ -588,3 +588,60 @@ def test_trace_write_failure_does_not_break_search(client: TestClient, tmp_path)
     trace_response = _get_trace(client, response.headers["X-Trace-Id"])
     assert trace_response.status_code == 200
     assert trace_response.json()["stages"][0]["query"] == "退款"
+
+
+OPS_TENANT = "t_ops_trace"
+OPS_KB = "kb_ops_trace"
+
+
+def test_trace_record_keeps_optional_usage_fields(tmp_path) -> None:
+    from src.trace import TraceStore
+
+    store = TraceStore(tmp_path)
+    item = store.record(
+        trace_id="abc",
+        tenant=OPS_TENANT,
+        kb=OPS_KB,
+        stage="answer",
+        ms=12.3,
+        hits=2,
+        refused=False,
+        mode="chat",
+        query="退款",
+        prompt_tokens=100,
+        completion_tokens=20,
+        model="deepseek-chat",
+        llm_ms=500.0,
+        rerank_degraded=False,
+        citation_ok=True,
+    )
+    assert item["prompt_tokens"] == 100
+    assert item["completion_tokens"] == 20
+    assert item["model"] == "deepseek-chat"
+    assert item["citation_ok"] is True
+
+
+def test_old_trace_without_usage_fields_still_readable(tmp_path) -> None:
+    from src.trace import TraceStore
+
+    store = TraceStore(tmp_path)
+    store.record(
+        trace_id="old", tenant=OPS_TENANT, kb=OPS_KB, stage="retrieve",
+        ms=1.0, hits=1, refused=False, mode="hybrid", query="旧记录",
+    )
+    stages = store.find("old", OPS_TENANT)
+    assert stages[0].get("prompt_tokens") is None
+
+
+def test_list_recent_returns_latest_first(tmp_path) -> None:
+    from src.trace import TraceStore
+
+    store = TraceStore(tmp_path)
+    for index in range(3):
+        store.record(
+            trace_id=f"trace-{index}", tenant=OPS_TENANT, kb=OPS_KB,
+            stage="retrieve", ms=1.0, hits=index, refused=False,
+            mode="hybrid", query=f"q{index}",
+        )
+    recent = store.list_recent(OPS_TENANT, OPS_KB, limit=2)
+    assert [item["trace_id"] for item in recent] == ["trace-2", "trace-1"]
