@@ -8,8 +8,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 
 from src.store_pg import MissingTenantFilterError
 
@@ -26,6 +29,11 @@ def create_app() -> FastAPI:
     app.include_router(documents.router)
     app.include_router(jobs.router)
     app.include_router(stats.router)
+    app.mount(
+        "/ui",
+        StaticFiles(directory=Path(__file__).resolve().parent / "static", html=True),
+        name="ui",
+    )
 
     @app.exception_handler(MissingTenantFilterError)
     async def missing_scope_handler(request: Request, exc: MissingTenantFilterError):
