@@ -13,7 +13,7 @@ flowchart LR
         Q[(PostgreSQL<br/>ingest_jobs)]
         W[单副本 worker<br/>SKIP LOCKED 领取<br/>状态 / 进度 / 重试]
         P[PDF 解析<br/>独立 parser 容器优先<br/>本地 pypdf 降级]
-        O[RapidOCR<br/>仅提取块为空时]
+        O[RapidOCR<br/>仅解析块列表为空时]
         E[父子分块 / Embedding<br/>仅子块向量化]
         D[(PostgreSQL + pgvector<br/>HNSW / BM25 / RLS)]
         U --> S
@@ -23,7 +23,7 @@ flowchart LR
         S --> W
         Q --> W
         W --> P
-        P -->|文本与表格块均为空| O
+        P -->|解析块列表为空| O
         P --> E
         O --> E
         E --> D
@@ -45,7 +45,7 @@ flowchart LR
 ```
 
 - **入库边界**：上传 API 只负责接收、去重、落盘和入队；worker 每轮最多处理一条任务，通过 `FOR UPDATE SKIP LOCKED` 原子领取，执行任务状态、进度与最多三次尝试。API 与 worker 必须共享上传目录。
-- **PDF 边界**：独立 parser 使用 pdfplumber 提取文本和表格，只有提取块为空才调用 RapidOCR；未配置 parser 或 parser 请求失败时，主服务退回本地 pypdf，本地路径不会自行 OCR。
+- **PDF 边界**：独立 parser 使用 pdfplumber 提取标题、文本和表格块，只有解析块列表为空才调用 RapidOCR；未配置 parser 或 parser 请求失败时，主服务退回本地 pypdf，本地路径不会自行 OCR。
 - **检索与隔离**：子块用于召回，父块用于补充上下文；向量与 BM25 经加权 RRF 融合。强制租户作用域、文档 ACL 和 chunks RLS 共同约束可见范围。
 - **可观测与操作**：`/v1/traces/{trace_id}` 记录阶段耗时与命中情况，`/v1/stats` 汇总任务和问答指标；`/ui/` 提供单页知识运维工作台。
 
