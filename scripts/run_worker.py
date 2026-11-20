@@ -188,7 +188,9 @@ def main(argv: list[str] | None = None) -> int:
                 last_sync_at=last_source_sync,
                 retry_refs=retry_refs,
             )
-            processed = worker_once(engine, embed_client=embed_client)
+            processed = worker_once(
+                engine, embed_client=embed_client, worker_id=worker_id
+            )
             if args.once:
                 return 0
             if processed == 0:

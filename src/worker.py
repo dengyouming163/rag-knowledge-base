@@ -28,10 +28,14 @@ UPLOAD_ROOT = Path("data/uploads")
 
 
 def worker_once(
-    engine: Engine, *, embed_client: Any, parser: Any = None
+    engine: Engine,
+    *,
+    embed_client: Any,
+    parser: Any = None,
+    worker_id: str | None = None,
 ) -> int:
     """跑一轮：领到任务就执行并返回 1（无论成败）；没领到返回 0。"""
-    worker_id = os.environ.get("WORKER_ID", "worker-local")
+    worker_id = worker_id or os.environ.get("WORKER_ID", "worker-local")
     job = claim_next(engine)
     record_worker_heartbeat(
         engine,
@@ -45,6 +49,9 @@ def worker_once(
 
     def on_stage(stage: str, progress: int, message: str = "") -> None:
         mark_progress(engine, job_id, progress)
+        record_worker_heartbeat(
+            engine, worker_id=worker_id, current_job_id=job_id
+        )
         record_job_event(
             engine,
             job_id=job_id,
@@ -83,7 +90,6 @@ def worker_once(
             )
 
         path = UPLOAD_ROOT / source_url
-        mark_progress(engine, job_id, 30)
         result = ingest_document(
             engine,
             tenant_id=job["tenant_id"],

@@ -295,7 +295,11 @@ def mark_failed(engine: Engine, job_id: int, error: str, *, retry: bool = True) 
 
 
 def retry_job(engine: Engine, tenant_id: str, job_id: int) -> dict | None:
-    """只允许 failed 任务人工重试；重置 attempts/progress/error。"""
+    """只允许 failed 任务人工重试；重置 attempts/progress/error。
+
+    任务回到 queued 的同时，把对应文档从 failed 改回 pending，避免任务在跑
+    而文档仍显示失败。
+    """
     with engine.begin() as connection:
         row = connection.execute(
             text(
@@ -307,7 +311,16 @@ def retry_job(engine: Engine, tenant_id: str, job_id: int) -> dict | None:
             ),
             {"id": job_id, "t": tenant_id},
         ).mappings().first()
-    return dict(row) if row is not None else None
+        if row is None:
+            return None
+        connection.execute(
+            text(
+                "UPDATE documents SET status = 'pending', updated_at = now() "
+                "WHERE id = :d AND tenant_id = :t AND kb_id = :kb AND status = 'failed'"
+            ),
+            {"d": row["doc_id"], "t": tenant_id, "kb": row["kb_id"]},
+        )
+    return dict(row)
 
 
 def get_job(engine: Engine, tenant_id: str, job_id: int) -> dict | None:
