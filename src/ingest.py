@@ -99,15 +99,18 @@ def ingest_document(
     ]
 
     store = PgVectorStore(engine, tenant_id=tenant_id, kb_id=kb_id)
-    # 重复导入同一文档时先清旧块，保证幂等：既避免 chunk_id 主键冲突，
-    # 也防止内容变短后留下不再属于本文档的孤儿块。
-    store.delete_by_doc(doc_id)
-    store.upsert(chunks, vectors_with_none)  # type: ignore[arg-type]
-
-    # 入库完成后立即重建 BM25，避免检索层拿到与新 chunks 不一致的旧索引。
-    BM25Store(engine).rebuild(tenant_id, kb_id)
-
     with engine.begin() as connection:
+        connection.execute(
+            text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
+            {"tenant_id": tenant_id},
+        )
+        # 重复导入同一文档时先清旧块，保证幂等：既避免 chunk_id 主键冲突，
+        # 也防止内容变短后留下不再属于本文档的孤儿块。
+        store.delete_by_doc(doc_id, connection=connection)
+        store.upsert(chunks, vectors_with_none, connection=connection)  # type: ignore[arg-type]
+
+        # 块、BM25 快照和 ready 状态必须作为同一事务发布，任一步失败都完整回滚。
+        BM25Store(engine).rebuild(tenant_id, kb_id, connection=connection)
         connection.execute(
             text(
                 "UPDATE documents SET status = 'ready', updated_at = now() "

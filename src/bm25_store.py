@@ -13,9 +13,10 @@ from __future__ import annotations
 
 import json
 from collections import OrderedDict
+from contextlib import nullcontext
 
 from sqlalchemy import text
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Connection, Engine
 
 from .bm25 import BM25Index
 from .chunk import Chunk
@@ -34,16 +35,23 @@ class BM25Store:
 
     # ---------------------------------------------------------------- 构建
 
-    def rebuild(self, tenant_id: str, kb_id: str) -> int:
+    def rebuild(
+        self,
+        tenant_id: str,
+        kb_id: str,
+        *,
+        connection: Connection | None = None,
+    ) -> int:
         """从 chunks 表重建该库的倒排索引并写回快照，返回新版本号。"""
-        chunks = self._load_chunks(tenant_id, kb_id)
+        chunks = self._load_chunks(tenant_id, kb_id, connection=connection)
         if not chunks:
             raise ValueError(f"知识库 {kb_id} 没有可用的 chunk，无法构建 BM25 索引")
 
         payload = BM25Index(chunks).to_payload()
 
-        with self._engine.begin() as connection:
-            version = connection.execute(
+        scope = nullcontext(connection) if connection is not None else self._engine.begin()
+        with scope as db:
+            version = db.execute(
                 text(
                     "INSERT INTO kb_bm25 (kb_id, tenant_id, version, payload, updated_at) "
                     "VALUES (:kb_id, :tenant_id, 1, CAST(:payload AS jsonb), now()) "
@@ -65,9 +73,20 @@ class BM25Store:
         self._cache.pop(kb_id, None)
         return int(version)
 
-    def _load_chunks(self, tenant_id: str, kb_id: str) -> list[Chunk]:
-        with tenant_scope(self._engine, tenant_id) as connection:
-            rows = connection.execute(
+    def _load_chunks(
+        self,
+        tenant_id: str,
+        kb_id: str,
+        *,
+        connection: Connection | None = None,
+    ) -> list[Chunk]:
+        scope = (
+            nullcontext(connection)
+            if connection is not None
+            else tenant_scope(self._engine, tenant_id)
+        )
+        with scope as db:
+            rows = db.execute(
                 text(
                     "SELECT chunk_id, doc_id, text, content_hash, token_count, meta "
                     "FROM chunks "

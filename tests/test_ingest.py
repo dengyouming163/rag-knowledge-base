@@ -12,10 +12,12 @@ from pypdf import PdfWriter
 from sqlalchemy import text
 
 from src.bm25_store import BM25Store
-from src.chunk import split_document
+from src.chunk import Chunk, split_document
 from src.db.base import create_db_engine
 from src.ingest import NonRetryableIngestError, ingest_document
 from src.parsers.pdf import ParserUnavailable, PdfBlock, PdfParserClient
+from src.retrieve import HybridRetriever
+from src.store_pg import PgVectorStore
 
 TENANT = "t_ingest"
 KB = "kb_ingest"
@@ -401,6 +403,66 @@ def test_embed_receives_only_child_chunks(engine, tmp_path) -> None:
     # 若执行器把同一批向量整体错位/复用，这里会塌缩成更少的唯一值。
     assert len(rows) == len(child_texts)
     assert len({row["embedding_text"] for row in rows}) == len(child_texts)
+
+
+@pytest.mark.parametrize("mode", ["vector", "bm25", "hybrid"])
+def test_bm25_failure_rolls_back_chunks_from_retrieval(
+    engine, tmp_path, monkeypatch, mode
+) -> None:
+    anchor = Chunk(
+        chunk_id="doc_anchor#1",
+        doc_id="doc_anchor",
+        text="已发布的物流政策",
+        content_hash="anchor_chunk_hash",
+        token_count=8,
+    )
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO documents "
+                "(id, tenant_id, kb_id, title, source_url, content_hash, status, meta) "
+                "VALUES ('doc_anchor', :t, :kb, '已发布', '', 'anchor_doc_hash', 'ready', "
+                "'{}'::jsonb)"
+            ),
+            {"t": TENANT, "kb": KB},
+        )
+    store = PgVectorStore(engine, tenant_id=TENANT, kb_id=KB)
+    store.upsert([anchor], [[0.25] * DIM])
+    BM25Store(engine).rebuild(TENANT, KB)
+
+    original_rebuild = BM25Store.rebuild
+
+    def rebuild_then_fail(self, tenant_id, kb_id, **kwargs):
+        original_rebuild(self, tenant_id, kb_id, **kwargs)
+        raise RuntimeError("bm25 down")
+
+    monkeypatch.setattr(BM25Store, "rebuild", rebuild_then_fail)
+    path = tmp_path / "policy.md"
+    path.write_text(MARKDOWN, encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="bm25 down"):
+        ingest_document(
+            engine,
+            tenant_id=TENANT,
+            kb_id=KB,
+            doc_id=DOC,
+            path=path,
+            embed_client=FakeEmbed(),
+        )
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE documents SET status = 'failed' "
+                "WHERE id = :doc AND tenant_id = :t"
+            ),
+            {"doc": DOC, "t": TENANT},
+        )
+
+    retriever = HybridRetriever(store, BM25Store(engine).load(KB), FakeEmbed())
+    hits = retriever.retrieve("七天无理由退款", top_k=10, mode=mode)
+
+    assert all(hit.doc_id != DOC for hit in hits)
 
 
 def test_embedding_failure_keeps_document_pending(engine, tmp_path) -> None:

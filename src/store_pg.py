@@ -10,10 +10,11 @@
 from __future__ import annotations
 
 import os
+from contextlib import nullcontext
 from typing import Any, Sequence
 
 from sqlalchemy import text
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Connection, Engine
 
 from .acl import acl_condition
 from .chunk import Chunk
@@ -55,7 +56,13 @@ class PgVectorStore:
 
     # ------------------------------------------------------------------ 写入
 
-    def upsert(self, chunks: list[Chunk], vectors: list[list[float]]) -> int:
+    def upsert(
+        self,
+        chunks: list[Chunk],
+        vectors: list[list[float]],
+        *,
+        connection: Connection | None = None,
+    ) -> int:
         """按 (tenant_id, kb_id, content_hash) 幂等写入，返回处理行数。
 
         注意：本方法不负责创建 documents 行，文档元数据由入库脚本先写入，
@@ -110,15 +117,27 @@ class PgVectorStore:
             for chunk, vector in zip(chunks, vectors)
         ]
 
-        with tenant_scope(self._engine, tenant_id, write=True) as connection:
-            connection.execute(sql, rows)
+        scope = (
+            nullcontext(connection)
+            if connection is not None
+            else tenant_scope(self._engine, tenant_id, write=True)
+        )
+        with scope as db:
+            db.execute(sql, rows)
         return len(rows)
 
-    def delete_by_doc(self, doc_id: str) -> int:
+    def delete_by_doc(
+        self, doc_id: str, *, connection: Connection | None = None
+    ) -> int:
         tenant_id, kb_ids = self._resolve_scope(None)
         condition = "tenant_id = :tenant_id AND doc_id = :doc_id AND kb_id = ANY(CAST(:kb_ids AS text[]))"
-        with tenant_scope(self._engine, tenant_id, write=True) as connection:
-            result = connection.execute(
+        scope = (
+            nullcontext(connection)
+            if connection is not None
+            else tenant_scope(self._engine, tenant_id, write=True)
+        )
+        with scope as db:
+            result = db.execute(
                 text(f"DELETE FROM chunks WHERE {condition}"),
                 {"tenant_id": tenant_id, "doc_id": doc_id, "kb_ids": kb_ids},
             )
