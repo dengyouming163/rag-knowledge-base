@@ -129,3 +129,5 @@ def test_refused_answer_does_not_record_rewrite_usage(monkeypatch) -> None:
     assert "prompt_tokens" not in answer
     assert "model" not in answer
     assert "llm_ms" not in answer
+    assert "citation_ok" not in answer
+    assert "rerank_degraded" not in answer
