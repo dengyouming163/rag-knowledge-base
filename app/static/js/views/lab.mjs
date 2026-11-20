@@ -42,14 +42,19 @@ function responseTrace(result) {
   return result?.response?.headers?.get("X-Trace-Id") || "";
 }
 
-function renderAnswerHtml(answer) {
+function renderAnswerHtml(answer, citations) {
   const pattern = /\[([A-Za-z0-9][A-Za-z0-9_.:#-]{0,159})\]/g;
+  const citationIds = new Set(citations);
   let cursor = 0;
   let html = "";
   for (const match of String(answer).matchAll(pattern)) {
     html += escapeHtml(answer.slice(cursor, match.index));
     const chunkId = match[1];
-    html += `<button type="button" class="wb-lab-inline-citation" data-citation="${escapeHtml(chunkId)}" title="Expand citation ${escapeHtml(chunkId)}">${escapeHtml(match[0])}</button>`;
+    if (citationIds.has(chunkId)) {
+      html += `<button type="button" class="wb-lab-inline-citation" data-citation="${escapeHtml(chunkId)}" title="Expand citation ${escapeHtml(chunkId)}">${escapeHtml(match[0])}</button>`;
+    } else {
+      html += escapeHtml(match[0]);
+    }
     cursor = match.index + match[0].length;
   }
   return html + escapeHtml(answer.slice(cursor));
@@ -343,7 +348,7 @@ export function createLab({
     const answer = byId("answer");
     if (!answer) return;
     answer.textContent = chat.answer;
-    answer.innerHTML = renderAnswerHtml(chat.answer);
+    answer.innerHTML = renderAnswerHtml(chat.answer, chat.citations);
     answer.scrollTop = answer.scrollHeight;
   }
 
@@ -720,6 +725,24 @@ export function createLab({
     if (tab?.dataset?.labTab) selectTab(tab.dataset.labTab, { updateHash: true });
   }
 
+  function onRootKeydown(event) {
+    if (destroyed) return;
+    const tab = event.target?.closest?.("[data-lab-tab]") ?? event.target;
+    const selected = tab?.dataset?.labTab;
+    if (!LAB_TABS.has(selected)) return;
+    const tabs = [...LAB_TABS];
+    const index = tabs.indexOf(selected);
+    let next;
+    if (event.key === "ArrowRight") next = tabs[(index + 1) % tabs.length];
+    else if (event.key === "ArrowLeft") next = tabs[(index - 1 + tabs.length) % tabs.length];
+    else if (event.key === "Home") next = tabs[0];
+    else if (event.key === "End") next = tabs[tabs.length - 1];
+    else return;
+    event.preventDefault();
+    selectTab(next, { updateHash: true });
+    root.querySelector(`[data-lab-tab="${next}"]`)?.focus();
+  }
+
   function onScopeChange(event) {
     clear();
     if (event.detail?.scope) currentContext = event.detail;
@@ -761,6 +784,7 @@ export function createLab({
 
   root.addEventListener("submit", onRootSubmit);
   root.addEventListener("click", onRootClick);
+  root.addEventListener("keydown", onRootKeydown);
   window?.addEventListener("workbuddy:scopechange", onScopeChange);
   window?.addEventListener("workbuddy:refresh", onRefresh);
   window?.addEventListener("hashchange", onHashChange);
@@ -786,6 +810,7 @@ export function createLab({
       document?.removeEventListener("visibilitychange", onVisibilityChange);
       root.removeEventListener?.("submit", onRootSubmit);
       root.removeEventListener?.("click", onRootClick);
+      root.removeEventListener?.("keydown", onRootKeydown);
     },
   };
 }

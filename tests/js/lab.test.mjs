@@ -6,8 +6,9 @@ import { createLab } from "../../app/static/js/views/lab.mjs";
 
 
 class FakeElement extends EventTarget {
-  constructor() {
+  constructor(owner = null) {
     super();
+    this.owner = owner;
     this.textContent = "";
     this.innerHTML = "";
     this.value = "";
@@ -38,14 +39,19 @@ class FakeElement extends EventTarget {
   removeAttribute(name) {
     delete this.attributes[name];
   }
+
+  focus() {
+    if (this.owner) this.owner.activeElement = this;
+  }
 }
 
 class FakeRoot {
   elements = new Map();
   listeners = new Map();
+  activeElement = null;
 
   querySelector(selector) {
-    if (!this.elements.has(selector)) this.elements.set(selector, new FakeElement());
+    if (!this.elements.has(selector)) this.elements.set(selector, new FakeElement(this));
     return this.elements.get(selector);
   }
 
@@ -67,8 +73,9 @@ class FakeRoot {
     return (this.listeners.get(type) ?? []).length;
   }
 
-  dispatch(type, target = { dataset: { labTab: "chat" } }) {
+  dispatch(type, target = { dataset: { labTab: "chat" } }, init = {}) {
     const event = {
+      ...init,
       defaultPrevented: false,
       preventDefault() { this.defaultPrevented = true; },
       target,
@@ -397,6 +404,34 @@ test("Chat rejects a stream that ends before DONE and restores the submit button
   assert.equal(root.querySelector("#chat-button").disabled, false);
 });
 
+test("Chat only links current citation IDs and leaves other bracket text escaped without requests", async (t) => {
+  const requests = [];
+  const fixture = createFixture(t, {
+    api: async () => {
+      requests.push("citation search");
+      return { hits: [] };
+    },
+    fetchImpl: async () => sseStream([
+      `event: hits\ndata: ${JSON.stringify({ chunks: ["chunk-real"] })}\n\n`,
+      `data: ${JSON.stringify({ delta: "Before [NOTE] [2026] [chunk-real] <b>[NOTE]</b>" })}\n\ndata: [DONE]\n\n`,
+    ]),
+  });
+  const { root, lab, context } = fixture;
+
+  const result = await lab.startChat(context(), { question: "question", topK: 5, audience: "public" });
+
+  assert.equal(result.done, true);
+  const output = root.querySelector("#answer").innerHTML;
+  assert.equal((output.match(/wb-lab-inline-citation/g) ?? []).length, 1);
+  assert.match(output, /Before \[NOTE\] \[2026\] /);
+  assert.match(output, /&lt;b&gt;\[NOTE\]&lt;\/b&gt;/);
+  assert.match(output, /data-citation="chunk-real"/);
+  assert.doesNotMatch(output, /data-citation="(?:NOTE|2026)"/);
+  root.dispatch("click", { dataset: {} });
+  await flush();
+  assert.deepEqual(requests, []);
+});
+
 test("a citation cache miss searches once with the rewritten question and reports a remaining miss", async (t) => {
   const requests = [];
   const fixture = createFixture(t, {
@@ -662,8 +697,62 @@ function domState(root) {
     scrollTop: element.scrollTop,
     dataset: { ...element.dataset },
     attributes: { ...element.attributes },
+    focused: root.activeElement === element,
   }]);
 }
+
+test("Lab tablist supports roving keyboard focus and selection without requests", (t) => {
+  const requests = [];
+  const fixture = createFixture(t, {
+    api: async () => { requests.push("api"); return {}; },
+    fetchImpl: async () => { requests.push("fetch"); throw new Error("unexpected fetch"); },
+  });
+  const { root, window, lab } = fixture;
+  window.location = { hash: "#/lab/search" };
+  const button = (tab) => root.querySelector(`[data-lab-tab="${tab}"]`);
+  const assertSelected = (tab) => {
+    assert.equal(root.activeElement, button(tab));
+    assert.equal(button(tab).getAttribute("aria-selected"), "true");
+    assert.equal(button(tab).getAttribute("tabindex"), "0");
+    assert.equal(root.querySelector(`[data-lab-panel="${tab}"]`).hidden, false);
+    assert.equal(window.location.hash, `#/lab/${tab}`);
+    for (const other of ["search", "chat", "ingest"].filter((name) => name !== tab)) {
+      assert.equal(button(other).getAttribute("aria-selected"), "false");
+      assert.equal(button(other).getAttribute("tabindex"), "-1");
+      assert.equal(root.querySelector(`[data-lab-panel="${other}"]`).hidden, true);
+    }
+  };
+  const press = (key, tab) => {
+    const event = root.dispatch("keydown", button(tab), { key });
+    assert.equal(event.defaultPrevented, true);
+  };
+  button("search").focus();
+  assert.equal(root.listenerCount("keydown"), 1);
+
+  press("ArrowRight", "search");
+  assertSelected("chat");
+  press("ArrowRight", "chat");
+  assertSelected("ingest");
+  press("ArrowRight", "ingest");
+  assertSelected("search");
+  press("ArrowLeft", "search");
+  assertSelected("ingest");
+  press("Home", "ingest");
+  assertSelected("search");
+  press("End", "search");
+  assertSelected("ingest");
+  assert.deepEqual(requests, []);
+
+  lab.destroy();
+  const state = domState(root);
+  const hash = window.location.hash;
+  const afterDestroy = root.dispatch("keydown", button("ingest"), { key: "Home" });
+  assert.equal(afterDestroy.defaultPrevented, false);
+  assert.equal(root.listenerCount("keydown"), 0);
+  assert.deepEqual(domState(root), state);
+  assert.equal(window.location.hash, hash);
+  assert.deepEqual(requests, []);
+});
 
 test("destroy removes every listener and residual form dispatch cannot enter Lab", async (t) => {
   const requests = [];
@@ -688,17 +777,21 @@ test("destroy removes every listener and residual form dispatch cannot enter Lab
   }
   assert.equal(root.listenerCount("submit"), 1);
   assert.equal(root.listenerCount("click"), 1);
+  assert.equal(root.listenerCount("keydown"), 1);
 
   lab.destroy();
   lab.destroy();
   const state = domState(root);
   const submit = root.dispatch("submit", { id: "search-form", dataset: {} });
   root.dispatch("click");
+  const keydown = root.dispatch("keydown", root.querySelector('[data-lab-tab="chat"]'), { key: "ArrowLeft" });
   await flush();
 
   assert.equal(root.listenerCount("submit"), 0);
   assert.equal(root.listenerCount("click"), 0);
+  assert.equal(root.listenerCount("keydown"), 0);
   assert.equal(submit.defaultPrevented, false);
+  assert.equal(keydown.defaultPrevented, false);
   assert.deepEqual(domState(root), state);
   assert.deepEqual(requests, []);
   assert.deepEqual(removals.sort(), [

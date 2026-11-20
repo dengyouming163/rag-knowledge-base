@@ -17,6 +17,18 @@ export function viewFromHash(hash) {
   return normalizeView(requested);
 }
 
+function canonicalTraceHash(hash) {
+  const match = String(hash ?? "").match(/^#\/traces\/([^/?#]+)$/);
+  if (!match) return null;
+  try {
+    const traceId = decodeURIComponent(match[1]);
+    if (!/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/.test(traceId)) return null;
+    return `#/traces/${encodeURIComponent(traceId)}`;
+  } catch (_error) {
+    return null;
+  }
+}
+
 export function showView(name, root = globalThis.document) {
   const activeView = normalizeView(name);
   root.querySelectorAll("[data-view]").forEach((view) => {
@@ -90,7 +102,8 @@ function restoreRoute() {
   const labTab = view === "lab"
     ? window.location.hash.match(/^#\/lab\/(search|chat|ingest)$/)?.[1]
     : null;
-  const canonicalHash = labTab ? `#/lab/${labTab}` : `#/${view}`;
+  const traceHash = view === "traces" ? canonicalTraceHash(window.location.hash) : null;
+  const canonicalHash = labTab ? `#/lab/${labTab}` : traceHash || `#/${view}`;
   if (window.location.hash !== canonicalHash) {
     window.history.replaceState(null, "", canonicalHash);
   }

@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import os
 import re
+from functools import partial
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from threading import Thread
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,6 +17,47 @@ from app.main import create_app
 
 
 NAV = ("overview", "lab", "traces", "ingestion", "evaluation", "access", "audit")
+STATIC_ROOT = Path(__file__).parents[1] / "app" / "static"
+
+
+class _WorkbenchStaticHandler(SimpleHTTPRequestHandler):
+    def translate_path(self, path: str) -> str:
+        if path.startswith("/ui/"):
+            path = path[3:]
+        return super().translate_path(path)
+
+    def log_message(self, _format: str, *args: object) -> None:
+        pass
+
+
+@pytest.fixture()
+def workbench_page():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as playwright:
+        try:
+            browser = playwright.chromium.launch(headless=True)
+        except sync_api.Error:
+            chrome_candidates = (
+                Path(os.environ.get("PROGRAMFILES", "")) / "Google/Chrome/Application/chrome.exe",
+                Path(os.environ.get("LOCALAPPDATA", "")) / "Google/Chrome/Application/chrome.exe",
+            )
+            executable = next((path for path in chrome_candidates if path.is_file()), None)
+            if executable is None:
+                pytest.skip("No Playwright Chromium or system Chrome executable is available")
+            browser = playwright.chromium.launch(executable_path=str(executable), headless=True)
+
+        handler = partial(_WorkbenchStaticHandler, directory=str(STATIC_ROOT))
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            page = browser.new_page()
+            yield page, f"http://127.0.0.1:{server.server_port}/ui/workbench.html"
+        finally:
+            browser.close()
+            server.shutdown()
+            server.server_close()
+            thread.join()
 
 
 @pytest.fixture()
@@ -159,3 +206,73 @@ def test_workbench_muted_token_meets_aa_on_shell_backgrounds(client: TestClient)
     for background_token in ("--wb-surface", "--wb-bg"):
         ratio = _contrast_ratio(tokens["--wb-muted"], tokens[background_token])
         assert ratio >= 4.5, f"--wb-muted on {background_token} has contrast {ratio:.2f}:1"
+
+
+def test_trace_deep_links_survive_lab_clicks_and_direct_loads(workbench_page) -> None:
+    page, workbench_url = workbench_page
+    page.route(
+        "**/v1/kbs/kb_after_sale/search",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            headers={"X-Trace-Id": "trace_search"},
+            body=json.dumps({"kb_id": "kb_after_sale", "mode": "hybrid", "hits": []}),
+        ),
+    )
+    page.goto(f"{workbench_url}#/lab/search")
+    page.locator("#search-query").fill("return policy")
+    page.locator("#search-button").click()
+    trace_link = page.locator("#search-trace-link")
+    trace_link.wait_for(state="visible")
+    assert trace_link.get_attribute("href") == "#/traces/trace_search"
+
+    trace_link.click()
+    page.locator("#view-traces").wait_for(state="visible")
+    assert page.evaluate("window.location.hash") == "#/traces/trace_search"
+
+    page.goto("about:blank")
+    page.goto(f"{workbench_url}#/traces/trace%5Fdirect")
+    page.locator("#view-traces").wait_for(state="visible")
+    assert page.evaluate("window.location.hash") == "#/traces/trace_direct"
+
+    for unsafe_hash in (
+        "#/traces/%2Funsafe",
+        "#/traces/%3Cscript%3E",
+        "#/traces/trace/extra",
+        "#/traces/%E0%A4%A",
+    ):
+        page.goto(f"{workbench_url}{unsafe_hash}")
+        page.locator("#view-traces").wait_for(state="visible")
+        assert page.evaluate("window.location.hash") == "#/traces"
+
+
+def test_search_form_geometry_fits_medium_and_mobile_widths(workbench_page) -> None:
+    page, workbench_url = workbench_page
+    for width in (821, 900, 390):
+        page.set_viewport_size({"width": width, "height": 900})
+        page.goto(f"{workbench_url}#/lab/search")
+        page.locator("#search-form").wait_for(state="visible")
+        geometry = page.locator("#search-form").evaluate(
+            """form => {
+                const rect = form.getBoundingClientRect();
+                return {
+                    left: rect.left,
+                    right: rect.right,
+                    clientWidth: form.clientWidth,
+                    scrollWidth: form.scrollWidth,
+                    columns: getComputedStyle(form).gridTemplateColumns,
+                    children: [...form.children].map((element) => {
+                        const child = element.getBoundingClientRect();
+                        return { id: element.id, left: child.left, right: child.right };
+                    }),
+                };
+            }"""
+        )
+
+        assert geometry["scrollWidth"] <= geometry["clientWidth"] + 1, (width, geometry)
+        for child in geometry["children"]:
+            assert child["left"] >= geometry["left"] - 1, (width, child, geometry)
+            assert child["right"] <= geometry["right"] + 1, (width, child, geometry)
+        assert any(child["id"] == "search-button" for child in geometry["children"])
+        if width == 390:
+            assert len(geometry["columns"].split()) == 1, geometry
