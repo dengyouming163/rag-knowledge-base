@@ -169,7 +169,15 @@ class RunRequest(BaseModel):
     @field_validator("params")
     @classmethod
     def _limit_params_size(cls, value: dict) -> dict:
-        if len(json.dumps(value, ensure_ascii=False)) > 4096:
+        try:
+            encoded = json.dumps(value, ensure_ascii=False, allow_nan=False)
+        except ValueError as exc:
+            # 非有限浮点无法写入 JSONB；且 Starlette 渲染 422 时同样会因为
+            # 校验错误里的 input 含 Infinity 而失败，故在这里直接拒绝。
+            raise HTTPException(
+                status_code=422, detail="params must contain finite numbers"
+            ) from exc
+        if len(encoded) > 4096:
             raise ValueError("params too large: max 4096 characters")
         return value
 

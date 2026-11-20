@@ -93,8 +93,9 @@ def _cleanup(engine) -> None:
 
 
 @pytest.fixture()
-def client(engine) -> TestClient:
-    return TestClient(create_app())
+def client(engine):
+    with TestClient(create_app()) as test_client:
+        yield test_client
 
 
 def _audit(client: TestClient) -> list[dict]:
@@ -187,11 +188,17 @@ def test_admin_retry_resets_failed_job(
 
 
 def test_retry_missing_job_returns_404(
-    client: TestClient, monkeypatch
+    client: TestClient, engine, monkeypatch
 ) -> None:
     monkeypatch.setenv("OPS_ENABLE_ACTIONS", "1")
+    with engine.connect() as connection:
+        missing_id = int(
+            connection.execute(
+                text("SELECT COALESCE(MAX(id), 0) + 100000 FROM ingest_jobs")
+            ).scalar_one()
+        )
 
-    response = client.post("/v1/ops/jobs/999999/retry", headers=ADMIN_HEADERS)
+    response = client.post(f"/v1/ops/jobs/{missing_id}/retry", headers=ADMIN_HEADERS)
 
     assert response.status_code == 404
 
@@ -241,6 +248,16 @@ def test_duplicate_active_run_returns_409(
 
     assert first.status_code == 202
     assert second.status_code == 409
+    run_id = first.json()["run_id"]
+    denied = [
+        item
+        for item in _audit(client)
+        if item["action"] == "run_eval_mock"
+        and item["result"] == "denied"
+        and item["reason"] == "already_running"
+        and item["target"] == str(run_id)
+    ]
+    assert len(denied) == 1
 
 
 def test_invalid_run_kind_returns_422(client: TestClient, monkeypatch) -> None:
@@ -288,6 +305,25 @@ def test_run_params_rejects_nested_values(client: TestClient, monkeypatch) -> No
         f"/v1/ops/kbs/{KB}/runs",
         json={"kind": "eval_mock", "params": {"nested": {"a": 1}}},
         headers=ADMIN_HEADERS,
+    )
+
+    assert response.status_code == 422
+
+
+def test_run_params_rejects_non_finite_values(
+    client: TestClient, monkeypatch
+) -> None:
+    """Infinity/NaN 能被 json 解析但不是合法 JSONB，必须在入口拒绝。"""
+    monkeypatch.setenv("OPS_ENABLE_ACTIONS", "1")
+    # httpx 的 json= 会拒绝非有限浮点，这里直接发原始文本
+    payload = json.dumps(
+        {"kind": "eval_mock", "params": {"ratio": float("inf")}}
+    )
+
+    response = client.post(
+        f"/v1/ops/kbs/{KB}/runs",
+        content=payload,
+        headers={**ADMIN_HEADERS, "Content-Type": "application/json"},
     )
 
     assert response.status_code == 422
