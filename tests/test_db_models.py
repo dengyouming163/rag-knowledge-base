@@ -67,6 +67,13 @@ def test_tenant_kb_indexes_exist() -> None:
     assert "ix_chunks_tenant_id_kb_id_doc_id" in index_names
 
 
+def test_ops_rag_metric_stage_spans_server_default() -> None:
+    stage_spans = Base.metadata.tables["ops_rag_metrics"].c.stage_spans
+    assert stage_spans.default is not None
+    assert stage_spans.server_default is not None
+    assert str(stage_spans.server_default.arg) == "'[]'::jsonb"
+
+
 @pytest.fixture(scope="module")
 def engine():
     db_engine = create_db_engine()

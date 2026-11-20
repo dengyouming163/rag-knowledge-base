@@ -401,7 +401,9 @@ class OpsRagMetric(Base):
     prompt_tokens: Mapped[int | None] = mapped_column(Integer)
     completion_tokens: Mapped[int | None] = mapped_column(Integer)
     error_kind: Mapped[str | None] = mapped_column(Text)
-    stage_spans: Mapped[list[dict]] = mapped_column(JSONB, nullable=False, default=list)
+    stage_spans: Mapped[list[dict]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
 
     __table_args__ = (
         UniqueConstraint(
