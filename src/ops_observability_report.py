@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import text
@@ -114,6 +115,87 @@ _RAG_AGGREGATE = text(
             FROM model_tokens
         ) AS model_tokens
     FROM scoped
+    """
+)
+
+_HTTP_TIMESERIES = text(
+    """
+    WITH scoped AS (
+        SELECT
+            to_timestamp(
+                floor(extract(epoch from occurred_at) / :bucket_seconds)
+                * :bucket_seconds
+            ) AS bucket,
+            status_code
+        FROM ops_http_metrics
+        WHERE tenant_id = :tenant_id
+          AND kb_id = :kb_id
+          AND occurred_at >= :start
+          AND occurred_at < :end
+    ), bounded AS (
+        SELECT LEAST(bucket, to_timestamp(:last_bucket_epoch)) AS bucket, status_code
+        FROM scoped
+    )
+    SELECT
+        extract(epoch from bucket)::bigint AS bucket_epoch,
+        COUNT(*)::int AS requests,
+        COUNT(*) FILTER (WHERE status_code BETWEEN 400 AND 499)::int AS client_errors,
+        COUNT(*) FILTER (WHERE status_code BETWEEN 500 AND 599)::int AS server_errors
+    FROM bounded
+    GROUP BY bucket
+    """
+)
+
+_RAG_TIMESERIES = text(
+    """
+    WITH scoped AS (
+        SELECT
+            to_timestamp(
+                floor(extract(epoch from occurred_at) / :bucket_seconds)
+                * :bucket_seconds
+            ) AS bucket,
+            total_ms, retrieval_ms, llm_ms, model, prompt_tokens, completion_tokens
+        FROM ops_rag_metrics
+        WHERE tenant_id = :tenant_id
+          AND kb_id = :kb_id
+          AND occurred_at >= :start
+          AND occurred_at < :end
+    ), bounded AS (
+        SELECT LEAST(bucket, to_timestamp(:last_bucket_epoch)) AS bucket,
+               total_ms, retrieval_ms, llm_ms, model, prompt_tokens, completion_tokens
+        FROM scoped
+    ), bucket_metrics AS (
+        SELECT
+            bucket,
+            percentile_cont(0.95) WITHIN GROUP (ORDER BY total_ms) AS e2e_p95,
+            percentile_cont(0.95) WITHIN GROUP (ORDER BY retrieval_ms)
+                FILTER (WHERE retrieval_ms IS NOT NULL) AS retrieval_p95,
+            percentile_cont(0.95) WITHIN GROUP (ORDER BY llm_ms)
+                FILTER (WHERE llm_ms IS NOT NULL) AS llm_p95,
+            COALESCE(SUM(prompt_tokens), 0)::bigint AS prompt_tokens,
+            COALESCE(SUM(completion_tokens), 0)::bigint AS completion_tokens
+        FROM bounded
+        GROUP BY bucket
+    ), model_tokens AS (
+        SELECT bucket, model,
+               COALESCE(SUM(prompt_tokens), 0)::bigint AS prompt_tokens,
+               COALESCE(SUM(completion_tokens), 0)::bigint AS completion_tokens
+        FROM bounded
+        GROUP BY bucket, model
+    )
+    SELECT
+        extract(epoch from bucket)::bigint AS bucket_epoch,
+        e2e_p95, retrieval_p95, llm_p95, prompt_tokens, completion_tokens,
+        COALESCE((
+            SELECT json_agg(json_build_object(
+                'model', model,
+                'prompt_tokens', prompt_tokens,
+                'completion_tokens', completion_tokens
+            ) ORDER BY model)
+            FROM model_tokens
+            WHERE model_tokens.bucket = bucket_metrics.bucket
+        ), '[]'::json) AS model_tokens
+    FROM bucket_metrics
     """
 )
 
@@ -236,6 +318,78 @@ def summarize_observability(
             },
             "model": rag_row["model"],
         },
+    }
+
+
+def build_observability_timeseries(
+    engine: Engine,
+    tenant_id: str,
+    kb_id: str,
+    window: str,
+    pricing: dict,
+    now: datetime | None = None,
+) -> dict:
+    start, end, bucket_seconds = resolve_window(window, now=now)
+    bucket_count = int((end - start).total_seconds()) // bucket_seconds
+    first_epoch = math.floor(start.timestamp() / bucket_seconds) * bucket_seconds
+    last_bucket_epoch = first_epoch + (bucket_count - 1) * bucket_seconds
+    params = {
+        "tenant_id": tenant_id,
+        "kb_id": kb_id,
+        "start": start,
+        "end": end,
+        "bucket_seconds": bucket_seconds,
+        "last_bucket_epoch": last_bucket_epoch,
+    }
+    with engine.connect() as connection:
+        http_rows = connection.execute(_HTTP_TIMESERIES, params).mappings().all()
+        rag_rows = connection.execute(_RAG_TIMESERIES, params).mappings().all()
+
+    points_by_epoch = {}
+    series = []
+    for index in range(bucket_count):
+        bucket_epoch = first_epoch + index * bucket_seconds
+        point = {
+            "ts": datetime.fromtimestamp(bucket_epoch, timezone.utc).isoformat(),
+            "requests": 0,
+            "client_errors": 0,
+            "server_errors": 0,
+            "e2e_p95_ms": None,
+            "retrieval_p95_ms": None,
+            "llm_p95_ms": None,
+            "total_tokens": 0,
+            "estimated_cost_usd": None,
+            "pricing_configured": False,
+            "pricing_complete": False,
+            "priced_tokens": 0,
+            "unpriced_tokens": 0,
+        }
+        points_by_epoch[bucket_epoch] = point
+        series.append(point)
+
+    for row in http_rows:
+        point = points_by_epoch[row["bucket_epoch"]]
+        point["requests"] = row["requests"]
+        point["client_errors"] = row["client_errors"]
+        point["server_errors"] = row["server_errors"]
+
+    for row in rag_rows:
+        point = points_by_epoch[row["bucket_epoch"]]
+        total_tokens = row["prompt_tokens"] + row["completion_tokens"]
+        point.update({
+            "e2e_p95_ms": row["e2e_p95"],
+            "retrieval_p95_ms": row["retrieval_p95"],
+            "llm_p95_ms": row["llm_p95"],
+            "total_tokens": total_tokens,
+            **_cost(row["model_tokens"], pricing, total_tokens),
+        })
+
+    return {
+        "window": window,
+        "bucket_seconds": bucket_seconds,
+        "start_at": start.isoformat(),
+        "end_at": end.isoformat(),
+        "series": series,
     }
 
 

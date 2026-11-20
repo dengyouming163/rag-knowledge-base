@@ -27,6 +27,7 @@ from src import ingest_jobs, ops_audit, ops_runs
 from src.ingest_events import list_job_events, list_workers, record_job_event
 from src.ops_metrics import build_ops_summary
 from src.ops_observability_report import (
+    build_observability_timeseries,
     list_rag_metric_rows,
     resolve_window,
     summarize_observability,
@@ -86,6 +87,28 @@ def ops_summary(
         latest_traces=latest_traces,
         runs=ops_runs.list_runs(engine, tenant_id, kb_id, limit=5),
         workers=workers,
+    )
+
+
+@router.get("/ops/metrics/timeseries")
+def ops_metrics_timeseries(
+    kb_id: str,
+    tenant_id: TenantId,
+    engine: EngineDep,
+    window: str = "24h",
+) -> dict:
+    ensure_kb(engine, tenant_id, kb_id)
+    try:
+        resolve_window(window)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:
+        pricing = load_pricing_from_env()
+    except ValueError:
+        logger.exception("invalid model pricing configuration")
+        pricing = {}
+    return build_observability_timeseries(
+        engine, tenant_id, kb_id, window, pricing
     )
 
 
