@@ -2020,7 +2020,7 @@
         for (const button of body.querySelectorAll("[data-run-id]")) {
           button.addEventListener("click", () => loadRunDetail(Number(button.dataset.runId)));
         }
-        const latestEval = runs.find((run) => run.kind === "eval_mock") || null;
+        const latestEval = runs.find((run) => run.kind === "eval_mock" && run.summary) || null;
         renderRunMetrics(latestEval);
       }
 

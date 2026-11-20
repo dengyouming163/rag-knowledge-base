@@ -3,7 +3,7 @@
 ## 环境
 
 - 验收日期：2026-11-20
-- commit：`d01c656`（Task 15 实现与文档）+ `e947718`（ADR 索引）
+- commit：`d01c656`（Task 15 实现与文档）、`e947718`（ADR 索引）、`6b3b6cf`（浏览器验收证据）
 - 运行模式：mock（`EMBED_MODE=mock`；入库与检索使用确定性哈希向量，界面分数不代表真实检索质量）
 - `OPS_ENABLE_ACTIONS`：浏览器验收时以 `1` 启动本地 API（`127.0.0.1:8010`），同时运行 `scripts/run_ops.py --interval 2`
 - tenant / kb / user：`demo` / `kb_after_sale` / `u_admin`；非管理员场景切到 `u_member`
