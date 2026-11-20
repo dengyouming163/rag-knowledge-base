@@ -149,6 +149,22 @@ def test_compare_returns_per_user_hits(client: TestClient, monkeypatch) -> None:
     assert [row["user"] for row in rows] == ["guest", "u_member", "u_admin"]
     assert all("hits" in row and "latency_ms" in row for row in rows)
 
+    by_user = {row["user"]: row for row in rows}
+    guest = by_user["guest"]
+    member = by_user["u_member"]
+    admin = by_user["u_admin"]
+
+    # 公开块对所有人可见，且确实打出了分数（不是空召回）
+    assert guest["hits"] >= 1
+    assert guest["top_score"] is not None
+    assert "cmp#public" in guest["visible_chunk_ids"]
+    # dept:secret 受限块被 ACL 拦住：guest 与 member 都看不到
+    assert "cmp#secret" not in guest["visible_chunk_ids"]
+    assert "cmp#secret" not in member["visible_chunk_ids"]
+    # 管理员旁路 ACL，同一 query 能看到更多
+    assert "cmp#secret" in admin["visible_chunk_ids"]
+    assert admin["hits"] > guest["hits"]
+
 
 def test_compare_cross_tenant_returns_404(client: TestClient, monkeypatch) -> None:
     monkeypatch.setenv("OPS_ENABLE_ACTIONS", "1")
