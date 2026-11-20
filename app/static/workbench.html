@@ -76,7 +76,115 @@
             <div><span class="wb-view-kicker">MODULE / 01</span><h1 id="view-overview-title">Overview</h1></div>
             <p>Operational health and activity for the current scope.</p>
           </header>
-          <div class="wb-view-body" data-view-body></div>
+          <div class="wb-view-body wb-overview" data-view-body>
+            <div class="wb-overview-toolbar">
+              <div>
+                <p class="wb-overview-caption">Fixed-window service, retrieval, generation, and worker health.</p>
+                <p class="wb-overview-legend">Low sample: fewer than 30 samples; interpret rates and percentiles carefully.</p>
+              </div>
+              <div class="wb-overview-statuses" aria-live="polite">
+                <p data-overview-summary-status data-state="idle" role="status">Awaiting refresh.</p>
+                <p data-overview-trends-status data-state="idle" role="status">Awaiting refresh.</p>
+              </div>
+            </div>
+
+            <div class="wb-overview-grid" aria-label="Operational metrics">
+              <article class="wb-overview-card" data-overview-card="requests">
+                <h2>Requests</h2>
+                <p class="wb-overview-reading"><output data-overview-value="requests">—</output><span data-overview-unit="requests">req</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="requests">—</strong></span><span>Samples <strong data-overview-samples="requests">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="requests" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="avg_qpm">
+                <h2>Avg QPM</h2>
+                <p class="wb-overview-reading"><output data-overview-value="avg_qpm">—</output><span data-overview-unit="avg_qpm">req/min</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="avg_qpm">—</strong></span><span>Samples <strong data-overview-samples="avg_qpm">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="avg_qpm" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="client_errors">
+                <h2>4xx</h2>
+                <p class="wb-overview-reading"><output data-overview-value="client_errors">—</output><span data-overview-unit="client_errors">%</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="client_errors">—</strong></span><span>Samples <strong data-overview-samples="client_errors">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="client_errors" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="server_errors">
+                <h2>5xx</h2>
+                <p class="wb-overview-reading"><output data-overview-value="server_errors">—</output><span data-overview-unit="server_errors">%</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="server_errors">—</strong></span><span>Samples <strong data-overview-samples="server_errors">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="server_errors" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="e2e_p95">
+                <h2>E2E p95</h2>
+                <p class="wb-overview-reading"><output data-overview-value="e2e_p95">—</output><span data-overview-unit="e2e_p95">ms</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="e2e_p95">—</strong></span><span>Samples <strong data-overview-samples="e2e_p95">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="e2e_p95" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="retrieval_p95">
+                <h2>Retrieve p95</h2>
+                <p class="wb-overview-reading"><output data-overview-value="retrieval_p95">—</output><span data-overview-unit="retrieval_p95">ms</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="retrieval_p95">—</strong></span><span>Samples <strong data-overview-samples="retrieval_p95">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="retrieval_p95" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="llm_p95">
+                <h2>LLM p95</h2>
+                <p class="wb-overview-reading"><output data-overview-value="llm_p95">—</output><span data-overview-unit="llm_p95">ms</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="llm_p95">—</strong></span><span>Samples <strong data-overview-samples="llm_p95">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="llm_p95" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="zero_hit">
+                <h2>Zero-hit</h2>
+                <p class="wb-overview-reading"><output data-overview-value="zero_hit">—</output><span data-overview-unit="zero_hit">%</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="zero_hit">—</strong></span><span>Samples <strong data-overview-samples="zero_hit">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="zero_hit" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="refusal">
+                <h2>Refusal</h2>
+                <p class="wb-overview-reading"><output data-overview-value="refusal">—</output><span data-overview-unit="refusal">%</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="refusal">—</strong></span><span>Samples <strong data-overview-samples="refusal">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="refusal" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="citation">
+                <h2>Citation</h2>
+                <p class="wb-overview-reading"><output data-overview-value="citation">—</output><span data-overview-unit="citation">%</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="citation">—</strong></span><span>Samples <strong data-overview-samples="citation">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="citation" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="tokens">
+                <h2>Token</h2>
+                <p class="wb-overview-reading"><output data-overview-value="tokens">—</output><span data-overview-unit="tokens">tokens</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="tokens">—</strong></span><span>Samples <strong data-overview-samples="tokens">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="tokens" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="cost">
+                <h2>Cost</h2>
+                <p class="wb-overview-reading"><output data-overview-value="cost">—</output><span data-overview-unit="cost">USD</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="cost">—</strong></span><span>Samples <strong data-overview-samples="cost">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="cost" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="queue">
+                <h2>Queue</h2>
+                <p class="wb-overview-reading"><output data-overview-value="queue">—</output><span data-overview-unit="queue">queued</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="queue">—</strong></span><span>Samples <strong data-overview-samples="queue">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="queue" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="workers">
+                <h2>Workers</h2>
+                <p class="wb-overview-reading"><output data-overview-value="workers">—</output><span data-overview-unit="workers">workers</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="workers">—</strong></span><span>Samples <strong data-overview-samples="workers">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="workers" hidden></p>
+              </article>
+            </div>
+
+            <div class="wb-overview-trends" aria-label="Operational trends">
+              <div class="wb-overview-trends-heading"><h2>Trends</h2><p>Fixed buckets · missing values remain empty</p></div>
+              <div class="wb-overview-trend-grid">
+                <article class="wb-overview-trend" data-overview-trend="requests"><h3>Requests</h3><div class="wb-overview-trend-canvas" data-overview-trend-svg="requests"><div class="wb-overview-empty" data-trend-empty>No trend data.</div></div></article>
+                <article class="wb-overview-trend" data-overview-trend="e2e_p95_ms"><h3>E2E p95</h3><div class="wb-overview-trend-canvas" data-overview-trend-svg="e2e_p95_ms"><div class="wb-overview-empty" data-trend-empty>No trend data.</div></div></article>
+                <article class="wb-overview-trend" data-overview-trend="retrieval_p95_ms"><h3>Retrieve p95</h3><div class="wb-overview-trend-canvas" data-overview-trend-svg="retrieval_p95_ms"><div class="wb-overview-empty" data-trend-empty>No trend data.</div></div></article>
+                <article class="wb-overview-trend" data-overview-trend="llm_p95_ms"><h3>LLM p95</h3><div class="wb-overview-trend-canvas" data-overview-trend-svg="llm_p95_ms"><div class="wb-overview-empty" data-trend-empty>No trend data.</div></div></article>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section id="view-lab" data-view="lab" hidden aria-labelledby="view-lab-title">

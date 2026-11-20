@@ -48,6 +48,50 @@ def test_workbench_shell(client: TestClient) -> None:
         assert f'data-view="{name}" hidden' in html
 
 
+def test_workbench_overview_contains_operational_metrics_and_trends(
+    client: TestClient,
+) -> None:
+    html = client.get("/ui/workbench.html").text
+    overview = html.split('<section id="view-overview"', 1)[1].split("</section>", 1)[0]
+
+    for label in (
+        "Requests",
+        "Avg QPM",
+        "4xx",
+        "5xx",
+        "E2E p95",
+        "Retrieve p95",
+        "LLM p95",
+        "Zero-hit",
+        "Refusal",
+        "Citation",
+        "Token",
+        "Cost",
+        "Queue",
+        "Workers",
+    ):
+        assert label in overview
+
+    metric_names = (
+        "requests", "avg_qpm", "client_errors", "server_errors", "e2e_p95",
+        "retrieval_p95", "llm_p95", "zero_hit", "refusal", "citation",
+        "tokens", "cost", "queue", "workers",
+    )
+    assert overview.count("data-overview-card=") == len(metric_names)
+    for name in metric_names:
+        assert f'data-overview-card="{name}"' in overview
+    for field in ("value", "unit", "window", "samples"):
+        assert overview.count(f"data-overview-{field}=") == len(metric_names)
+    assert "Low sample" in overview
+
+    for name in ("requests", "e2e_p95_ms", "retrieval_p95_ms", "llm_p95_ms"):
+        assert f'data-overview-trend="{name}"' in overview
+        assert f'data-overview-trend-svg="{name}"' in overview
+
+    assert 'from "./views/overview.mjs"' in client.get("/ui/js/app.mjs").text
+    assert client.get("/ui/js/views/overview.mjs").status_code == 200
+
+
 def test_workbench_core_modules(client: TestClient) -> None:
     app_response = client.get("/ui/js/app.mjs")
     css_response = client.get("/ui/css/workbench.css")

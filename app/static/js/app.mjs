@@ -1,8 +1,10 @@
 import { ScopeGuard } from "./core.mjs";
+import { createOverview } from "./views/overview.mjs";
 
 const VIEW_NAMES = ["overview", "lab", "traces", "ingestion", "evaluation", "access", "audit"];
 const scopeGuard = new ScopeGuard();
 let activeScope = null;
+let overviewController = null;
 
 function normalizeView(name) {
   return VIEW_NAMES.includes(name) ? name : "overview";
@@ -33,6 +35,7 @@ export function showView(name, root = globalThis.document) {
       button.removeAttribute("aria-current");
     }
   });
+  overviewController?.setActive(activeView === "overview");
   return activeView;
 }
 
@@ -48,11 +51,13 @@ function readScope() {
 
 function clearViewState() {
   document.querySelectorAll("[data-view]").forEach((view) => {
+    if (view.dataset.view === "overview") return;
     view.querySelectorAll("[data-view-body]").forEach((body) => body.replaceChildren());
     view.querySelectorAll(".is-selected").forEach((item) => item.classList.remove("is-selected"));
     view.querySelectorAll("[aria-selected]").forEach((item) => item.setAttribute("aria-selected", "false"));
     view.querySelectorAll("[data-selected]").forEach((item) => item.removeAttribute("data-selected"));
   });
+  overviewController?.clear();
 }
 
 function setStatus(message) {
@@ -88,6 +93,10 @@ function restoreRoute() {
 
 function initializeWorkbench() {
   activeScope = readScope();
+  overviewController = createOverview({
+    root: document.getElementById("view-overview"),
+    guard: scopeGuard,
+  });
   restoreRoute();
 
   document.querySelectorAll("[data-nav]").forEach((button) => {

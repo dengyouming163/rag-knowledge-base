@@ -1,0 +1,369 @@
+import { apiJson } from "../api.mjs";
+import { escapeHtml, formatMetric } from "../core.mjs";
+
+const REFRESH_INTERVAL_MS = 15000;
+const LOW_SAMPLE_THRESHOLD = 30;
+const TRENDS = [
+  { key: "requests", label: "Requests", unit: "req" },
+  { key: "e2e_p95_ms", label: "E2E p95", unit: "ms" },
+  { key: "retrieval_p95_ms", label: "Retrieve p95", unit: "ms" },
+  { key: "llm_p95_ms", label: "LLM p95", unit: "ms" },
+];
+const METRIC_NAMES = [
+  "requests", "avg_qpm", "client_errors", "server_errors", "e2e_p95",
+  "retrieval_p95", "llm_p95", "zero_hit", "refusal", "citation",
+  "tokens", "cost", "queue", "workers",
+];
+
+function finiteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function percentage(value) {
+  const numeric = finiteNumber(value);
+  return numeric === null ? null : numeric * 100;
+}
+
+export function costStatus(tokens = {}) {
+  if (!tokens.pricing_configured) return "Not configured";
+  return tokens.pricing_complete ? "Complete estimate" : "Partial estimate";
+}
+
+export function renderTrend(series, { key = "requests", label = "Requests", unit = "" } = {}) {
+  const points = (Array.isArray(series) ? series : [])
+    .map((point) => ({ ts: String(point?.ts ?? ""), value: finiteNumber(point?.[key]) }))
+    .filter((point) => point.value !== null);
+
+  if (!points.length) {
+    return `<div class="wb-overview-empty" data-trend-empty>No trend data for ${escapeHtml(label)}.</div>`;
+  }
+
+  const width = 640;
+  const height = 180;
+  const left = 38;
+  const right = 16;
+  const top = 18;
+  const bottom = 34;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+  const values = points.map((point) => point.value);
+  let minimum = Math.min(...values);
+  let maximum = Math.max(...values);
+  if (minimum === maximum) {
+    const padding = Math.max(1, Math.abs(maximum) * 0.1);
+    minimum -= padding;
+    maximum += padding;
+  }
+  const coordinate = (value) => Number(value.toFixed(2));
+  const coordinates = points.map((point, index) => ({
+    x: coordinate(points.length === 1 ? left + plotWidth / 2 : left + index * plotWidth / (points.length - 1)),
+    y: coordinate(top + (maximum - point.value) * plotHeight / (maximum - minimum)),
+  }));
+  const path = coordinates.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ");
+  const circles = coordinates.map((point) => (
+    `<circle cx="${point.x}" cy="${point.y}" r="2.5"></circle>`
+  )).join("");
+  const firstTimestamp = escapeHtml(points[0].ts);
+  const lastTimestamp = escapeHtml(points.at(-1).ts);
+
+  return `<svg class="wb-overview-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(label)} trend">
+    <title>${escapeHtml(label)}</title>
+    <line class="wb-overview-axis" x1="${left}" y1="${height - bottom}" x2="${width - right}" y2="${height - bottom}"></line>
+    <text class="wb-overview-axis-label" x="4" y="${top + 4}">${escapeHtml(formatMetric(maximum, "", 1))}</text>
+    <text class="wb-overview-axis-label" x="4" y="${height - bottom}">${escapeHtml(formatMetric(minimum, "", 1))}</text>
+    <text class="wb-overview-unit" x="${width - right}" y="12" text-anchor="end">${escapeHtml(unit)}</text>
+    <path d="${path}" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"></path>
+    ${circles}
+    <text class="wb-overview-axis-label" x="${left}" y="${height - 10}">${firstTimestamp}</text>
+    <text class="wb-overview-axis-label" x="${width - right}" y="${height - 10}" text-anchor="end">${lastTimestamp}</text>
+  </svg>`;
+}
+
+function metricDefinitions(summary) {
+  const observability = summary?.observability ?? {};
+  const http = observability.http ?? {};
+  const rag = observability.rag ?? {};
+  const latency = rag.latency_ms ?? {};
+  const tokens = observability.tokens ?? {};
+  const queue = summary?.queue ?? {};
+  const workers = Array.isArray(summary?.workers) ? summary.workers.length : null;
+  const quantile = (name) => ({
+    value: latency[name]?.p95,
+    unit: "ms",
+    digits: 1,
+    samples: latency[name]?.samples,
+  });
+  const rate = (name) => ({
+    value: percentage(rag[name]?.rate),
+    unit: "%",
+    digits: 1,
+    samples: rag[name]?.denominator,
+  });
+
+  return {
+    requests: { value: http.requests, unit: "req", digits: 0, samples: http.requests },
+    avg_qpm: { value: http.avg_qpm, unit: "req/min", digits: 2, samples: http.requests },
+    client_errors: { value: percentage(http["4xx_rate"]), unit: "%", digits: 1, samples: http.requests },
+    server_errors: { value: percentage(http["5xx_rate"]), unit: "%", digits: 1, samples: http.requests },
+    e2e_p95: quantile("e2e"),
+    retrieval_p95: quantile("retrieve"),
+    llm_p95: quantile("llm"),
+    zero_hit: rate("zero_hit"),
+    refusal: rate("refusal"),
+    citation: rate("citation"),
+    tokens: { value: tokens.total, unit: "tokens", digits: 0, samples: rag.operations },
+    cost: {
+      value: tokens.estimated_cost_usd,
+      unit: "USD",
+      digits: 6,
+      samples: rag.operations,
+      note: summary?.observability?.tokens ? costStatus(tokens) : "",
+    },
+    queue: { value: queue.queued, unit: "queued", digits: 0, samples: queue.total },
+    workers: { value: workers, unit: "workers", digits: 0, samples: workers },
+  };
+}
+
+function scopeKey(scope) {
+  return JSON.stringify([scope.tenant, scope.kb, scope.user, scope.window]);
+}
+
+function endpoint(path, scope) {
+  const query = new URLSearchParams({ kb_id: scope.kb ?? "", window: scope.window || "24h" });
+  return `${path}?${query.toString()}`;
+}
+
+function errorMessage(error) {
+  return error instanceof Error && error.message ? error.message : "Request failed";
+}
+
+export function createOverview({
+  root,
+  guard,
+  api = apiJson,
+  document = globalThis.document,
+  window = globalThis.window,
+  setInterval = globalThis.setInterval,
+  clearInterval = globalThis.clearInterval,
+  now = () => new Date(),
+} = {}) {
+  if (!root) {
+    return {
+      async loadOverview() {},
+      setActive() {},
+      clear() {},
+      destroy() {},
+    };
+  }
+
+  let active = false;
+  let destroyed = false;
+  let timer = null;
+  let requestVersion = 0;
+  let currentContext = null;
+  let currentScopeKey = null;
+  let summaryCache = null;
+  let trendsCache = null;
+
+  function setText(selector, value) {
+    const element = root.querySelector(selector);
+    if (element) element.textContent = value;
+  }
+
+  function setPanelStatus(panel, message, state, timestamps = {}) {
+    const status = root.querySelector(`[data-overview-${panel}-status]`);
+    if (!status) return;
+    status.textContent = message;
+    status.setAttribute("data-state", state);
+    status.removeAttribute("data-stale-at");
+    status.removeAttribute("data-last-success-at");
+    for (const [name, value] of Object.entries(timestamps)) {
+      status.setAttribute(`data-${name}`, value);
+    }
+  }
+
+  function renderSummary(summary, fallbackWindow = "—") {
+    const definitions = metricDefinitions(summary);
+    const window = summary?.observability?.window || fallbackWindow || "—";
+    for (const name of METRIC_NAMES) {
+      const definition = definitions[name];
+      const samples = finiteNumber(definition.samples);
+      const lowSample = samples !== null && samples >= 0 && samples < LOW_SAMPLE_THRESHOLD;
+      const notes = [definition.note, lowSample ? "Low sample · interpret carefully" : ""].filter(Boolean);
+      setText(`[data-overview-value="${name}"]`, formatMetric(definition.value, "", definition.digits));
+      setText(`[data-overview-unit="${name}"]`, definition.unit);
+      setText(`[data-overview-window="${name}"]`, window);
+      setText(`[data-overview-samples="${name}"]`, formatMetric(definition.samples, "", 0));
+      setText(`[data-overview-note="${name}"]`, notes.join(" · "));
+      const note = root.querySelector(`[data-overview-note="${name}"]`);
+      if (note) note.hidden = notes.length === 0;
+    }
+  }
+
+  function renderTrends(data) {
+    const series = Array.isArray(data?.series) ? data.series : [];
+    for (const trend of TRENDS) {
+      const container = root.querySelector(`[data-overview-trend-svg="${trend.key}"]`);
+      if (container) container.innerHTML = renderTrend(series, trend);
+    }
+  }
+
+  function resetPanels() {
+    summaryCache = null;
+    trendsCache = null;
+    renderSummary(null);
+    renderTrends(null);
+    setPanelStatus("summary", "Awaiting refresh.", "idle");
+    setPanelStatus("trends", "Awaiting refresh.", "idle");
+  }
+
+  function clear() {
+    requestVersion += 1;
+    currentContext = null;
+    currentScopeKey = null;
+    resetPanels();
+  }
+
+  function canRender(context, version) {
+    return !destroyed
+      && active
+      && document.visibilityState === "visible"
+      && version === requestVersion
+      && scopeKey(context.scope) === currentScopeKey
+      && guard.isCurrent(context);
+  }
+
+  async function loadSummary(context, version) {
+    const cached = summaryCache?.key === currentScopeKey ? summaryCache : null;
+    if (cached) renderSummary(cached.data, context.scope.window);
+    setPanelStatus("summary", cached ? "Refreshing summary…" : "Loading summary…", "loading");
+    try {
+      const data = await api(endpoint("/v1/ops/summary", context.scope), {
+        scope: context.scope,
+        signal: context.signal,
+      });
+      if (!canRender(context, version)) return;
+      const updatedAt = now().toISOString();
+      summaryCache = { key: currentScopeKey, data, updatedAt };
+      renderSummary(data, context.scope.window);
+      setPanelStatus("summary", `Updated ${updatedAt}`, "success");
+    } catch (error) {
+      if (!canRender(context, version)) return;
+      const staleAt = now().toISOString();
+      if (cached) {
+        renderSummary(cached.data, context.scope.window);
+        setPanelStatus(
+          "summary",
+          `stale-at ${staleAt} · Last success ${cached.updatedAt} · ${errorMessage(error)}`,
+          "stale",
+          { "stale-at": staleAt, "last-success-at": cached.updatedAt },
+        );
+      } else {
+        renderSummary(null, context.scope.window);
+        setPanelStatus("summary", `Summary unavailable: ${errorMessage(error)}`, "error");
+      }
+    }
+  }
+
+  async function loadTrends(context, version) {
+    const cached = trendsCache?.key === currentScopeKey ? trendsCache : null;
+    if (cached) renderTrends(cached.data);
+    setPanelStatus("trends", cached ? "Refreshing trends…" : "Loading trends…", "loading");
+    try {
+      const data = await api(endpoint("/v1/ops/metrics/timeseries", context.scope), {
+        scope: context.scope,
+        signal: context.signal,
+      });
+      if (!canRender(context, version)) return;
+      const updatedAt = now().toISOString();
+      trendsCache = { key: currentScopeKey, data, updatedAt };
+      renderTrends(data);
+      setPanelStatus("trends", `Updated ${updatedAt}`, "success");
+    } catch (error) {
+      if (!canRender(context, version)) return;
+      const staleAt = now().toISOString();
+      if (cached) {
+        renderTrends(cached.data);
+        setPanelStatus(
+          "trends",
+          `stale-at ${staleAt} · Last success ${cached.updatedAt} · ${errorMessage(error)}`,
+          "stale",
+          { "stale-at": staleAt, "last-success-at": cached.updatedAt },
+        );
+      } else {
+        renderTrends(null);
+        setPanelStatus("trends", `Trends unavailable: ${errorMessage(error)}`, "error");
+      }
+    }
+  }
+
+  async function loadOverview(scopeSnapshot) {
+    if (!scopeSnapshot?.scope || !guard.isCurrent(scopeSnapshot)) return;
+    const key = scopeKey(scopeSnapshot.scope);
+    if (key !== currentScopeKey) {
+      requestVersion += 1;
+      currentScopeKey = key;
+      resetPanels();
+    }
+    currentContext = scopeSnapshot;
+    const version = ++requestVersion;
+    const summaryRequest = loadSummary(scopeSnapshot, version);
+    const trendsRequest = loadTrends(scopeSnapshot, version);
+    await Promise.allSettled([summaryRequest, trendsRequest]);
+  }
+
+  function clearTimer() {
+    if (timer === null) return;
+    clearInterval(timer);
+    timer = null;
+  }
+
+  function syncTimer() {
+    clearTimer();
+    if (!destroyed && active && document.visibilityState === "visible") {
+      timer = setInterval(onTimer, REFRESH_INTERVAL_MS);
+    }
+  }
+
+  function onTimer() {
+    if (
+      !active
+      || document.visibilityState !== "visible"
+      || !currentContext
+      || !guard.isCurrent(currentContext)
+    ) return undefined;
+    return loadOverview(currentContext);
+  }
+
+  function setActive(value) {
+    const next = Boolean(value);
+    if (active === next) return;
+    active = next;
+    if (!active) requestVersion += 1;
+    syncTimer();
+  }
+
+  function onRefresh(event) {
+    if (event.detail?.view !== "overview" || !active || document.visibilityState !== "visible") return;
+    void loadOverview(event.detail);
+  }
+
+  function onVisibilityChange() {
+    if (document.visibilityState !== "visible") requestVersion += 1;
+    syncTimer();
+  }
+
+  function destroy() {
+    destroyed = true;
+    requestVersion += 1;
+    clearTimer();
+    window.removeEventListener("workbuddy:refresh", onRefresh);
+    document.removeEventListener("visibilitychange", onVisibilityChange);
+  }
+
+  window.addEventListener("workbuddy:refresh", onRefresh);
+  document.addEventListener("visibilitychange", onVisibilityChange);
+  resetPanels();
+
+  return { loadOverview, setActive, clear, destroy };
+}
