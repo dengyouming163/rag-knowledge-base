@@ -107,10 +107,11 @@ function initializeWorkbench() {
     document.getElementById(id)?.addEventListener("change", applyScope);
   }
 
+  // scopechange is notification only; refresh is the sole business data-load trigger.
   document.getElementById("scope-form")?.addEventListener("submit", (event) => {
     event.preventDefault();
-    if (applyScope()) return;
-    scopeGuard.invalidate();
+    const scopeChanged = applyScope();
+    if (!scopeChanged) scopeGuard.invalidate();
     const view = viewFromHash(window.location.hash);
     const snapshot = scopeGuard.snapshot();
     setStatus(`Refresh requested for ${view}.`);

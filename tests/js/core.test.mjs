@@ -355,7 +355,7 @@ test("manual refresh invalidates the previous epoch without emitting scopechange
   assert.equal(refreshes[1].signal.aborted, false);
 });
 
-test("submit emits only scopechange when scope changed and preserves change events", async (t) => {
+test("changed submit emits one scopechange and one refresh with the same new snapshot", async (t) => {
   const { controls, form, window } = await loadWorkbench(t);
   const refreshes = [];
   const scopeChanges = [];
@@ -366,14 +366,31 @@ test("submit emits only scopechange when scope changed and preserves change even
   submit(form);
 
   assert.equal(scopeChanges.length, 1);
-  assert.equal(refreshes.length, 0);
+  assert.equal(refreshes.length, 1);
   assert.equal(scopeChanges[0].scope.tenant, "tenant_b");
-  assert.equal(scopeChanges[0].signal.aborted, false);
+  assert.equal(refreshes[0].scope.tenant, "tenant_b");
+  assert.equal(refreshes[0].epoch, scopeChanges[0].epoch);
+  assert.equal(refreshes[0].signal, scopeChanges[0].signal);
+  assert.equal(refreshes[0].signal.aborted, false);
+});
 
-  controls["scope-tenant"].value = "tenant_c";
+test("change followed by submit emits exactly one business load through refresh", async (t) => {
+  const { controls, form, window } = await loadWorkbench(t);
+  const businessLoads = [];
+  const scopeChanges = [];
+  window.addEventListener("workbuddy:refresh", (event) => businessLoads.push(event.detail));
+  window.addEventListener("workbuddy:scopechange", (event) => scopeChanges.push(event.detail));
+
+  controls["scope-tenant"].value = "tenant_b";
   controls["scope-tenant"].dispatchEvent(new Event("change"));
-  assert.equal(scopeChanges.length, 2);
-  assert.equal(scopeChanges[1].epoch, scopeChanges[0].epoch + 1);
+  submit(form);
+
+  assert.equal(scopeChanges.length, 1);
+  assert.equal(businessLoads.length, 1);
+  assert.equal(scopeChanges[0].scope.tenant, "tenant_b");
+  assert.equal(businessLoads[0].scope.tenant, "tenant_b");
+  assert.equal(businessLoads[0].epoch, scopeChanges[0].epoch + 1);
+  assert.notEqual(businessLoads[0].signal, scopeChanges[0].signal);
   assert.equal(scopeChanges[0].signal.aborted, true);
-  assert.equal(refreshes.length, 0);
+  assert.equal(businessLoads[0].signal.aborted, false);
 });
