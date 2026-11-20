@@ -133,9 +133,19 @@ def test_summary_returns_cockpit_structure(
     assert body["queue"]["total"] >= 1
     assert isinstance(body["ai"]["requests"], int)
     assert body["ai"]["requests"] == 0
-    assert body["observability"]["window"] == "24h"
-    assert body["observability"]["http"]["requests"] == 0
-    assert body["observability"]["rag"]["operations"] == 0
+    observability = body["observability"]
+    assert set(observability) == {
+        "window", "start_at", "end_at", "generated_at", "http", "rag", "tokens"
+    }
+    assert observability["window"] == "24h"
+    assert observability["http"]["requests"] == 0
+    assert observability["rag"]["operations"] == 0
+    assert "tokens" not in observability["rag"]
+    assert "cost" not in observability["rag"]
+    assert set(observability["tokens"]) == {
+        "prompt", "completion", "total", "pricing_configured", "pricing_complete",
+        "estimated_cost_usd", "priced_tokens", "unpriced_tokens",
+    }
     assert body["latest_traces"] == []
     assert isinstance(body["latest_runs"], list)
     assert isinstance(body["workers"], list)
@@ -195,7 +205,16 @@ def test_summary_maps_legacy_ai_and_returns_latest_metric_rows(
         "estimated_cost": 0.00024,
     }
     assert body["observability"]["rag"]["operations"] == 3
-    assert body["observability"]["rag"]["cost"]["pricing_complete"] is True
+    assert body["observability"]["tokens"] == {
+        "prompt": 140,
+        "completion": 50,
+        "total": 190,
+        "pricing_configured": True,
+        "pricing_complete": True,
+        "estimated_cost_usd": 0.00024,
+        "priced_tokens": 190,
+        "unpriced_tokens": 0,
+    }
     assert len(body["latest_traces"]) == 3
     assert {row["trace_id"] for row in body["latest_traces"]} == {
         "summary-chat-ok", "summary-chat-refused", "summary-search"
@@ -234,9 +253,9 @@ def test_summary_invalid_pricing_degrades_cost_without_failing(
         )
 
     assert response.status_code == 200
-    cost = response.json()["observability"]["rag"]["cost"]
-    assert cost["pricing_configured"] is False
-    assert cost["pricing_complete"] is False
-    assert cost["estimated_cost_usd"] is None
+    tokens = response.json()["observability"]["tokens"]
+    assert tokens["pricing_configured"] is False
+    assert tokens["pricing_complete"] is False
+    assert tokens["estimated_cost_usd"] is None
     assert response.json()["ai"]["estimated_cost"] is None
     assert "invalid model pricing configuration" in caplog.text

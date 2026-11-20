@@ -186,7 +186,7 @@ def summarize_observability(
     pricing: dict,
     now: datetime | None = None,
 ) -> dict:
-    start, end, bucket_seconds = resolve_window(window, now=now)
+    start, end, _ = resolve_window(window, now=now)
     params = {"tenant_id": tenant_id, "kb_id": kb_id, "start": start, "end": end}
     with engine.connect() as connection:
         http_row = connection.execute(_HTTP_AGGREGATE, params).mappings().one()
@@ -199,9 +199,15 @@ def summarize_observability(
     total_tokens = prompt_tokens + completion_tokens
     return {
         "window": window,
-        "start": start.isoformat(),
-        "end": end.isoformat(),
-        "bucket_seconds": bucket_seconds,
+        "start_at": start.isoformat(),
+        "end_at": end.isoformat(),
+        "generated_at": end.isoformat(),
+        "tokens": {
+            "prompt": prompt_tokens,
+            "completion": completion_tokens,
+            "total": total_tokens,
+            **_cost(rag_row["model_tokens"], pricing, total_tokens),
+        },
         "http": {
             "requests": requests,
             "avg_qpm": round(requests / window_minutes, 4),
@@ -228,13 +234,7 @@ def summarize_observability(
                 prefix: _quantiles(rag_row, prefix)
                 for prefix in ("e2e", "retrieve", "rerank", "llm")
             },
-            "tokens": {
-                "prompt": prompt_tokens,
-                "completion": completion_tokens,
-                "total": total_tokens,
-            },
             "model": rag_row["model"],
-            "cost": _cost(rag_row["model_tokens"], pricing, total_tokens),
         },
     }
 

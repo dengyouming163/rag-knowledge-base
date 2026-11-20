@@ -71,6 +71,7 @@ def build_ops_summary(
     workers: list[dict],
 ) -> dict:
     rag = observability["rag"]
+    tokens = observability["tokens"]
     llm_latency = rag["latency_ms"]["llm"]
     ai = {
         "requests": rag["refusal"]["denominator"],
@@ -78,10 +79,12 @@ def build_ops_summary(
         "zero_result_rate": rag["zero_hit"]["rate"],
         "citation_ok_rate": rag["citation"]["rate"],
         "rerank_degraded_rate": rag["rerank_degraded"]["rate"],
-        "tokens": rag["tokens"],
+        "tokens": {
+            key: tokens[key] for key in ("prompt", "completion", "total")
+        },
         "llm_latency_ms": {"p50": llm_latency["p50"], "p95": llm_latency["p95"]},
         "model": rag["model"],
-        "estimated_cost": rag["cost"]["estimated_cost_usd"],
+        "estimated_cost": tokens["estimated_cost_usd"],
     }
     return {
         "health": health,

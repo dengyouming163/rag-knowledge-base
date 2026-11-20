@@ -178,10 +178,13 @@ def test_summarize_observability_uses_raw_scoped_rows_and_two_queries(
         statement.lstrip().upper().startswith(("SELECT", "WITH"))
         for statement in statements
     )
+    assert set(result) == {
+        "window", "start_at", "end_at", "generated_at", "http", "rag", "tokens"
+    }
     assert result["window"] == "1h"
-    assert result["start"] == START.isoformat()
-    assert result["end"] == NOW.isoformat()
-    assert result["bucket_seconds"] == 60
+    assert result["start_at"] == START.isoformat()
+    assert result["end_at"] == NOW.isoformat()
+    assert result["generated_at"] == NOW.isoformat()
 
     http = result["http"]
     assert http["requests"] == 4
@@ -208,9 +211,13 @@ def test_summarize_observability_uses_raw_scoped_rows_and_two_queries(
         "rerank": {"p50": 40.0, "p95": 58.0, "p99": 59.6, "samples": 3},
         "llm": {"p50": 55.0, "p95": 77.5, "p99": 79.5, "samples": 2},
     }
-    assert rag["tokens"] == {"prompt": 240, "completion": 70, "total": 310}
     assert rag["model"] == "unknown"
-    assert rag["cost"] == {
+    assert "tokens" not in rag
+    assert "cost" not in rag
+    assert result["tokens"] == {
+        "prompt": 240,
+        "completion": 70,
+        "total": 310,
         "pricing_configured": True,
         "pricing_complete": False,
         "estimated_cost_usd": 0.00024,
@@ -236,8 +243,10 @@ def test_empty_window_uses_null_rates_and_independent_zero_samples(metric_scope)
         assert rag[key] == {"numerator": 0, "denominator": 0, "rate": None}
     for quantiles in rag["latency_ms"].values():
         assert quantiles == {"p50": None, "p95": None, "p99": None, "samples": 0}
-    assert rag["tokens"] == {"prompt": 0, "completion": 0, "total": 0}
-    assert rag["cost"] == {
+    assert result["tokens"] == {
+        "prompt": 0,
+        "completion": 0,
+        "total": 0,
         "pricing_configured": False,
         "pricing_complete": False,
         "estimated_cost_usd": None,
@@ -262,7 +271,10 @@ def test_estimation_value_error_degrades_without_hiding_metrics(
         result = summarize_observability(engine, tenant, kb, "1h", pricing, now=NOW)
 
     assert result["rag"]["operations"] == 1
-    assert result["rag"]["cost"] == {
+    assert result["tokens"] == {
+        "prompt": 1_000_000,
+        "completion": 0,
+        "total": 1_000_000,
         "pricing_configured": False,
         "pricing_complete": False,
         "estimated_cost_usd": None,

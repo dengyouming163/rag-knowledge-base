@@ -34,15 +34,18 @@ def test_build_summary_maps_legacy_ai_from_observability() -> None:
     observability = {
         "window": "1h",
         "http": {"requests": 8},
+        "tokens": {
+            "prompt": 240, "completion": 70, "total": 310,
+            "pricing_configured": True, "pricing_complete": True,
+            "estimated_cost_usd": 0.00024, "priced_tokens": 310, "unpriced_tokens": 0,
+        },
         "rag": {
             "refusal": {"numerator": 1, "denominator": 3, "rate": 0.3333},
             "zero_hit": {"numerator": 1, "denominator": 4, "rate": 0.25},
             "citation": {"numerator": 2, "denominator": 3, "rate": 0.6667},
             "rerank_degraded": {"numerator": 1, "denominator": 2, "rate": 0.5},
-            "tokens": {"prompt": 240, "completion": 70, "total": 310},
             "latency_ms": {"llm": {"p50": 55.0, "p95": 77.5, "p99": 79.5, "samples": 2}},
             "model": "m1",
-            "cost": {"estimated_cost_usd": 0.00024},
         },
     }
     latest_traces = [{"trace_id": "new"}, {"trace_id": "old"}]
