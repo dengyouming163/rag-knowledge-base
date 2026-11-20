@@ -250,3 +250,95 @@ class User(Base):
     )
 
     __table_args__ = (Index("ix_users_tenant_id", "tenant_id"),)
+
+
+class OpsRun(Base):
+    """调测驾驶舱的一次运行：评测/压测/故障演练都复用它。"""
+
+    __tablename__ = "ops_runs"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    kb_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_bases.id", ondelete="CASCADE"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
+    params: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    requested_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    exit_code: Mapped[int | None] = mapped_column(Integer)
+    summary: Mapped[dict | None] = mapped_column(JSONB)
+    artifact_path: Mapped[str | None] = mapped_column(Text)
+    output_tail: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        Index("ix_ops_runs_tenant_kb_id", "tenant_id", "kb_id", "id"),
+    )
+
+
+class OpsAudit(Base):
+    """驾驶舱操作审计：谁在哪个租户上做了什么、被允许还是拒绝。"""
+
+    __tablename__ = "ops_audit"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    actor: Mapped[str] = mapped_column(String(128), nullable=False)
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    target: Mapped[str | None] = mapped_column(String(128))
+    result: Mapped[str] = mapped_column(String(32), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text)
+    detail: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        Index("ix_ops_audit_tenant_id", "tenant_id", "id"),
+    )
+
+
+class IngestJobEvent(Base):
+    """入库任务的分阶段事件流，供驾驶舱实时展示阶段耗时。"""
+
+    __tablename__ = "ingest_job_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    job_id: Mapped[int] = mapped_column(
+        ForeignKey("ingest_jobs.id", ondelete="CASCADE"), nullable=False
+    )
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    stage: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    progress: Mapped[int | None] = mapped_column(Integer)
+    message: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        Index("ix_ingest_job_events_job_id", "job_id", "id"),
+    )
+
+
+class OpsWorker(Base):
+    """worker 心跳表：跨租户，故不设 tenant_id。"""
+
+    __tablename__ = "ops_workers"
+
+    worker_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    version: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    current_job_id: Mapped[int | None] = mapped_column(BigInteger)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

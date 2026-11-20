@@ -19,6 +19,10 @@ EXPECTED_TABLES = {
     "agent_kb_bindings",
     "ingest_jobs",
     "users",
+    "ops_runs",
+    "ops_audit",
+    "ingest_job_events",
+    "ops_workers",
 }
 
 
