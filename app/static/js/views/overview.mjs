@@ -355,7 +355,7 @@ export function createOverview({
   }
 
   async function loadOverview(scopeSnapshot, { skipPending = false } = {}) {
-    if (!scopeSnapshot?.scope || !guard.isCurrent(scopeSnapshot)) return;
+    if (destroyed || !scopeSnapshot?.scope || !guard.isCurrent(scopeSnapshot)) return;
     const key = scopeKey(scopeSnapshot.scope);
     if (key !== currentScopeKey) {
       requestVersion += 1;
@@ -384,7 +384,8 @@ export function createOverview({
 
   function onTimer() {
     if (
-      !active
+      destroyed
+      || !active
       || document.visibilityState !== "visible"
       || !currentContext
       || !guard.isCurrent(currentContext)

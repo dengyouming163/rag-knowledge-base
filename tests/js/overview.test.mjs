@@ -594,6 +594,69 @@ test("hidden and destroy abort pending panel requests and settle their loads", a
   }
 });
 
+test("destroy prevents a saved timer callback from starting requests", async (t) => {
+  const calls = [];
+  const fixture = createFixture(t, {
+    api: async (path) => {
+      calls.push(path);
+      return path.includes("/timeseries") ? timeseriesFixture() : summaryFixture();
+    },
+  });
+  const context = fixture.snapshot();
+  const addListener = context.signal.addEventListener.bind(context.signal);
+  let listenerCalls = 0;
+  context.signal.addEventListener = (...args) => {
+    listenerCalls += 1;
+    return addListener(...args);
+  };
+
+  await fixture.view.loadOverview(context);
+  const callback = [...fixture.timers.callbacks.values()][0];
+  await callback();
+  await callback();
+  assert.equal(calls.length, 6);
+
+  fixture.view.destroy();
+  const summaryStatus = fixture.root.text("[data-overview-summary-status]");
+  const trendsStatus = fixture.root.text("[data-overview-trends-status]");
+  const listenersAtDestroy = listenerCalls;
+  await callback();
+
+  assert.equal(calls.length, 6);
+  assert.equal(listenerCalls, listenersAtDestroy);
+  assert.equal(fixture.root.text("[data-overview-summary-status]"), summaryStatus);
+  assert.equal(fixture.root.text("[data-overview-trends-status]"), trendsStatus);
+  assert.equal(fixture.timers.callbacks.size, 0);
+});
+
+test("destroy prevents explicit loadOverview from starting requests", async (t) => {
+  const calls = [];
+  const fixture = createFixture(t, {
+    api: async (path) => {
+      calls.push(path);
+      return path.includes("/timeseries") ? timeseriesFixture() : summaryFixture();
+    },
+  });
+  const context = fixture.snapshot();
+  const addListener = context.signal.addEventListener.bind(context.signal);
+  let listenerCalls = 0;
+  context.signal.addEventListener = (...args) => {
+    listenerCalls += 1;
+    return addListener(...args);
+  };
+
+  fixture.view.destroy();
+  const summaryStatus = fixture.root.text("[data-overview-summary-status]");
+  const trendsStatus = fixture.root.text("[data-overview-trends-status]");
+  await fixture.view.loadOverview(context);
+
+  assert.equal(calls.length, 0);
+  assert.equal(listenerCalls, 0);
+  assert.equal(fixture.root.text("[data-overview-summary-status]"), summaryStatus);
+  assert.equal(fixture.root.text("[data-overview-trends-status]"), trendsStatus);
+  assert.equal(fixture.timers.callbacks.size, 0);
+});
+
 test("external scope abort propagates to both linked request signals", async (t) => {
   const calls = [];
   const fixture = createFixture(t, { api: abortableApi(calls) });
