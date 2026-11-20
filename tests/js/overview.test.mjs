@@ -48,6 +48,26 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
+function assertLinkedSignal(actual, parent) {
+  assert.notEqual(actual, parent);
+  assert.equal(actual.aborted, parent.aborted);
+}
+
+function abortableApi(calls) {
+  return (path, options) => {
+    const request = deferred();
+    calls.push({ path, options, ...request });
+    const abort = () => request.reject(new DOMException("Aborted", "AbortError"));
+    if (options.signal.aborted) abort();
+    else options.signal.addEventListener("abort", abort, { once: true });
+    return request.promise;
+  };
+}
+
+function flush() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 function summaryFixture() {
   return {
     observability: {
@@ -202,6 +222,86 @@ test("renderTrend preserves finite geometry for extreme finite inputs", async (t
   }
 });
 
+test("renderTrend retains null bucket positions, breaks paths, and skips null circles", async (t) => {
+  const scenarios = [
+    {
+      name: "leading and trailing nulls keep the original time range",
+      series: [
+        { ts: "bucket-0", requests: null },
+        { ts: "bucket-1", requests: 10 },
+        { ts: "bucket-2", requests: 20 },
+        { ts: "bucket-3", requests: null },
+      ],
+      xs: [233.33, 428.67],
+      commands: ["M", "L"],
+    },
+    {
+      name: "a middle null splits neighboring valid points",
+      series: [
+        { ts: "bucket-0", requests: 10 },
+        { ts: "bucket-1", requests: null },
+        { ts: "bucket-2", requests: 20 },
+      ],
+      xs: [38, 624],
+      commands: ["M", "M"],
+    },
+    {
+      name: "an isolated non-endpoint point is not recentered",
+      series: [
+        { ts: "bucket-0", requests: null },
+        { ts: "bucket-1", requests: null },
+        { ts: "bucket-2", requests: 10 },
+        { ts: "bucket-3", requests: null },
+      ],
+      xs: [428.67],
+      commands: ["M"],
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    await t.test(scenario.name, () => {
+      const output = renderTrend(scenario.series, { key: "requests" });
+      const path = output.match(/<path[^>]*\bd="([^"]+)"/)?.[1];
+      assert.ok(path);
+      const segments = [...path.matchAll(/([ML]) ([\d.]+) ([\d.]+)/g)];
+      assert.deepEqual(segments.map((match) => match[1]), scenario.commands);
+      assert.deepEqual(segments.map((match) => Number(match[2])), scenario.xs);
+      assert.deepEqual(
+        [...output.matchAll(/<circle cx="([\d.]+)"/g)].map((match) => Number(match[1])),
+        scenario.xs,
+      );
+      assert.ok(output.includes(`>${scenario.series[0].ts}</text>`));
+      assert.ok(output.includes(`>${scenario.series.at(-1).ts}</text>`));
+    });
+  }
+});
+
+test("renderTrend provides a focusable, escaped accessible summary", () => {
+  const output = renderTrend([
+    { ts: "2026-11-20T00:00:00Z", requests: 10 },
+    { ts: "2026-11-20T01:00:00Z", requests: null },
+    { ts: "2026-11-20T02:00:00Z", requests: 30 },
+  ], { key: "requests", label: "Requests", unit: "req/min" });
+
+  assert.match(output, /<svg[^>]*\btabindex="0"/);
+  const description = output.match(/<desc>([\s\S]*?)<\/desc>/)?.[1];
+  assert.ok(description);
+  assert.match(description, /Time range: 2026-11-20T00:00:00Z to 2026-11-20T02:00:00Z/);
+  assert.match(description, /Valid samples: 2 of 3/);
+  assert.match(description, /Value range: 10\.0 req\/min to 30\.0 req\/min/);
+
+  const hostileTimestamp = `2026-11-20"><img src=x onerror="alert(1)">`;
+  const hostileOutput = renderTrend([
+    { ts: hostileTimestamp, requests: 10 },
+    { ts: "2026-11-21T00:00:00Z", requests: 20 },
+  ], { key: "requests", label: `Requests <script>alert(1)</script>`, unit: "req/min" });
+  const hostileDescription = hostileOutput.match(/<desc>([\s\S]*?)<\/desc>/)?.[1];
+  assert.ok(hostileDescription);
+  assert.match(hostileDescription, /&lt;img/);
+  assert.doesNotMatch(hostileOutput, /<script|<img/);
+  assert.equal(hostileOutput.includes(hostileTimestamp), false);
+});
+
 test("costStatus distinguishes unconfigured, partial, and complete estimates", () => {
   assert.equal(costStatus({ pricing_configured: false, pricing_complete: false }), "Not configured");
   assert.equal(costStatus({ pricing_configured: true, pricing_complete: false }), "Partial estimate");
@@ -231,7 +331,7 @@ test("loadOverview starts summary and trends in parallel and isolates panel fail
     assert.equal(url.searchParams.has("tenant"), false);
     assert.equal(url.searchParams.has("tenant_id"), false);
     assert.equal(call.options.scope.tenant, "tenant_a");
-    assert.equal(call.options.signal, context.signal);
+    assertLinkedSignal(call.options.signal, context.signal);
   }
 
   summary.reject(new Error("summary down"));
@@ -244,7 +344,7 @@ test("loadOverview starts summary and trends in parallel and isolates panel fail
   assert.match(fixture.root.querySelector('[data-overview-trend-svg="requests"]').innerHTML, /<svg/);
 });
 
-test("summary cards show values, units, window, samples, and low-sample guidance", async (t) => {
+test("summary cards distinguish statistical windows from current snapshots", async (t) => {
   const { root, view, snapshot } = createFixture(t);
 
   await view.loadOverview(snapshot());
@@ -267,10 +367,16 @@ test("summary cards show values, units, window, samples, and low-sample guidance
   for (const name of [
     "requests", "avg_qpm", "client_errors", "server_errors", "e2e_p95",
     "retrieval_p95", "llm_p95", "zero_hit", "refusal", "citation",
-    "tokens", "cost", "queue", "workers",
+    "tokens", "cost",
   ]) {
     assert.equal(metric(root, name, "window"), "24h", name);
     assert.notEqual(metric(root, name, "samples"), "", name);
+  }
+  for (const name of ["queue", "workers"]) {
+    assert.equal(metric(root, name, "window"), "Snapshot", name);
+    assert.notEqual(metric(root, name, "window"), "24h", name);
+    assert.equal(metric(root, name, "samples"), "—", name);
+    assert.doesNotMatch(metric(root, name, "note"), /Low sample/, name);
   }
   assert.equal(metric(root, "e2e_p95", "samples"), "12");
   assert.match(metric(root, "e2e_p95", "note"), /Low sample/);
@@ -412,8 +518,120 @@ test("same-scope Lab refresh renews the Overview timer without loading Lab data"
   await callback();
 
   assert.equal(calls.length, 4);
-  assert.equal(calls[2].options.signal, labContext.signal);
-  assert.equal(calls[3].options.signal, labContext.signal);
+  assertLinkedSignal(calls[2].options.signal, labContext.signal);
+  assertLinkedSignal(calls[3].options.signal, labContext.signal);
   assert.notEqual(labContext.signal, overviewContext.signal);
   assert.equal(fixture.timers.callbacks.size, 1);
+});
+
+test("timer ticks coalesce pending panels and inactive aborts only internal signals", async (t) => {
+  const calls = [];
+  const fixture = createFixture(t, { api: abortableApi(calls) });
+  const context = fixture.snapshot();
+  const initial = fixture.view.loadOverview(context);
+  const tick = [...fixture.timers.callbacks.values()][0];
+  const firstTick = tick();
+  const secondTick = tick();
+
+  assert.equal(calls.length, 2);
+  fixture.view.setActive(false);
+  for (const call of calls) assert.equal(call.options.signal.aborted, true);
+  assert.equal(context.signal.aborted, false);
+  await Promise.allSettled([initial, firstTick, secondTick]);
+  assert.match(fixture.root.text("[data-overview-summary-status]"), /Refresh paused/);
+  assert.match(fixture.root.text("[data-overview-trends-status]"), /Refresh paused/);
+});
+
+test("one pending panel does not block or duplicate the other panel across ticks", async (t) => {
+  const calls = [];
+  const fixture = createFixture(t, { api: abortableApi(calls) });
+  const initial = fixture.view.loadOverview(fixture.snapshot());
+  const tick = [...fixture.timers.callbacks.values()][0];
+  calls[1].resolve(timeseriesFixture());
+  await flush();
+
+  const firstTick = tick();
+  assert.equal(calls.filter((call) => call.path.includes("/summary")).length, 1);
+  assert.equal(calls.filter((call) => call.path.includes("/timeseries")).length, 2);
+  const secondTick = tick();
+  assert.equal(calls.length, 3);
+  calls[2].resolve(timeseriesFixture());
+  await flush();
+  const thirdTick = tick();
+  assert.equal(calls.filter((call) => call.path.includes("/summary")).length, 1);
+  assert.equal(calls.filter((call) => call.path.includes("/timeseries")).length, 3);
+
+  fixture.view.destroy();
+  await Promise.allSettled([initial, firstTick, secondTick, thirdTick]);
+});
+
+test("hidden and destroy abort pending panel requests and settle their loads", async (t) => {
+  const scenarios = [
+    ["hidden", (fixture) => {
+      fixture.document.visibilityState = "hidden";
+      fixture.document.dispatchEvent(new Event("visibilitychange"));
+    }],
+    ["destroy", (fixture) => fixture.view.destroy()],
+  ];
+
+  for (const [name, action] of scenarios) {
+    await t.test(name, async (t) => {
+      const calls = [];
+      const fixture = createFixture(t, { api: abortableApi(calls) });
+      const context = fixture.snapshot();
+      const loading = fixture.view.loadOverview(context);
+      action(fixture);
+
+      assert.equal(calls.length, 2);
+      for (const call of calls) assert.equal(call.options.signal.aborted, true);
+      assert.equal(context.signal.aborted, false);
+      await loading;
+      if (name === "hidden") {
+        assert.match(fixture.root.text("[data-overview-summary-status]"), /Refresh paused/);
+        assert.match(fixture.root.text("[data-overview-trends-status]"), /Refresh paused/);
+      }
+    });
+  }
+});
+
+test("external scope abort propagates to both linked request signals", async (t) => {
+  const calls = [];
+  const fixture = createFixture(t, { api: abortableApi(calls) });
+  const context = fixture.snapshot();
+  const loading = fixture.view.loadOverview(context);
+  fixture.guard.invalidate();
+
+  assert.equal(context.signal.aborted, true);
+  for (const call of calls) assert.equal(call.options.signal.aborted, true);
+  await loading;
+});
+
+test("explicit reload aborts old requests and ignores their late rejections", async (t) => {
+  const calls = [];
+  const fixture = createFixture(t, {
+    api: (path, options) => {
+      const request = deferred();
+      calls.push({ path, options, ...request });
+      return request.promise;
+    },
+  });
+  const context = fixture.snapshot();
+  const first = fixture.view.loadOverview(context);
+  const second = fixture.view.loadOverview(context);
+
+  assert.equal(calls.length, 4);
+  assert.equal(calls[0].options.signal.aborted, true);
+  assert.equal(calls[1].options.signal.aborted, true);
+  assert.equal(context.signal.aborted, false);
+  calls[0].reject(new Error("old summary failure"));
+  calls[1].reject(new Error("old trends failure"));
+  await flush();
+  assert.doesNotMatch(fixture.root.text("[data-overview-summary-status]"), /old summary failure/);
+  assert.doesNotMatch(fixture.root.text("[data-overview-trends-status]"), /old trends failure/);
+
+  calls[2].resolve(summaryFixture());
+  calls[3].resolve(timeseriesFixture());
+  await Promise.allSettled([first, second]);
+  assert.match(fixture.root.text("[data-overview-summary-status]"), /Updated/);
+  assert.match(fixture.root.text("[data-overview-trends-status]"), /Updated/);
 });

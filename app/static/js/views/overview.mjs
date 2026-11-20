@@ -31,10 +31,10 @@ export function costStatus(tokens = {}) {
 
 export function renderTrend(series, { key = "requests", label = "Requests", unit = "" } = {}) {
   const points = (Array.isArray(series) ? series : [])
-    .map((point) => ({ ts: String(point?.ts ?? ""), value: finiteNumber(point?.[key]) }))
-    .filter((point) => point.value !== null);
+    .map((point) => ({ ts: String(point?.ts ?? ""), value: finiteNumber(point?.[key]) }));
+  const validPoints = points.filter((point) => point.value !== null);
 
-  if (!points.length) {
+  if (!validPoints.length) {
     return `<div class="wb-overview-empty" data-trend-empty>No trend data for ${escapeHtml(label)}.</div>`;
   }
 
@@ -46,13 +46,13 @@ export function renderTrend(series, { key = "requests", label = "Requests", unit
   const bottom = 34;
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
-  const values = points.map((point) => point.value);
+  const values = validPoints.map((point) => point.value);
   const dataMinimum = Math.min(...values);
   const dataMaximum = Math.max(...values);
   const scale = Math.max(...values.map((value) => Math.abs(value))) || 1;
-  const normalizedValues = values.map((value) => value / scale);
-  let minimum = Math.min(...normalizedValues);
-  let maximum = Math.max(...normalizedValues);
+  const normalizedValues = points.map((point) => point.value === null ? null : point.value / scale);
+  let minimum = Math.min(...values.map((value) => value / scale));
+  let maximum = Math.max(...values.map((value) => value / scale));
   if (minimum === maximum) {
     const padding = Math.max(1, Math.abs(maximum) * 0.1);
     minimum -= padding;
@@ -61,20 +61,24 @@ export function renderTrend(series, { key = "requests", label = "Requests", unit
   const coordinate = (value) => Number(value.toFixed(2));
   const coordinates = points.map((point, index) => ({
     x: coordinate(points.length === 1 ? left + plotWidth / 2 : left + index * plotWidth / (points.length - 1)),
-    y: coordinate(top + (maximum - normalizedValues[index]) * plotHeight / (maximum - minimum)),
+    y: point.value === null ? null : coordinate(top + (maximum - normalizedValues[index]) * plotHeight / (maximum - minimum)),
   }));
-  if (!coordinates.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y))) {
+  if (!coordinates.every((point) => Number.isFinite(point.x) && (point.y === null || Number.isFinite(point.y)))) {
     return `<div class="wb-overview-empty" data-trend-empty>No trend data for ${escapeHtml(label)}.</div>`;
   }
-  const path = coordinates.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ");
-  const circles = coordinates.map((point) => (
+  const path = coordinates.flatMap((point, index) => point.y === null ? [] : [
+    `${index === 0 || coordinates[index - 1].y === null ? "M" : "L"} ${point.x} ${point.y}`,
+  ]).join(" ");
+  const circles = coordinates.filter((point) => point.y !== null).map((point) => (
     `<circle cx="${point.x}" cy="${point.y}" r="2.5"></circle>`
   )).join("");
   const firstTimestamp = escapeHtml(points[0].ts);
   const lastTimestamp = escapeHtml(points.at(-1).ts);
+  const description = `${label} trend. Time range: ${points[0].ts} to ${points.at(-1).ts}. Valid samples: ${validPoints.length} of ${points.length}. Value range: ${formatMetric(dataMinimum, unit, 1)} to ${formatMetric(dataMaximum, unit, 1)}.`;
 
-  return `<svg class="wb-overview-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(label)} trend">
+  return `<svg class="wb-overview-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(label)} trend" tabindex="0">
     <title>${escapeHtml(label)}</title>
+    <desc>${escapeHtml(description)}</desc>
     <line class="wb-overview-axis" x1="${left}" y1="${height - bottom}" x2="${width - right}" y2="${height - bottom}"></line>
     <text class="wb-overview-axis-label" x="4" y="${top + 4}">${escapeHtml(formatMetric(dataMaximum, "", 1))}</text>
     <text class="wb-overview-axis-label" x="4" y="${height - bottom}">${escapeHtml(formatMetric(dataMinimum, "", 1))}</text>
@@ -126,8 +130,8 @@ function metricDefinitions(summary) {
       samples: rag.operations,
       note: summary?.observability?.tokens ? costStatus(tokens) : "",
     },
-    queue: { value: queue.queued, unit: "queued", digits: 0, samples: queue.total },
-    workers: { value: workers, unit: "workers", digits: 0, samples: workers },
+    queue: { value: queue.queued, unit: "queued", digits: 0, snapshot: true },
+    workers: { value: workers, unit: "workers", digits: 0, snapshot: true },
   };
 }
 
@@ -171,6 +175,7 @@ export function createOverview({
   let currentScopeKey = null;
   let summaryCache = null;
   let trendsCache = null;
+  const flights = { summary: null, trends: null };
 
   function setText(selector, value) {
     const element = root.querySelector(selector);
@@ -195,12 +200,12 @@ export function createOverview({
     for (const name of METRIC_NAMES) {
       const definition = definitions[name];
       const samples = finiteNumber(definition.samples);
-      const lowSample = samples !== null && samples >= 0 && samples < LOW_SAMPLE_THRESHOLD;
+      const lowSample = !definition.snapshot && samples !== null && samples >= 0 && samples < LOW_SAMPLE_THRESHOLD;
       const notes = [definition.note, lowSample ? "Low sample · interpret carefully" : ""].filter(Boolean);
       setText(`[data-overview-value="${name}"]`, formatMetric(definition.value, "", definition.digits));
       setText(`[data-overview-unit="${name}"]`, definition.unit);
-      setText(`[data-overview-window="${name}"]`, window);
-      setText(`[data-overview-samples="${name}"]`, formatMetric(definition.samples, "", 0));
+      setText(`[data-overview-window="${name}"]`, definition.snapshot ? "Snapshot" : window);
+      setText(`[data-overview-samples="${name}"]`, definition.snapshot ? "—" : formatMetric(definition.samples, "", 0));
       setText(`[data-overview-note="${name}"]`, notes.join(" · "));
       const note = root.querySelector(`[data-overview-note="${name}"]`);
       if (note) note.hidden = notes.length === 0;
@@ -216,6 +221,7 @@ export function createOverview({
   }
 
   function resetPanels() {
+    cancelPanels();
     summaryCache = null;
     trendsCache = null;
     renderSummary(null);
@@ -240,14 +246,58 @@ export function createOverview({
       && guard.isCurrent(context);
   }
 
-  async function loadSummary(context, version) {
+  function cancelPanel(panel, pause = false) {
+    const flight = flights[panel];
+    if (!flight) return;
+    flights[panel] = null;
+    flight.dispose();
+    flight.controller.abort();
+    if (pause) setPanelStatus(panel, "Refresh paused.", "idle");
+  }
+
+  function cancelPanels({ pause = false } = {}) {
+    for (const panel of Object.keys(flights)) cancelPanel(panel, pause);
+  }
+
+  function pausePanels() {
+    requestVersion += 1;
+    cancelPanels({ pause: true });
+  }
+
+  function startPanel(panel, context, version, skipPending, loader) {
+    const existing = flights[panel];
+    if (existing && skipPending && guard.isCurrent(existing.context)) return existing.promise;
+    if (existing) cancelPanel(panel);
+
+    const controller = new AbortController();
+    const parentSignal = context.signal;
+    const onAbort = () => controller.abort(parentSignal.reason);
+    if (parentSignal.aborted) onAbort();
+    else parentSignal.addEventListener("abort", onAbort, { once: true });
+    const flight = {
+      context,
+      controller,
+      promise: null,
+      dispose() {
+        parentSignal.removeEventListener("abort", onAbort);
+      },
+    };
+    flights[panel] = flight;
+    flight.promise = loader(context, version, controller.signal).finally(() => {
+      flight.dispose();
+      if (flights[panel] === flight) flights[panel] = null;
+    });
+    return flight.promise;
+  }
+
+  async function loadSummary(context, version, signal) {
     const cached = summaryCache?.key === currentScopeKey ? summaryCache : null;
     if (cached) renderSummary(cached.data, context.scope.window);
     setPanelStatus("summary", cached ? "Refreshing summary…" : "Loading summary…", "loading");
     try {
       const data = await api(endpoint("/v1/ops/summary", context.scope), {
         scope: context.scope,
-        signal: context.signal,
+        signal,
       });
       if (!canRender(context, version)) return;
       const updatedAt = now().toISOString();
@@ -272,14 +322,14 @@ export function createOverview({
     }
   }
 
-  async function loadTrends(context, version) {
+  async function loadTrends(context, version, signal) {
     const cached = trendsCache?.key === currentScopeKey ? trendsCache : null;
     if (cached) renderTrends(cached.data);
     setPanelStatus("trends", cached ? "Refreshing trends…" : "Loading trends…", "loading");
     try {
       const data = await api(endpoint("/v1/ops/metrics/timeseries", context.scope), {
         scope: context.scope,
-        signal: context.signal,
+        signal,
       });
       if (!canRender(context, version)) return;
       const updatedAt = now().toISOString();
@@ -304,7 +354,7 @@ export function createOverview({
     }
   }
 
-  async function loadOverview(scopeSnapshot) {
+  async function loadOverview(scopeSnapshot, { skipPending = false } = {}) {
     if (!scopeSnapshot?.scope || !guard.isCurrent(scopeSnapshot)) return;
     const key = scopeKey(scopeSnapshot.scope);
     if (key !== currentScopeKey) {
@@ -313,9 +363,9 @@ export function createOverview({
       resetPanels();
     }
     currentContext = scopeSnapshot;
-    const version = ++requestVersion;
-    const summaryRequest = loadSummary(scopeSnapshot, version);
-    const trendsRequest = loadTrends(scopeSnapshot, version);
+    const version = skipPending ? requestVersion : ++requestVersion;
+    const summaryRequest = startPanel("summary", scopeSnapshot, version, skipPending, loadSummary);
+    const trendsRequest = startPanel("trends", scopeSnapshot, version, skipPending, loadTrends);
     await Promise.allSettled([summaryRequest, trendsRequest]);
   }
 
@@ -339,14 +389,14 @@ export function createOverview({
       || !currentContext
       || !guard.isCurrent(currentContext)
     ) return undefined;
-    return loadOverview(currentContext);
+    return loadOverview(currentContext, { skipPending: true });
   }
 
   function setActive(value) {
     const next = Boolean(value);
     if (active === next) return;
     active = next;
-    if (!active) requestVersion += 1;
+    if (!active) pausePanels();
     syncTimer();
   }
 
@@ -365,13 +415,14 @@ export function createOverview({
   }
 
   function onVisibilityChange() {
-    if (document.visibilityState !== "visible") requestVersion += 1;
+    if (document.visibilityState !== "visible") pausePanels();
     syncTimer();
   }
 
   function destroy() {
     destroyed = true;
     requestVersion += 1;
+    cancelPanels();
     clearTimer();
     window.removeEventListener("workbuddy:refresh", onRefresh);
     document.removeEventListener("visibilitychange", onVisibilityChange);
