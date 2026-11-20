@@ -607,6 +607,223 @@
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
     }
+
+    /* 调测驾驶舱：只读面板 */
+    .wx-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      align-items: start;
+    }
+    .wx-span-2 { grid-column: 1 / -1; }
+    .wx-card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--wx-divider);
+    }
+    .wx-card-head h2 {
+      font-family: var(--sans);
+      font-size: 15px;
+      line-height: 1.4;
+    }
+    .wx-kv { display: grid; gap: 8px; }
+    .wx-kv > div {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 13px;
+    }
+    .wx-kv span { color: var(--wx-text-secondary); }
+    .wx-kv strong {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 600;
+      text-align: right;
+      overflow-wrap: anywhere;
+    }
+    .wx-metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .wx-metric {
+      display: grid;
+      gap: 2px;
+      padding: 8px 10px;
+      border: 1px solid var(--wx-divider);
+      border-radius: 6px;
+      background: #fafafa;
+      min-width: 0;
+    }
+    .wx-metric span {
+      color: var(--wx-text-secondary);
+      font-size: 12px;
+    }
+    .wx-metric strong {
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 600;
+      overflow-wrap: anywhere;
+    }
+    .wx-sparkline {
+      width: 100%;
+      height: 48px;
+      margin-top: 10px;
+      fill: none;
+      stroke: var(--wx-primary);
+      stroke-width: 2;
+    }
+    .wx-job-board {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .wx-job {
+      display: grid;
+      gap: 2px;
+      padding: 10px 12px;
+      text-align: left;
+      border: 1px solid var(--wx-divider);
+      border-left: 3px solid var(--wx-neutral);
+      border-radius: 6px;
+      background: #fff;
+      min-width: 0;
+    }
+    .wx-job:hover { border-color: var(--wx-primary); }
+    .wx-job.running { border-left-color: var(--wx-warning); }
+    .wx-job.succeeded { border-left-color: var(--wx-primary); }
+    .wx-job.failed { border-left-color: var(--wx-danger); }
+    .wx-job-id {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--wx-link);
+    }
+    .wx-job-doc,
+    .wx-job-status,
+    .wx-job-meta,
+    .wx-job-wait {
+      font-size: 12px;
+      color: var(--wx-text-secondary);
+      overflow-wrap: anywhere;
+    }
+    .wx-job-status { color: var(--wx-text); }
+    .wx-timeline { display: grid; gap: 12px; }
+    .wx-timeline-item {
+      display: grid;
+      grid-template-columns: 14px minmax(0, 1fr);
+      gap: 10px;
+      padding-bottom: 12px;
+      border-bottom: 1px dashed var(--wx-divider);
+      font-size: 13px;
+    }
+    .wx-timeline-item:last-child { padding-bottom: 0; border-bottom: 0; }
+    .wx-timeline-dot {
+      width: 8px;
+      height: 8px;
+      margin-top: 6px;
+      border-radius: 50%;
+      background: var(--wx-neutral);
+    }
+    .wx-timeline-item.running .wx-timeline-dot { background: var(--wx-warning); }
+    .wx-timeline-item.succeeded .wx-timeline-dot { background: var(--wx-primary); }
+    .wx-timeline-item.failed .wx-timeline-dot { background: var(--wx-danger); }
+    .wx-timeline-status {
+      margin-left: 8px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--wx-text-secondary);
+    }
+    .wx-timeline-meta {
+      display: block;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--wx-text-tertiary);
+      overflow-wrap: anywhere;
+    }
+    .wx-timeline-item p {
+      margin: 4px 0 0;
+      font-size: 12px;
+      color: var(--wx-text-secondary);
+      overflow-wrap: anywhere;
+    }
+    .wx-trace-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+    .wx-trace-list { display: grid; gap: 6px; max-height: 360px; overflow: auto; }
+    .wx-list-row {
+      display: grid;
+      grid-template-columns: minmax(0, 160px) minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 10px;
+      text-align: left;
+      border: 1px solid var(--wx-divider);
+      border-radius: 6px;
+      background: #fff;
+      font-size: 12px;
+    }
+    .wx-list-row:hover { border-color: var(--wx-primary); }
+    .wx-list-row span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .wx-list-row span:first-child { font-family: var(--mono); color: var(--wx-link); }
+    .wx-waterfall { display: grid; gap: 8px; }
+    .wx-waterfall-row {
+      display: grid;
+      grid-template-columns: 90px minmax(0, 1fr) 180px;
+      gap: 10px;
+      align-items: center;
+      font-size: 12px;
+    }
+    .wx-waterfall-label {
+      font-family: var(--mono);
+      color: var(--wx-text-secondary);
+      overflow-wrap: anywhere;
+    }
+    .wx-waterfall-bar {
+      width: 100%;
+      height: 12px;
+      fill: var(--wx-primary);
+    }
+    .wx-waterfall-value {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--wx-text-secondary);
+      overflow-wrap: anywhere;
+    }
+    .wx-empty {
+      margin: 0;
+      padding: 12px;
+      color: var(--wx-text-tertiary);
+      font-size: 12px;
+      text-align: center;
+      border: 1px dashed var(--wx-divider);
+      border-radius: 6px;
+    }
+    .wx-hint {
+      margin: 4px 0 0;
+      color: var(--wx-text-tertiary);
+      font-size: 11px;
+    }
+
+    @media (max-width: 899px) {
+      .wx-grid, .wx-metrics, .wx-job-board, .wx-trace-layout { grid-template-columns: 1fr; }
+      .wx-span-2 { grid-column: auto; }
+      .wx-waterfall-row { grid-template-columns: 72px minmax(0, 1fr); }
+      .wx-waterfall-value { grid-column: 2; }
+    }
   </style>
 </head>
 <body>
@@ -813,7 +1030,42 @@
             <span>FASTAPI STATICFILES / SINGLE FILE UI</span>
           </footer>
         </section>
-        <section data-view="cockpit" hidden></section>
+        <section data-view="cockpit" hidden>
+          <div class="wx-grid">
+            <section class="wx-card" id="ops-health">
+              <div class="wx-card-head"><h2>系统健康</h2><span class="wx-badge" id="ops-health-badge">-</span></div>
+              <div class="wx-kv" id="ops-health-body"></div>
+            </section>
+            <section class="wx-card" id="ops-queue">
+              <div class="wx-card-head"><h2>任务队列</h2><span class="wx-badge" id="ops-queue-badge">-</span></div>
+              <div class="wx-metrics" id="ops-queue-body"></div>
+              <svg class="wx-sparkline" id="ops-queue-sparkline" viewBox="0 0 240 48" aria-label="队列趋势"></svg>
+            </section>
+            <section class="wx-card wx-span-2" id="ops-ai">
+              <div class="wx-card-head"><h2>AI 指标</h2><span class="wx-badge" id="ops-ai-badge">最近 7 天</span></div>
+              <div class="wx-metrics" id="ops-ai-body"></div>
+            </section>
+            <section class="wx-card wx-span-2" id="ops-jobs">
+              <div class="wx-card-head"><h2>任务看板</h2><span class="wx-badge" id="ops-jobs-badge">-</span></div>
+              <div class="wx-job-board" id="ops-jobs-body"></div>
+            </section>
+            <section class="wx-card wx-span-2" id="ops-job-events">
+              <div class="wx-card-head"><h2>任务时间线</h2><span class="wx-badge" id="ops-job-events-badge">未选择</span></div>
+              <div id="ops-job-events-body" class="wx-timeline">
+                <div class="wx-empty">点击任务查看阶段时间线</div>
+              </div>
+            </section>
+            <section class="wx-card wx-span-2" id="ops-traces">
+              <div class="wx-card-head"><h2>最近 Trace</h2><span class="wx-badge" id="ops-traces-badge">-</span></div>
+              <div class="wx-trace-layout">
+                <div id="ops-traces-body" class="wx-trace-list"></div>
+                <div id="ops-trace-waterfall" class="wx-waterfall">
+                  <div class="wx-empty">点击左侧 Trace 查看阶段耗时</div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
         <section data-view="identity" hidden></section>
         <section data-view="runs" hidden></section>
         <section data-view="audit" hidden></section>
@@ -1039,10 +1291,364 @@
         clearCitation();
       }
 
+      const opsState = {
+        summary: null,
+        jobs: [],
+        traces: [],
+        traceGroups: new Map(),
+        selectedJobId: null,
+        selectedTraceId: null,
+        timer: null,
+        loading: false
+      };
+
+      function escapeHtml(value) {
+        return String(value == null ? "" : value).replace(/[&<>"]/g, (char) => {
+          if (char === "&") return "&amp;";
+          if (char === "<") return "&lt;";
+          if (char === ">") return "&gt;";
+          return "&quot;";
+        });
+      }
+
+      function opsElement(id) {
+        return document.getElementById(id);
+      }
+
+      function opsView() {
+        return document.querySelector('[data-view="cockpit"]');
+      }
+
+      function emptyRow(message) {
+        return `<div class="wx-empty">${escapeHtml(message)}</div>`;
+      }
+
+      async function opsJson(path) {
+        const scope = currentScope();
+        const response = await checkedFetch(path, {
+          headers: requestHeaders(scope, true)
+        });
+        return response.json();
+      }
+
+      function fmtSeconds(value) {
+        return value == null ? "-" : `${Number(value).toFixed(1)}s`;
+      }
+
+      function fmtPercent(value) {
+        return value == null ? "-" : `${(Number(value) * 100).toFixed(2)}%`;
+      }
+
+      function fmtMs(value) {
+        return value == null ? "-" : `${Number(value).toFixed(0)}ms`;
+      }
+
+      function opsScopeReady(scope) {
+        return Boolean(scope.tenant && scope.kb);
+      }
+
+      function resetOpsPanels(message) {
+        ["ops-health", "ops-queue", "ops-ai", "ops-jobs"].forEach((id) => {
+          opsElement(`${id}-badge`).textContent = "-";
+          opsElement(`${id}-body`).innerHTML = emptyRow(message);
+        });
+        opsElement("ops-job-events-badge").textContent = "未选择";
+        opsElement("ops-job-events-body").innerHTML = emptyRow("点击任务查看阶段时间线");
+        opsElement("ops-traces-badge").textContent = "-";
+        opsElement("ops-traces-body").innerHTML = emptyRow(message);
+        opsElement("ops-trace-waterfall").innerHTML = emptyRow("点击左侧 Trace 查看阶段耗时");
+      }
+
+      function renderOpsError(error) {
+        const message = `加载失败：${error && error.message ? error.message : "未知错误"}`;
+        ["ops-health", "ops-queue", "ops-ai", "ops-jobs", "ops-traces"].forEach((id) => {
+          opsElement(`${id}-badge`).textContent = "加载失败";
+          opsElement(`${id}-body`).innerHTML = emptyRow(message);
+        });
+      }
+
+      async function loadOpsSummary() {
+        if (opsState.loading) return;
+        const scope = currentScope();
+        if (!opsScopeReady(scope)) {
+          resetOpsPanels("请先填写租户 ID 和知识库 ID。");
+          return;
+        }
+        const key = scopeKey(scope);
+        opsState.loading = true;
+        try {
+          const data = await opsJson(
+            `/v1/ops/summary?kb_id=${encodeURIComponent(scope.kb)}`
+          );
+          if (scopeKey(currentScope()) !== key) return;
+          opsState.summary = data;
+          renderHealth(data.health);
+          renderQueue(data.queue);
+          renderAi(data.ai);
+          await loadOpsJobs();
+          await loadOpsTraces();
+        } catch (error) {
+          if (scopeKey(currentScope()) !== key) return;
+          console.warn("驾驶舱摘要加载失败", error);
+          renderOpsError(error);
+        } finally {
+          opsState.loading = false;
+        }
+      }
+
+      async function loadOpsJobs() {
+        const data = await opsJson(
+          `/v1/ops/jobs?kb_id=${encodeURIComponent(currentScope().kb)}&limit=50`
+        );
+        opsState.jobs = Array.isArray(data.jobs) ? data.jobs : [];
+        renderJobs(opsState.jobs, data.counts || {});
+      }
+
+      async function loadJobEvents(jobId) {
+        opsState.selectedJobId = jobId;
+        try {
+          const data = await opsJson(`/v1/ops/jobs/${encodeURIComponent(jobId)}/events`);
+          if (opsState.selectedJobId !== jobId) return;
+          renderTimeline(jobId, Array.isArray(data.events) ? data.events : []);
+        } catch (error) {
+          if (opsState.selectedJobId !== jobId) return;
+          console.warn("任务事件加载失败", error);
+          opsElement("ops-job-events-badge").textContent = "加载失败";
+          opsElement("ops-job-events-body").innerHTML = emptyRow(
+            `任务 #${jobId} 事件加载失败：${error.message}`
+          );
+        }
+      }
+
+      async function loadOpsTraces() {
+        const data = await opsJson(
+          `/v1/ops/traces?kb_id=${encodeURIComponent(currentScope().kb)}&limit=50`
+        );
+        opsState.traces = Array.isArray(data.traces) ? data.traces : [];
+        renderTraceList(opsState.traces);
+      }
+
+      function renderHealth(health) {
+        const badge = opsElement("ops-health-badge");
+        const body = opsElement("ops-health-body");
+        if (!health) {
+          badge.textContent = "-";
+          body.innerHTML = "";
+          return;
+        }
+        badge.textContent = health.parser === "up" ? "正常" : String(health.parser || "-");
+        const workers = (health.workers || [])
+          .map((worker) => {
+            const age = Math.round(Number(worker.age_seconds) || 0);
+            return `${escapeHtml(worker.worker_id)} · ${age}s`;
+          })
+          .join("<br>") || "无心跳";
+        body.innerHTML = [
+          ["API", escapeHtml(health.api ?? "-")],
+          ["数据库", escapeHtml(health.db ?? "-")],
+          ["parser", escapeHtml(health.parser ?? "-")],
+          ["worker", workers]
+        ]
+          .map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`)
+          .join("");
+      }
+
+      function renderQueue(queue) {
+        const badge = opsElement("ops-queue-badge");
+        const body = opsElement("ops-queue-body");
+        if (!queue) {
+          badge.textContent = "-";
+          body.innerHTML = "";
+          return;
+        }
+        badge.textContent = `${queue.total ?? 0} 个任务`;
+        body.innerHTML = [
+          ["排队", queue.queued],
+          ["运行", queue.running],
+          ["成功", queue.succeeded],
+          ["失败", queue.failed],
+          ["最老等待", fmtSeconds(queue.oldest_queued_seconds)],
+          ["平均耗时", fmtSeconds(queue.avg_duration_seconds)]
+        ]
+          .map(
+            ([label, value]) =>
+              `<div class="wx-metric"><span>${label}</span><strong>${value ?? "-"}</strong></div>`
+          )
+          .join("");
+      }
+
+      function renderAi(ai) {
+        const body = opsElement("ops-ai-body");
+        if (!ai) {
+          body.innerHTML = "";
+          return;
+        }
+        const tokens = ai.tokens || {};
+        const latency = ai.llm_latency_ms || {};
+        body.innerHTML = [
+          ["请求数", ai.requests],
+          ["拒答率", fmtPercent(ai.refusal_rate)],
+          ["引用通过率", fmtPercent(ai.citation_ok_rate)],
+          ["rerank 降级", fmtPercent(ai.rerank_degraded_rate)],
+          ["Token 总量", tokens.total],
+          ["LLM p95", fmtMs(latency.p95)],
+          ["模型", escapeHtml(ai.model || "-")],
+          [
+            "估算成本",
+            ai.estimated_cost == null ? "未配置价格" : Number(ai.estimated_cost).toFixed(6)
+          ]
+        ]
+          .map(
+            ([label, value]) =>
+              `<div class="wx-metric"><span>${label}</span><strong>${value ?? "-"}</strong></div>`
+          )
+          .join("");
+      }
+
+      function renderJobs(jobs, counts) {
+        const badge = opsElement("ops-jobs-badge");
+        const body = opsElement("ops-jobs-body");
+        badge.textContent = `排队 ${counts.queued ?? 0} · 运行 ${counts.running ?? 0} · 失败 ${counts.failed ?? 0}`;
+        body.innerHTML =
+          jobs
+            .map((job) => {
+              const status = String(job.status || "unknown");
+              const statusClass = ["queued", "running", "succeeded", "failed"].includes(status)
+                ? status
+                : "unknown";
+              return `
+                <button class="wx-job ${statusClass}" type="button" data-job-id="${Number(job.id)}">
+                  <span class="wx-job-id">#${Number(job.id)}</span>
+                  <span class="wx-job-doc">${escapeHtml(job.doc_id || "-")}</span>
+                  <span class="wx-job-status">${escapeHtml(status)}</span>
+                  <span class="wx-job-meta">${Number(job.progress) || 0}% · ${Number(job.attempts) || 0} 次</span>
+                  <span class="wx-job-wait">等待 ${fmtSeconds(job.wait_seconds)} · 耗时 ${fmtSeconds(job.duration_seconds)}</span>
+                </button>
+              `;
+            })
+            .join("") || emptyRow("暂无任务");
+        for (const button of body.querySelectorAll("[data-job-id]")) {
+          button.addEventListener("click", () => loadJobEvents(Number(button.dataset.jobId)));
+        }
+      }
+
+      function renderTimeline(jobId, events) {
+        opsElement("ops-job-events-badge").textContent = `#${jobId} · ${events.length} 阶段`;
+        opsElement("ops-job-events-body").innerHTML =
+          events
+            .map((event) => {
+              const status = String(event.status || "unknown");
+              const statusClass = ["queued", "running", "succeeded", "failed"].includes(status)
+                ? status
+                : "unknown";
+              return `
+                <div class="wx-timeline-item ${statusClass}">
+                  <span class="wx-timeline-dot"></span>
+                  <div>
+                    <strong>${escapeHtml(event.stage || "-")}</strong>
+                    <span class="wx-timeline-status">${escapeHtml(status)}</span>
+                    <span class="wx-timeline-meta">${event.progress == null ? "-" : `${Number(event.progress)}%`} · ${escapeHtml(event.created_at ?? "-")}</span>
+                    ${event.message ? `<p>${escapeHtml(event.message)}</p>` : ""}
+                  </div>
+                </div>
+              `;
+            })
+            .join("") || emptyRow("暂无阶段事件");
+      }
+
+      function renderTraceList(traces) {
+        const groups = new Map();
+        for (const trace of traces) {
+          const traceId = String(trace.trace_id || "unknown");
+          if (!groups.has(traceId)) groups.set(traceId, []);
+          groups.get(traceId).push(trace);
+        }
+        opsState.traceGroups = groups;
+        const body = opsElement("ops-traces-body");
+        opsElement("ops-traces-badge").textContent = `${groups.size} 条`;
+        body.innerHTML =
+          [...groups.entries()]
+            .map(([traceId, stages]) => {
+              const refused = stages.some((item) => item.refused);
+              return `
+                <button class="wx-list-row" type="button" data-trace-id="${escapeHtml(traceId)}">
+                  <span>${escapeHtml(traceId)}</span>
+                  <span>${escapeHtml(stages[0].query || "")}</span>
+                  <span class="wx-badge ${refused ? "is-danger" : "is-real"}">${refused ? "拒答" : "回答"} · ${stages.length} 阶段</span>
+                </button>
+              `;
+            })
+            .join("") || emptyRow("暂无 trace");
+        for (const button of body.querySelectorAll("[data-trace-id]")) {
+          button.addEventListener("click", () => {
+            opsState.selectedTraceId = button.dataset.traceId;
+            renderWaterfall(groups.get(button.dataset.traceId) || []);
+          });
+        }
+        if (opsState.selectedTraceId && groups.has(opsState.selectedTraceId)) {
+          renderWaterfall(groups.get(opsState.selectedTraceId));
+        }
+      }
+
+      function renderWaterfall(stages) {
+        const container = opsElement("ops-trace-waterfall");
+        const total = stages.reduce((sum, stage) => sum + Number(stage.ms || 0), 0) || 1;
+        container.innerHTML = stages.length
+          ? `${stages
+              .map((stage) => {
+                const width = Math.max(2, (Number(stage.ms || 0) / total) * 100);
+                return `
+                  <div class="wx-waterfall-row">
+                    <span class="wx-waterfall-label">${escapeHtml(stage.stage || "-")}</span>
+                    <svg viewBox="0 0 100 12" preserveAspectRatio="none" class="wx-waterfall-bar">
+                      <rect x="0" y="0" width="${width.toFixed(2)}" height="12" rx="3"></rect>
+                    </svg>
+                    <span class="wx-waterfall-value">${fmtMs(stage.ms)} · ${Number(stage.hits) || 0} 命中${stage.refused ? " · 拒答" : ""}</span>
+                  </div>
+                `;
+              })
+              .join("")}
+            <p class="wx-hint">总耗时 ${fmtMs(total)}（柱宽按阶段耗时占比）</p>`
+          : emptyRow("点击左侧 Trace 查看阶段耗时");
+      }
+
+      function startOpsPolling() {
+        stopOpsPolling();
+        opsState.timer = setInterval(() => {
+          if (document.visibilityState !== "visible") return;
+          const view = opsView();
+          if (!view || view.hidden) return;
+          loadOpsSummary();
+          if (opsState.selectedJobId) loadJobEvents(opsState.selectedJobId);
+        }, 3000);
+      }
+
+      function stopOpsPolling() {
+        if (opsState.timer) clearInterval(opsState.timer);
+        opsState.timer = null;
+      }
+
+      function resetOpsState() {
+        stopOpsPolling();
+        opsState.summary = null;
+        opsState.jobs = [];
+        opsState.traces = [];
+        opsState.traceGroups = new Map();
+        opsState.selectedJobId = null;
+        opsState.selectedTraceId = null;
+        resetOpsPanels("上下文已切换，等待重新加载。");
+        const view = opsView();
+        if (view && !view.hidden) {
+          loadOpsSummary();
+          startOpsPolling();
+        }
+      }
+
       function invalidateWork() {
         stopUpload();
         stopSearch();
         stopChat();
+        resetOpsState();
         state.history = [];
         state.hitCache.clear();
         setUploadProgress(0);
@@ -1536,7 +2142,12 @@
           audit: "操作审计"
         };
         byId("wx-list-title").textContent = titleMap[name] || name;
-        if (name === "cockpit" && typeof loadOpsSummary === "function") loadOpsSummary();
+        if (name === "cockpit") {
+          if (typeof loadOpsSummary === "function") loadOpsSummary();
+          if (typeof startOpsPolling === "function") startOpsPolling();
+        } else if (typeof stopOpsPolling === "function") {
+          stopOpsPolling();
+        }
         if (name === "identity" && typeof loadIdentity === "function") loadIdentity();
         if (name === "runs" && typeof loadRuns === "function") loadRuns();
         if (name === "audit" && typeof loadAudit === "function") loadAudit();

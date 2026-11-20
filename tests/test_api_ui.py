@@ -47,3 +47,17 @@ def test_ui_shell_navigation_markers(client: TestClient) -> None:
     assert html.count("data-nav=") == 5
     assert 'data-view="cockpit" hidden' in html
     assert 'id="wx-list-title"' in html
+
+
+def test_ui_has_cockpit_panels(client: TestClient) -> None:
+    html = client.get("/ui/").text
+    for marker in (
+        'id="ops-health"',
+        'id="ops-queue"',
+        'id="ops-jobs"',
+        'id="ops-job-events"',
+        'id="ops-ai"',
+        'id="ops-traces"',
+        'id="ops-trace-waterfall"',
+    ):
+        assert marker in html
