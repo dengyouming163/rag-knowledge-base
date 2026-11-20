@@ -139,6 +139,22 @@ def test_search_success_records_one_terminal_metric(monkeypatch) -> None:
     assert store.calls[0]["hits"] == 1
 
 
+def test_search_trace_ms_and_metric_total_ms_use_distinct_origins(monkeypatch) -> None:
+    ticks = iter([1.0, 6.0, 9.0])
+    monkeypatch.setattr(
+        search_module,
+        "time",
+        SimpleNamespace(perf_counter=lambda: next(ticks)),
+    )
+    calls = capture_metrics(monkeypatch)
+    store = install_dependencies(monkeypatch, Retriever(result=[HIT]))
+
+    invoke_search(make_request(), Response(), store)
+
+    assert store.calls[0]["ms"] == 3000.0
+    assert calls[0]["total_ms"] == 8000.0
+
+
 def test_search_error_records_once_and_reraises_original(monkeypatch) -> None:
     calls = capture_metrics(monkeypatch)
     store = install_dependencies(

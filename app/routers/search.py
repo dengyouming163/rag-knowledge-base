@@ -35,10 +35,11 @@ def search(
     request.state.trace_id = trace_id
     request.state.kb_id = kb_id
     response.headers["X-Trace-Id"] = trace_id
-    started = time.perf_counter()
+    origin = time.perf_counter()
     ensure_kb(engine, tenant_id, kb_id)
     user_tags, is_admin = user_context_of(engine, tenant_id, user_id)
 
+    started = time.perf_counter()
     timed: TimedRetriever | None = None
     try:
         retriever = build_retriever(
@@ -48,7 +49,7 @@ def search(
             embed_client,
             need_bm25=payload.mode in ("hybrid", "bm25"),
         )
-        timed = TimedRetriever(retriever, origin=started)
+        timed = TimedRetriever(retriever, origin=origin)
         hits = timed.retrieve(
             payload.query,
             top_k=payload.top_k,
@@ -56,7 +57,8 @@ def search(
             mode=payload.mode,
         )
     except Exception as exc:
-        elapsed_ms = (time.perf_counter() - started) * 1000
+        finished = time.perf_counter()
+        elapsed_ms = (finished - started) * 1000
         trace_store.record(
             trace_id=trace_id,
             tenant=tenant_id,
@@ -78,7 +80,7 @@ def search(
             outcome="error",
             hits=0,
             error_kind=exc.__class__.__name__,
-            total_ms=elapsed_ms,
+            total_ms=(finished - origin) * 1000,
             retrieval_ms=timed.last_ms if timed is not None else None,
             stage_spans=(
                 [timed.last_span]
@@ -87,7 +89,8 @@ def search(
             ),
         )
         raise
-    elapsed_ms = (time.perf_counter() - started) * 1000
+    finished = time.perf_counter()
+    elapsed_ms = (finished - started) * 1000
     trace_store.record(
         trace_id=trace_id,
         tenant=tenant_id,
@@ -110,7 +113,7 @@ def search(
         hits=len(hits),
         citation_ok=None,
         rerank_degraded=None,
-        total_ms=elapsed_ms,
+        total_ms=(finished - origin) * 1000,
         retrieval_ms=timed.last_ms,
         stage_spans=[timed.last_span],
     )
