@@ -112,7 +112,7 @@
 | `occurred_at` | `timestamptz NOT NULL DEFAULT now()` | 终态时间 |
 | `operation` | `text NOT NULL` | `search` 或 `chat` |
 | `mode` | `text NOT NULL` | 实际检索模式 |
-| `outcome` | `text NOT NULL` | `answered/refused/error/cancelled` |
+| `outcome` | `text NOT NULL` | `succeeded/refused/error/cancelled` |
 | `hits` | `integer NOT NULL CHECK >= 0` | 最终命中数 |
 | `citation_ok` | `boolean NULL` | 未发生生成时为空 |
 | `rerank_degraded` | `boolean NULL` | 未执行 rerank 时为空 |
@@ -129,9 +129,11 @@
 
 约束与索引：
 
+- `CHECK (operation IN ('search', 'chat'))`。
+- `CHECK (outcome IN ('succeeded', 'refused', 'error', 'cancelled'))`。
 - `UNIQUE (tenant_id, trace_id)`，保证单次请求终态幂等。
 - `(tenant_id, kb_id, occurred_at DESC, id DESC)`。
-- `stage_spans` 在应用层验证为有限数组，每项只允许白名单字段和有限数值。
+- `stage_spans` 必须是 JSONB 数组，最多 16 项；阶段名只允许 `rewrite/retrieve/rerank/answer/other`，状态只允许 `ok/error/cancelled`，数值必须有限且非负。
 
 `stage_spans` 示例：
 
@@ -165,7 +167,7 @@
 
 ### 7.2 RAG 指标
 
-- Search 与 Chat 在 `answered/refused/error/cancelled` 终态各写一次。
+- Search 与 Chat 在 `succeeded/refused/error/cancelled` 终态各写一次。
 - 通过现有代理/包装器采集，不修改他人尚未提交的 `src/pipeline.py`：扩展 chat client 调用记录以区分 rewrite 与最终生成，扩展 retriever 计时，并为 reranker 增加透明计时代理。
 - 未发生的阶段写 `NULL`，不写 `0`。
 - Chat 的生成 Token 只取最终答案生成，不把多轮 rewrite 的残留误记为 answer usage。
@@ -196,8 +198,9 @@
 
 ### 8.3 RAG
 
-- Zero-hit Rate：`hits = 0` 的检索操作 / 有检索结果的操作数。
-- Refusal Rate：`outcome = refused` / 已完成的 Chat 数；error/cancelled 不进入分母。
+- Search 成功时使用 `outcome = succeeded`；Chat 正常生成答案时也使用 `succeeded`，只有明确拒答才使用 `refused`。
+- Zero-hit Rate：`hits = 0` 的检索操作 / 已完成检索的操作数，分母包含零命中，error/cancelled 不进入分母。
+- Refusal Rate：`outcome = refused` 的 Chat / `outcome IN (succeeded, refused)` 的 Chat 数；error/cancelled 不进入分母。
 - Rerank Degraded Rate：`rerank_degraded = true` / 实际执行 rerank 的操作数。
 - Citation OK Rate：`citation_ok = true` / `citation_ok IS NOT NULL` 的生成请求数。
 - E2E/Retrieve/Rerank/LLM p50/p95/p99：只对对应字段非空的请求计算，并返回各自样本量。
@@ -228,16 +231,16 @@
 
 ### 9.1 摘要
 
-`GET /v1/ops/summary?window=1h|24h|7d|30d`
+`GET /v1/ops/summary?kb_id=...&window=1h|24h|7d|30d`
 
-保留现有响应字段以兼容已有消费者，新增 `observability`：
+`kb_id` 必填，沿用当前全局作用域。保留现有响应字段以兼容已有消费者，新增 `observability`：
 
 - `window/start_at/end_at/generated_at`
 - `http`：请求数、QPM、4xx/5xx、p50/p95/p99、样本量
 - `rag`：操作数、结果数、Zero-hit、Refusal、Degraded、Citation、各阶段分位数及样本量
 - `tokens`：Prompt、Completion、Total、成本估算及价格覆盖状态
 
-摘要只服务轻量卡片，不携带趋势点。
+摘要只服务轻量卡片，不携带趋势点。现有兼容字段也必须由新指标查询或已有轻量数据源生成，不得为了保留字段而继续全量扫描 JSONL。
 
 ### 9.2 趋势
 
@@ -250,13 +253,13 @@
 
 ### 9.3 Traces
 
-`GET /v1/ops/traces` 在保留现有兼容行为的基础上，为专业列表提供：
+保留现有 `GET /v1/ops/traces` 的请求和响应不变，避免破坏旧消费者。新工作台使用独立接口 `GET /v1/ops/trace-list`，从 `ops_rag_metrics` 返回 `{items, next_cursor}`，支持：
 
-- `window/outcome/operation/mode/min_ms/trace_id/limit`
-- `before_occurred_at + before_id` 游标
-- 稳定按 `(occurred_at DESC, id DESC)` 排序
+- `kb_id` 必填，以及 `window/outcome/operation/mode/min_ms/trace_id/limit`
+- `before_occurred_at + before_id` 游标，两者必须同时提供或同时省略
+- 稳定按 `(occurred_at DESC, id DESC)` 排序；`next_cursor` 为空表示没有下一页
 
-`GET /v1/ops/traces/{trace_id}/detail` 返回：
+`GET /v1/ops/traces/{trace_id}/detail?kb_id=...` 返回：
 
 - Postgres 指标摘要
 - 真实 `stage_spans`
