@@ -161,7 +161,10 @@ async def chat_stream(
             chunks = result["chunks"]
             answer = result["answer"]
             refused = not chunks or "根据现有资料无法确定" in answer
-            usage = usage_from_chat_result(usage_client.last)
+            # 早退拒答时 pipeline 不会调用生成：last 里残留的是多轮改写的结果，
+            # 不能当成 answer usage 写进 trace（SSE 仍用零值字典保持字段稳定）
+            chat_result = usage_client.last if chunks else None
+            usage = usage_from_chat_result(chat_result)
             timings = {
                 "retrieval_ms": (
                     round(timed_retriever.last_ms, 3) if timed_retriever else 0.0
@@ -173,7 +176,7 @@ async def chat_stream(
                 hits=len(chunks),
                 refused=refused,
                 mode="chat",
-                usage=usage,
+                usage=usage if chat_result is not None else None,
                 flags={
                     "rerank_degraded": result.get("rerank_degraded", False),
                     "citation_ok": result.get("citation_ok", True),
