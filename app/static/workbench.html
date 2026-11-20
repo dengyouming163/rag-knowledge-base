@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>RAG Operations Console</title>
+  <link rel="stylesheet" href="/ui/css/workbench.css">
+</head>
+<body>
+  <div class="wb-app">
+    <aside class="wb-sidebar">
+      <a class="wb-brand" href="#/overview" aria-label="WorkBuddy overview">
+        <span class="wb-brand-mark" aria-hidden="true">W</span>
+        <span class="wb-brand-copy">
+          <strong>WorkBuddy</strong>
+          <span>RAG Operations</span>
+        </span>
+      </a>
+
+      <nav class="wb-nav" aria-label="Workspace modules">
+        <p class="wb-nav-label">WORKSPACE</p>
+        <ul class="wb-nav-list">
+          <li><button class="wb-nav-link is-active" type="button" data-nav="overview" aria-current="page" aria-controls="view-overview"><span class="wb-nav-index">01</span><span>Overview</span></button></li>
+          <li><button class="wb-nav-link" type="button" data-nav="lab" aria-controls="view-lab"><span class="wb-nav-index">02</span><span>Query Lab</span></button></li>
+          <li><button class="wb-nav-link" type="button" data-nav="traces" aria-controls="view-traces"><span class="wb-nav-index">03</span><span>Traces</span></button></li>
+          <li><button class="wb-nav-link" type="button" data-nav="ingestion" aria-controls="view-ingestion"><span class="wb-nav-index">04</span><span>Ingestion</span></button></li>
+          <li><button class="wb-nav-link" type="button" data-nav="evaluation" aria-controls="view-evaluation"><span class="wb-nav-index">05</span><span>Evaluation</span></button></li>
+          <li><button class="wb-nav-link" type="button" data-nav="access" aria-controls="view-access"><span class="wb-nav-index">06</span><span>Access Control</span></button></li>
+          <li><button class="wb-nav-link" type="button" data-nav="audit" aria-controls="view-audit"><span class="wb-nav-index">07</span><span>Audit Log</span></button></li>
+        </ul>
+      </nav>
+
+      <div class="wb-sidebar-footer">
+        <span class="wb-status-dot" aria-hidden="true"></span>
+        <div><strong>Operations workspace</strong><span>Scoped to the active tenant</span></div>
+      </div>
+    </aside>
+
+    <div class="wb-workspace">
+      <header class="wb-topbar">
+        <div class="wb-scope-heading">
+          <span class="wb-eyebrow">GLOBAL SCOPE</span>
+          <span class="wb-scope-caption">Applied to every module</span>
+        </div>
+        <form id="scope-form" class="wb-scope" aria-label="Global request scope">
+          <div class="wb-field wb-field-tenant">
+            <label for="scope-tenant">Tenant ID</label>
+            <input id="scope-tenant" name="tenant" value="demo" maxlength="64" autocomplete="off" spellcheck="false" required>
+          </div>
+          <div class="wb-field wb-field-kb">
+            <label for="scope-kb">Knowledge base</label>
+            <input id="scope-kb" name="kb" value="kb_after_sale" maxlength="64" autocomplete="off" spellcheck="false" required>
+          </div>
+          <div class="wb-field wb-field-user">
+            <label for="scope-user">User ID</label>
+            <input id="scope-user" name="user" value="demo_user" maxlength="64" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="wb-field wb-field-window">
+            <label for="scope-window">Time window</label>
+            <select id="scope-window" name="window">
+              <option value="1h">Last hour</option>
+              <option value="24h" selected>Last 24 hours</option>
+              <option value="7d">Last 7 days</option>
+              <option value="30d">Last 30 days</option>
+            </select>
+          </div>
+          <button id="scope-refresh" class="wb-refresh" type="submit">Refresh</button>
+        </form>
+        <output id="app-status" class="wb-app-status" role="status" aria-live="polite">Ready</output>
+      </header>
+
+      <main id="wb-main" class="wb-main">
+        <section id="view-overview" data-view="overview" aria-labelledby="view-overview-title">
+          <header class="wb-view-header">
+            <div><span class="wb-view-kicker">MODULE / 01</span><h1 id="view-overview-title">Overview</h1></div>
+            <p>Operational health and activity for the current scope.</p>
+          </header>
+          <div class="wb-view-body" data-view-body></div>
+        </section>
+
+        <section id="view-lab" data-view="lab" hidden aria-labelledby="view-lab-title">
+          <header class="wb-view-header">
+            <div><span class="wb-view-kicker">MODULE / 02</span><h1 id="view-lab-title">Query Lab</h1></div>
+            <p>Inspect retrieval and generation behavior in a controlled scope.</p>
+          </header>
+          <div class="wb-view-body" data-view-body></div>
+        </section>
+
+        <section id="view-traces" data-view="traces" hidden aria-labelledby="view-traces-title">
+          <header class="wb-view-header">
+            <div><span class="wb-view-kicker">MODULE / 03</span><h1 id="view-traces-title">Traces</h1></div>
+            <p>Follow request execution and diagnostic evidence.</p>
+          </header>
+          <div class="wb-view-body" data-view-body></div>
+        </section>
+
+        <section id="view-ingestion" data-view="ingestion" hidden aria-labelledby="view-ingestion-title">
+          <header class="wb-view-header">
+            <div><span class="wb-view-kicker">MODULE / 04</span><h1 id="view-ingestion-title">Ingestion</h1></div>
+            <p>Monitor document intake and processing jobs.</p>
+          </header>
+          <div class="wb-view-body" data-view-body></div>
+        </section>
+
+        <section id="view-evaluation" data-view="evaluation" hidden aria-labelledby="view-evaluation-title">
+          <header class="wb-view-header">
+            <div><span class="wb-view-kicker">MODULE / 05</span><h1 id="view-evaluation-title">Evaluation</h1></div>
+            <p>Review quality runs and comparable evaluation results.</p>
+          </header>
+          <div class="wb-view-body" data-view-body></div>
+        </section>
+
+        <section id="view-access" data-view="access" hidden aria-labelledby="view-access-title">
+          <header class="wb-view-header">
+            <div><span class="wb-view-kicker">MODULE / 06</span><h1 id="view-access-title">Access Control</h1></div>
+            <p>Inspect identity, permissions, and knowledge-base access.</p>
+          </header>
+          <div class="wb-view-body" data-view-body></div>
+        </section>
+
+        <section id="view-audit" data-view="audit" hidden aria-labelledby="view-audit-title">
+          <header class="wb-view-header">
+            <div><span class="wb-view-kicker">MODULE / 07</span><h1 id="view-audit-title">Audit Log</h1></div>
+            <p>Review scoped operational actions and audit evidence.</p>
+          </header>
+          <div class="wb-view-body" data-view-body></div>
+        </section>
+      </main>
+    </div>
+  </div>
+  <script type="module" src="/ui/js/app.mjs"></script>
+</body>
+</html>
