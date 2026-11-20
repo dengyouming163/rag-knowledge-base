@@ -40,3 +40,10 @@ def test_ui_has_wechat_desktop_shell(client: TestClient) -> None:
         'class="wx-content"',
     ):
         assert marker in html
+
+
+def test_ui_shell_navigation_markers(client: TestClient) -> None:
+    html = client.get("/ui/").text
+    assert html.count("data-nav=") == 5
+    assert 'data-view="cockpit" hidden' in html
+    assert 'id="wx-list-title"' in html

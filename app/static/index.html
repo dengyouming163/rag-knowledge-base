@@ -81,7 +81,9 @@
     .wx-app {
       display: grid;
       grid-template-columns: 64px 320px minmax(0, 1fr);
-      min-height: 100vh;
+      grid-template-rows: minmax(0, 1fr);
+      height: 100vh;
+      overflow: hidden;
       background: var(--wx-bg);
     }
     .wx-rail {
@@ -119,6 +121,7 @@
     }
     .wx-nav:hover { background: #383838; }
     .wx-nav.is-active { background: var(--wx-rail-active); color: #fff; }
+    .wx-rail :focus-visible { outline: 3px solid var(--wx-primary); outline-offset: 3px; }
     .wx-nav.is-active::before {
       content: "";
       position: absolute;
@@ -136,6 +139,7 @@
       min-width: 0;
       display: flex;
       flex-direction: column;
+      overflow: hidden;
     }
     .wx-list-head {
       height: 56px;
@@ -145,32 +149,40 @@
       font-weight: 600;
       border-bottom: 1px solid var(--wx-divider);
     }
-    .wx-list-body { overflow: auto; }
-    .wx-main { min-width: 0; display: flex; flex-direction: column; }
+    .wx-list-body { flex: 1; min-height: 0; overflow: auto; }
+    .wx-list-empty {
+      margin: 0;
+      padding: 20px 16px;
+      color: var(--wx-text-tertiary);
+      font-size: 12px;
+    }
+    .wx-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
     .wx-topbar {
-      min-height: 56px;
+      height: 56px;
       background: var(--wx-surface);
       border-bottom: 1px solid var(--wx-divider);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 8px 24px;
+      padding: 0 24px;
       gap: 16px;
     }
     .wx-title {
       margin: 0;
       font-family: var(--sans);
       font-size: 20px;
+      line-height: 1.2;
       font-weight: 600;
       color: var(--wx-text);
     }
     .wx-subtitle {
       font-size: 12px;
+      line-height: 1.2;
       color: var(--wx-text-secondary);
       margin-top: 2px;
     }
     .wx-badges { display: flex; gap: 8px; flex-wrap: wrap; }
-    .wx-content { flex: 1; overflow: auto; padding: 24px; }
+    .wx-content { flex: 1; min-height: 0; overflow: auto; padding: 24px; }
     .wx-content > [data-view] { max-width: 1440px; margin: 0 auto; }
     .wx-card {
       background: var(--wx-surface);
@@ -561,11 +573,16 @@
       .results { max-height: 480px; }
     }
 
+    @media (max-width: 1200px) {
+      .wx-app { grid-template-columns: 64px 260px minmax(0, 1fr); }
+    }
+
     @media (max-width: 899px) {
-      .wx-app { grid-template-columns: 1fr; }
+      .wx-app { grid-template-columns: 1fr; grid-template-rows: 56px minmax(0, 1fr); }
       .wx-rail { flex-direction: row; height: 56px; padding: 0 8px; overflow-x: auto; }
       .wx-brand { margin: 0 8px 0 0; }
       .wx-nav { min-width: 64px; }
+      .wx-rail :focus-visible { outline-offset: -2px; }
       .wx-nav.is-active::before {
         left: 8px;
         right: 8px;
@@ -597,26 +614,28 @@
   <div class="wx-app">
     <nav class="wx-rail" aria-label="主导航">
       <div class="wx-brand">KB</div>
-      <button class="wx-nav is-active" data-nav="workbench" title="工作台">
-        <span class="wx-nav-icon">⌂</span><span class="wx-nav-label">工作台</span>
+      <button class="wx-nav is-active" type="button" data-nav="workbench" title="工作台" aria-current="page">
+        <span class="wx-nav-icon" aria-hidden="true">⌂</span><span class="wx-nav-label">工作台</span>
       </button>
-      <button class="wx-nav" data-nav="cockpit" title="驾驶舱">
-        <span class="wx-nav-icon">▤</span><span class="wx-nav-label">驾驶舱</span>
+      <button class="wx-nav" type="button" data-nav="cockpit" title="驾驶舱">
+        <span class="wx-nav-icon" aria-hidden="true">▤</span><span class="wx-nav-label">驾驶舱</span>
       </button>
-      <button class="wx-nav" data-nav="identity" title="身份与权限">
-        <span class="wx-nav-icon">◎</span><span class="wx-nav-label">身份</span>
+      <button class="wx-nav" type="button" data-nav="identity" title="身份与权限">
+        <span class="wx-nav-icon" aria-hidden="true">◎</span><span class="wx-nav-label">身份</span>
       </button>
-      <button class="wx-nav" data-nav="runs" title="评测与压测">
-        <span class="wx-nav-icon">◫</span><span class="wx-nav-label">评测</span>
+      <button class="wx-nav" type="button" data-nav="runs" title="评测与压测">
+        <span class="wx-nav-icon" aria-hidden="true">◫</span><span class="wx-nav-label">评测</span>
       </button>
-      <button class="wx-nav" data-nav="audit" title="审计">
-        <span class="wx-nav-icon">≡</span><span class="wx-nav-label">审计</span>
+      <button class="wx-nav" type="button" data-nav="audit" title="审计">
+        <span class="wx-nav-icon" aria-hidden="true">≡</span><span class="wx-nav-label">审计</span>
       </button>
     </nav>
 
-    <aside class="wx-list" id="wx-list" aria-label="列表">
+    <aside class="wx-list" id="wx-list" aria-labelledby="wx-list-title">
       <div class="wx-list-head" id="wx-list-title">工作台</div>
-      <div class="wx-list-body" id="wx-list-body"></div>
+      <div class="wx-list-body" id="wx-list-body">
+        <p class="wx-list-empty">当前模块暂无列表项</p>
+      </div>
     </aside>
 
     <div class="wx-main">
@@ -1501,7 +1520,13 @@
           view.hidden = view.dataset.view !== name;
         });
         navButtons.forEach((button) => {
-          button.classList.toggle("is-active", button.dataset.nav === name);
+          const active = button.dataset.nav === name;
+          button.classList.toggle("is-active", active);
+          if (active) {
+            button.setAttribute("aria-current", "page");
+          } else {
+            button.removeAttribute("aria-current");
+          }
         });
         const titleMap = {
           workbench: "工作台",
