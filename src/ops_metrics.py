@@ -133,7 +133,5 @@ def build_ops_summary(
         "ai": summarize_ai(traces),
         "latest_runs": runs[:5],
         "latest_traces": traces[-10:],
-        # latest_workers 与 workers 同值：前者与 latest_runs 命名一致，后者保持计划原始契约
         "workers": workers,
-        "latest_workers": workers,
     }

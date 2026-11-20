@@ -90,7 +90,9 @@ def test_summary_returns_cockpit_structure(client: TestClient, engine) -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert set(body) >= {"health", "queue", "ai", "latest_runs", "latest_workers"}
+    assert set(body) == {
+        "health", "queue", "ai", "latest_runs", "latest_traces", "workers"
+    }
     assert body["health"]["parser"] == "unconfigured"
     assert body["health"]["api"] == "up"
     assert isinstance(body["queue"]["total"], int)
@@ -98,7 +100,7 @@ def test_summary_returns_cockpit_structure(client: TestClient, engine) -> None:
     assert isinstance(body["ai"]["requests"], int)
     assert body["ai"]["requests"] == 0
     assert isinstance(body["latest_runs"], list)
-    assert isinstance(body["latest_workers"], list)
+    assert isinstance(body["workers"], list)
 
 
 def test_summary_returns_404_for_other_tenant_kb(client: TestClient) -> None:
