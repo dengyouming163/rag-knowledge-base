@@ -1,89 +1,117 @@
 # rag-knowledge-base
 
-面向多行业客服/陪伴场景的知识库问答（RAG）项目，用于展示检索增强生成链路的工程实现。
-
-## 环境要求
-
-本机 `python` 默认指向 2.7，必须显式使用 3.13：
-
-```bash
-py -3.13 -m pip install httpx pydantic pytest
-py -3.13 -m pytest -q
-```
-
-## 快速开始：无 Key 演示
-
-三条命令即可跑通「切分 → 入库 → 检索 → 多轮改写 → 回答」全链路，不联网、不需要任何 API Key：
-
-```bash
-py -3.13 -m pip install httpx numpy pydantic pytest
-py -3.13 scripts/demo_pipeline.py --mock
-py -3.13 -m pytest -q
-```
-
-`--mock` 使用确定性哈希假向量与固定假 LLM，只验证流程是否跑通，输出中的分数与排名不代表真实检索效果。若 `data/docs/` 为空，脚本自动使用内置的三段示例文档。
-
-## 接入真实模型
-
-复制 `.env.example` 为 `.env` 后填入 Key（或直接导出环境变量）：
-
-```bash
-# bash
-export EMBED_API_KEY=sk-xxx
-export LLM_API_KEY=sk-xxx
-
-# PowerShell
-$env:EMBED_API_KEY="sk-xxx"
-$env:LLM_API_KEY="sk-xxx"
-```
-
-然后运行：
-
-```bash
-py -3.13 scripts/demo_pipeline.py --real
-```
-
-Embedding 默认走 SiliconFlow `BAAI/bge-m3`，对话默认走 DeepSeek `deepseek-chat`，均可用 `EMBED_BASE_URL` / `LLM_BASE_URL` / `EMBED_MODEL` / `LLM_MODEL` 覆盖。缺少 Key 时脚本只打印配置提示并以退出码 1 结束，不会抛堆栈；也可用 `--query`、`--top-k`、`--audience`、`--min-score` 调整演示参数。
-
-## 当前进度
-
-- Day 1：项目骨架、可配置的 LLM 对话客户端（httpx + pydantic），支持指数退避重试与延迟/token 统计；Markdown 结构化切分（标题层级/段落/超长段二次切分/重叠/稳定 chunk_id），均配套单测。
-- Day 2：Embedding 客户端（SiliconFlow bge-m3，分批请求、指数退避、token 用量统计）与本地向量库（numpy + JSON，content_hash 去重、余弦检索、audience 过滤、原子落盘）。选型说明：不引入 Chroma 以规避 Python 3.13 依赖兼容风险，本地实现零额外依赖、便于测试；生产数据量大时替换为 Qdrant/pgvector（ANN 索引、并发与过滤下推）。设计细节见 `docs/vector-store-design.md`。
-- Day 2 补充：混合检索。自研零依赖 BM25（中文按单字 + 相邻双字 bigram，英文/数字按 `\w+` 小写切分；倒排表 + 标准 BM25 打分，k1=1.5、b=0.75），与向量检索各取 `recall_k` 条后用 RRF 融合：`score = Σ 1/(RRF_K + rank)`，`RRF_K = 60`（沿用原论文取值：让头部名次的分差足够平缓，避免单路第一名碾压另一路的中等结果，且无需把余弦相似度与 BM25 分数归一到同一量纲）。支持 `hybrid/vector/bm25` 三种模式与 `audience` 过滤，三路对比脚本见 `docs/retrieval-comparison.md`。
-- Day 3 部分：多轮问题改写与端到端流水线。`src/rewrite.py` 在有历史时把追问补全为独立查询，任何失败静默回退原问题；`src/pipeline.py` 串起改写 → `audience` 过滤检索 → 低分兜底 → 带 `[chunk_id]` 标注的生成。无 Key 演示见 `scripts/demo_pipeline.py --mock`，设计取舍见 `docs/query-rewrite.md`。
-
-## 后续计划
-
-- Day 3 剩余：Rerank 与引用溯源
-- Day 4：评测集与自动化指标
-- Day 5-6：服务化与面试演示材料
+面向多行业客服/陪伴场景的知识库问答（RAG）项目，覆盖异步入库、混合检索、拒答与引用、流式问答、运营统计和单页工作台。
 
 ## 架构
 
+```mermaid
+flowchart LR
+    subgraph INGEST[异步入库]
+        U[上传 API<br/>content_hash 去重 / 202 + job_id]
+        C[local_dir / 飞书连接器<br/>worker 定时同步]
+        S[(共享 data/uploads<br/>named volume)]
+        Q[(PostgreSQL<br/>ingest_jobs)]
+        W[单副本 worker<br/>SKIP LOCKED 领取<br/>状态 / 进度 / 重试]
+        P[PDF 解析<br/>parser profile 优先<br/>本地 pypdf 降级]
+        O[RapidOCR<br/>仅提取块为空时]
+        E[父子分块 / Embedding<br/>仅子块向量化]
+        D[(PostgreSQL + pgvector<br/>HNSW / BM25 / RLS)]
+        U --> S
+        C --> S
+        U --> Q
+        C --> Q
+        S --> W
+        Q --> W
+        W --> P
+        P -->|文本与表格块均为空| O
+        P --> E
+        O --> E
+        E --> D
+    end
+
+    subgraph QUERY[检索与问答]
+        A[FastAPI<br/>租户 / ACL / 版本作用域]
+        R[多轮问题改写]
+        H[向量 + BM25 召回<br/>加权 RRF 融合]
+        F[低置信度拒答]
+        X[父块扩展 / 注入防护<br/>可配置 Rerank]
+        L[LLM 生成<br/>引用校验 / SSE]
+        A --> R --> H --> F --> X --> L
+    end
+
+    D --> H
+    UI[单页 /ui<br/>检索 / 问答 / 上传 / 任务 / 统计] --> A
+    L --> T[traces / stats]
 ```
-写入：上传 → 解析 → 切分（子块 + 父块）→ Embedding → 落库 → 建索引
-查询：鉴权 → 改写 → 向量召回 + BM25 召回 → RRF → 精排 → 拒答 → 拼上下文 → LLM → 引用校验
-```
 
-- 存储：Postgres 16 + pgvector（`chunks.embedding vector(1024)`，HNSW 索引）
-- 服务：FastAPI（`/live`、`/ready`、`/v1/kbs/{kb_id}/search`、`/v1/chat/stream` SSE）
-- 隔离三层：强制作用域（缺 `tenant_id` 直接抛错）→ 文档级 ACL（标签交集）→ 数据库 RLS
+- **入库边界**：上传 API 只负责接收、去重、落盘和入队；worker 每轮最多处理一条任务，通过 `FOR UPDATE SKIP LOCKED` 原子领取，执行任务状态、进度与最多三次尝试。API 与 worker 必须共享上传目录。
+- **PDF 边界**：独立 parser 使用 pdfplumber 提取文本和表格，只有提取块为空才调用 RapidOCR；未配置 parser 或 parser 请求失败时，主服务退回本地 pypdf，本地路径不会自行 OCR。
+- **检索与隔离**：子块用于召回，父块用于补充上下文；向量与 BM25 经加权 RRF 融合。强制租户作用域、文档 ACL 和 chunks RLS 共同约束可见范围。
+- **可观测与操作**：`/v1/traces/{trace_id}` 记录阶段耗时与命中情况，`/v1/stats` 汇总任务和问答指标；`/ui/` 提供单页知识运维工作台。
 
-## 指标与门禁
+设计取舍见 [ADR 0007：数据库异步入库](docs/adr/0007-async-ingest.md) 与 [ADR 0008：PDF 本地降级与 OCR 回退](docs/adr/0008-ocr-fallback.md)。
 
-| 指标 | 值 | 口径 |
-|---|---|---|
-| Recall@5 | 0.9342 | 38 条可回答用例，mock 向量 |
-| MRR@5 | 0.8575 | 同上 |
-| Hit Rate@5 | 0.9474 | 同上 |
-| 测试 | 210 passed | `py -3.13 -m pytest -q` |
-| 隔离验收 | 6/6 通过 | `py -3.13 scripts/demo_acceptance.py` |
+## 五步启动
 
-```bash
-py -3.13 -m pytest -q
-py -3.13 scripts/run_eval.py --mock --compare eval/baseline.json   # 退化门禁，退出码 1 表示失败
-py -3.13 scripts/demo_acceptance.py                                # Gate C 演示：检索/隔离/ACL/版本
-```
+前置条件：Windows PowerShell、Python 3.13（通过 `py` 启动）和 Docker Compose。以下五条命令均在仓库根目录顺序执行；第 4 步包含可选的 `parser` profile，以支持扫描件 OCR。
 
-> mock 向量是确定性哈希，不具语义；上表证明「链路与门禁有效」，不代表真实检索质量。
-> 接真实模型：设置 `EMBED_API_KEY` 后运行 `scripts/run_eval.py --real` 重新记录基线。
+1. 安装本机开发、测试及 PDF 测试依赖：
+
+   ```powershell
+   py -3.13 -m pip install -e ".[test]"
+   ```
+
+2. 启动 PostgreSQL 16 + pgvector（宿主端口 `5433`）：
+
+   ```powershell
+   docker compose -f deploy/docker-compose.yml up -d db
+   ```
+
+3. 构建临时 API 镜像并执行全部 Alembic 迁移（包括 `kb_app` 与 RLS）：
+
+   ```powershell
+   docker compose -f deploy/docker-compose.yml run --rm --build api alembic upgrade head
+   ```
+
+4. 启动 API、单副本 worker 和 parser；API 与 worker 通过 `uploads` named volume 共享文件：
+
+   ```powershell
+   docker compose --profile parser -f deploy/docker-compose.yml up -d --build api worker parser
+   ```
+
+5. 查看四个服务的运行与健康状态：
+
+   ```powershell
+   docker compose --profile parser -f deploy/docker-compose.yml ps
+   ```
+
+启动后访问 `http://127.0.0.1:8000/ui/`；存活与就绪端点分别为 `/live`、`/ready`，OpenAPI 页面为 `/docs`。完整故障恢复演练见 [运行手册](docs/runbook.md)。
+
+### mock 与真实模型
+
+- 当前 Compose 显式使用 `EMBED_MODE=mock`，无 Key 即可验收上传、检索与任务链路。mock 是 1024 维确定性哈希向量，没有语义，界面分数不能解释为真实检索质量；对话仍需为 API 进程配置 `LLM_API_KEY`（容器内须显式注入）。
+- `scripts/demo_pipeline.py` 保留 `--mock` 与 `--real` 两种端到端演示。真实模式按 `.env.example` 配置进程环境变量，默认 Embedding 为 SiliconFlow `BAAI/bge-m3`，对话为 DeepSeek `deepseek-chat`，可用对应 base URL / model 环境变量覆盖。
+- `EMBED_BASE_URL`、`EMBED_MODEL`、`LLM_BASE_URL`、`LLM_MODEL` 只改变模型提供方或模型名；真实模型结果必须单独记录，不能和 mock 基线混比。
+
+## UI 证据
+
+![知识运维工作台总览](docs/images/ui-overview-top.jpg)
+
+截图来自已提交的真实浏览器手工验收，覆盖选库、检索、流式问答、引用展开、角色切换和上传完成状态；运行时的检索分数为 mock 模式结果。完整操作、结果与证据边界见 [UI 验收清单](docs/ui-checklist.md)。
+
+## 真实模型评测
+
+以下为 **2026-11-19 19:27** 一次本地真实模型运行：`mock=false`、Embedding 使用真实 `BAAI/bge-m3`、`hybrid`、`top_k=5`、开启生成。语料共 26 个 chunks；用例共 50 条，其中 38 条可回答、12 条不可回答；生成失败 0 条。
+
+| 指标 | 实测值 | 分母与语义 |
+|---|---:|---|
+| Recall@5 | 1.0000 | 38 条可回答题；逐题计算前 5 条命中的标注 chunk 比例后取均值，多标注可部分得分 |
+| MRR@5 | 0.9737 | 38 条可回答题；前 5 条中首个正确结果的倒数排名均值 |
+| Hit Rate@5 | 1.0000 | 38 条可回答题中，Recall@5 大于 0 的比例 |
+| 拒答准确率 | 1.0000 | 12 条不可回答题中正确拒答的比例（12/12） |
+| 答案覆盖率 | 0.9211 | 38 条可回答题中未拒答的比例（35/38）；本次生成失败 0 条 |
+| 引用准确率 | 1.0000 | 35 条可回答、生成成功且未拒答的回答，逐条计算引用 chunk_id 存在于实际上下文的比例后取均值；无引用回答不进分母，本次为 0 条 |
+
+证据边界：原始输出位于本次工作区的 `eval/baseline_real_gen.json`，该文件是**未跟踪的本地证据**，不会随干净检出分发，因此这里不把它链接成仓库基线。以上数值只代表这次小型语料、用例与参数组合，不是通用榜单成绩。复现需使用当前生成评测实现 `scripts/run_eval.py`，自行配置真实模型 Key，并在相同检索与生成条件下重新导出结果；指标实现口径见 `src/metrics.py` 与 `scripts/run_eval.py`。
+
+完整回归测试使用 `py -3.13 -m pytest -q`；数据库不可用时会跳过需要真实 PostgreSQL 的集成用例，应以命令实际输出的 passed / skipped / warning 为准，不沿用历史计数。
