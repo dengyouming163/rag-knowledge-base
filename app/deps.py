@@ -43,6 +43,11 @@ TenantId = Annotated[str, Depends(current_tenant)]
 EngineDep = Annotated[Engine, Depends(get_engine)]
 
 
+def ops_actions_enabled() -> bool:
+    """运维动作（重跑/演练）默认关闭：只读驾驶舱可以先上，写动作需显式开启。"""
+    return os.environ.get("OPS_ENABLE_ACTIONS", "0").strip() == "1"
+
+
 @lru_cache(maxsize=1)
 def get_trace_store() -> TraceStore:
     return TraceStore(os.environ.get("TRACE_ROOT", "data/traces"))

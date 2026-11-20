@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from src.store_pg import MissingTenantFilterError
 
 from .errors import ScopeNotFoundError
-from .routers import chat, documents, health, jobs, search, stats, traces
+from .routers import chat, documents, health, identity, jobs, search, stats, traces
 
 
 def create_app() -> FastAPI:
@@ -29,6 +29,7 @@ def create_app() -> FastAPI:
     app.include_router(documents.router)
     app.include_router(jobs.router)
     app.include_router(stats.router)
+    app.include_router(identity.router)
     app.mount(
         "/ui",
         StaticFiles(directory=Path(__file__).resolve().parent / "static", html=True),
