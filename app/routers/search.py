@@ -10,8 +10,10 @@ import time
 from fastapi import APIRouter, Request, Response
 
 from app.deps import EmbedderDep, EngineDep, TenantId, TraceStoreDep, UserId, user_context_of
+from app.observability import TimedRetriever
 from app.schemas import HitOut, SearchRequest, SearchResponse
 from app.services import build_retriever, ensure_kb
+from src.ops_observability import try_record_rag_metric
 from src.trace import new_trace_id
 
 router = APIRouter(prefix="/v1", tags=["search"])
@@ -31,11 +33,13 @@ def search(
 ):
     trace_id = new_trace_id()
     request.state.trace_id = trace_id
+    request.state.kb_id = kb_id
     response.headers["X-Trace-Id"] = trace_id
+    started = time.perf_counter()
     ensure_kb(engine, tenant_id, kb_id)
     user_tags, is_admin = user_context_of(engine, tenant_id, user_id)
 
-    started = time.perf_counter()
+    timed: TimedRetriever | None = None
     try:
         retriever = build_retriever(
             engine,
@@ -44,23 +48,43 @@ def search(
             embed_client,
             need_bm25=payload.mode in ("hybrid", "bm25"),
         )
-        hits = retriever.retrieve(
+        timed = TimedRetriever(retriever, origin=started)
+        hits = timed.retrieve(
             payload.query,
             top_k=payload.top_k,
             filters={"audience": payload.audience, "user_tags": user_tags, "is_admin": is_admin},
             mode=payload.mode,
         )
-    except Exception:
+    except Exception as exc:
+        elapsed_ms = (time.perf_counter() - started) * 1000
         trace_store.record(
             trace_id=trace_id,
             tenant=tenant_id,
             kb=kb_id,
             stage="error",
-            ms=(time.perf_counter() - started) * 1000,
+            ms=elapsed_ms,
             hits=0,
             refused=False,
             mode=payload.mode,
             query=payload.query,
+        )
+        try_record_rag_metric(
+            engine,
+            trace_id=trace_id,
+            tenant_id=tenant_id,
+            kb_id=kb_id,
+            operation="search",
+            mode=payload.mode,
+            outcome="error",
+            hits=0,
+            error_kind=exc.__class__.__name__,
+            total_ms=elapsed_ms,
+            retrieval_ms=timed.last_ms if timed is not None else None,
+            stage_spans=(
+                [timed.last_span]
+                if timed is not None and timed.last_span is not None
+                else []
+            ),
         )
         raise
     elapsed_ms = (time.perf_counter() - started) * 1000
@@ -74,6 +98,21 @@ def search(
         refused=False,
         mode=payload.mode,
         query=payload.query,
+    )
+    try_record_rag_metric(
+        engine,
+        trace_id=trace_id,
+        tenant_id=tenant_id,
+        kb_id=kb_id,
+        operation="search",
+        mode=payload.mode,
+        outcome="succeeded",
+        hits=len(hits),
+        citation_ok=None,
+        rerank_degraded=None,
+        total_ms=elapsed_ms,
+        retrieval_ms=timed.last_ms,
+        stage_spans=[timed.last_span],
     )
 
     return SearchResponse(

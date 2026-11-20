@@ -22,16 +22,29 @@ class UsageRecordingChatClient:
 class TimedRetriever:
     """只给 retrieve 计时，其余行为与内层检索器保持一致。"""
 
-    def __init__(self, inner: Any) -> None:
+    def __init__(self, inner: Any, *, origin: float | None = None) -> None:
         self.inner = inner
+        self.origin = origin
         self.last_ms: float = 0.0
+        self.last_span = None
 
     def retrieve(self, *args, **kwargs):
         started = time.perf_counter()
+        status = "ok"
         try:
             return self.inner.retrieve(*args, **kwargs)
+        except Exception:
+            status = "error"
+            raise
         finally:
-            self.last_ms = (time.perf_counter() - started) * 1000
+            finished = time.perf_counter()
+            self.last_ms = (finished - started) * 1000
+            self.last_span = {
+                "stage": "retrieve",
+                "start_ms": 0.0 if self.origin is None else (started - self.origin) * 1000,
+                "duration_ms": self.last_ms,
+                "status": status,
+            }
 
 
 def usage_from_chat_result(result: Any) -> dict:
