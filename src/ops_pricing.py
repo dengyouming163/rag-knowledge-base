@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+import math
 import os
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, DecimalException, InvalidOperation
 
 _PRICE_KEYS = ("prompt_per_1m", "completion_per_1m")
 _TOKENS_PER_PRICE_UNIT = Decimal(1_000_000)
@@ -58,6 +59,8 @@ def estimate_cost(rows: list[dict], pricing: dict) -> dict:
         prompt_tokens = int(row.get("prompt_tokens") or 0)
         completion_tokens = int(row.get("completion_tokens") or 0)
         token_count = prompt_tokens + completion_tokens
+        if token_count == 0:
+            continue
         model_pricing = pricing.get(row.get("model"))
         if model_pricing is None:
             pricing_complete = False
@@ -65,15 +68,27 @@ def estimate_cost(rows: list[dict], pricing: dict) -> dict:
             continue
 
         priced_tokens += token_count
-        cost += (
-            Decimal(prompt_tokens) * model_pricing["prompt_per_1m"]
-            + Decimal(completion_tokens) * model_pricing["completion_per_1m"]
-        ) / _TOKENS_PER_PRICE_UNIT
+        try:
+            cost += (
+                Decimal(prompt_tokens) * model_pricing["prompt_per_1m"]
+                + Decimal(completion_tokens) * model_pricing["completion_per_1m"]
+            ) / _TOKENS_PER_PRICE_UNIT
+        except DecimalException as exc:
+            raise ValueError("模型成本超出可表示范围") from exc
+
+    estimated_cost = None
+    if pricing_configured:
+        try:
+            estimated_cost = round(float(cost), 6)
+        except (OverflowError, ValueError) as exc:
+            raise ValueError("模型成本超出可表示范围") from exc
+        if not math.isfinite(estimated_cost):
+            raise ValueError("模型成本超出可表示范围")
 
     return {
         "pricing_configured": pricing_configured,
         "pricing_complete": pricing_complete,
-        "estimated_cost_usd": round(float(cost), 6) if pricing_configured else None,
+        "estimated_cost_usd": estimated_cost,
         "priced_tokens": priced_tokens,
         "unpriced_tokens": unpriced_tokens,
     }

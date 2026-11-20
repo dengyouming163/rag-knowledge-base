@@ -113,6 +113,26 @@ def test_cost_marks_partial_coverage() -> None:
     assert result["unpriced_tokens"] == 150
 
 
+@pytest.mark.parametrize("unknown_model", ["unknown", None, ""])
+def test_zero_token_rows_do_not_affect_pricing_coverage(unknown_model) -> None:
+    pricing = parse_pricing(json.dumps({
+        "m1": {"prompt_per_1m": 1.0, "completion_per_1m": 2.0}
+    }))
+
+    result = estimate_cost([
+        {"model": "m1", "prompt_tokens": 1000, "completion_tokens": 500},
+        {"model": unknown_model, "prompt_tokens": 0, "completion_tokens": 0},
+    ], pricing)
+
+    assert result == {
+        "pricing_configured": True,
+        "pricing_complete": True,
+        "estimated_cost_usd": 0.002,
+        "priced_tokens": 1500,
+        "unpriced_tokens": 0,
+    }
+
+
 def test_cost_with_only_unknown_models_is_zero_but_incomplete() -> None:
     pricing = parse_pricing(json.dumps({
         "m1": {"prompt_per_1m": 1.0, "completion_per_1m": 2.0}
@@ -144,6 +164,46 @@ def test_zero_prices_are_distinct_from_unconfigured_pricing() -> None:
         "priced_tokens": 2,
         "unpriced_tokens": 0,
     }
+
+
+def test_cost_rejects_non_finite_float_result() -> None:
+    pricing = parse_pricing(
+        '{"m": {"prompt_per_1m": 1e309, "completion_per_1m": 0}}'
+    )
+
+    with pytest.raises(ValueError) as exc_info:
+        estimate_cost([
+            {"model": "m", "prompt_tokens": 1_000_000, "completion_tokens": 0}
+        ], pricing)
+
+    assert str(exc_info.value) == "模型成本超出可表示范围"
+
+
+def test_cost_wraps_decimal_multiplication_overflow() -> None:
+    pricing = parse_pricing(
+        '{"m": {"prompt_per_1m": 1e1000000, "completion_per_1m": 0}}'
+    )
+
+    with pytest.raises(ValueError) as exc_info:
+        estimate_cost([
+            {"model": "m", "prompt_tokens": 1_000_000, "completion_tokens": 0}
+        ], pricing)
+
+    assert str(exc_info.value) == "模型成本超出可表示范围"
+
+
+def test_cost_wraps_decimal_addition_overflow() -> None:
+    pricing = parse_pricing(
+        '{"m": {"prompt_per_1m": 9.999999999999999999999999999e999999, '
+        '"completion_per_1m": 9.999999999999999999999999999e999999}}'
+    )
+
+    with pytest.raises(ValueError) as exc_info:
+        estimate_cost([
+            {"model": "m", "prompt_tokens": 1, "completion_tokens": 1}
+        ], pricing)
+
+    assert str(exc_info.value) == "模型成本超出可表示范围"
 
 
 def test_no_pricing_returns_null_cost() -> None:
