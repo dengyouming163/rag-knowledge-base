@@ -11,7 +11,6 @@ from functools import lru_cache
 from typing import Annotated, Any
 
 from fastapi import Depends, Header, HTTPException
-from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from src.db.base import create_db_engine
@@ -125,20 +124,11 @@ def user_context_of(engine: Engine, tenant_id: str, user_id: str) -> tuple[list[
     return load_user_context(engine, tenant_id, user_id)
 
 
-def require_admin(engine: Engine, tenant_id: str, user_id: str) -> dict:
+def require_admin(engine: Engine, tenant_id: str, user_id: str) -> None:
     """校验管理员；用户不存在视为 guest，一律 403。
 
     角色只能来自 users.role，绝不从请求头或标签推导。
     """
-    with engine.connect() as connection:
-        row = connection.execute(
-            text(
-                "SELECT role, tags FROM users "
-                "WHERE tenant_id = :t AND user_id = :u"
-            ),
-            {"t": tenant_id, "u": user_id},
-        ).mappings().first()
-    role = str(row["role"]) if row else "guest"
-    if role != "admin":
+    _, is_admin = user_context_of(engine, tenant_id, user_id)
+    if not is_admin:
         raise HTTPException(status_code=403, detail="admin required")
-    return {"role": role, "tags": list(row["tags"] or [])}

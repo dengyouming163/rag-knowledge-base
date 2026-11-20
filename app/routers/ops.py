@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 
 import httpx
@@ -25,6 +26,8 @@ from src.ingest_events import list_job_events, list_workers
 from src.ops_metrics import build_ops_summary
 
 router = APIRouter(prefix="/v1", tags=["ops"])
+
+logger = logging.getLogger(__name__)
 
 
 def _parser_health() -> str:
@@ -131,23 +134,40 @@ def ops_traces(
 def _require_actions(
     engine, tenant_id: str, user_id: str, action: str, target: str | None
 ) -> None:
-    """运维动作准入：必须管理员且开关开启，拒绝时落一条 denied 审计。"""
+    """写动作准入：必须管理员且开关开启，拒绝时落一条 denied 审计。
+
+    仅用于写动作（POST/retry）；读接口不要用，避免被拒的读请求污染审计流水。
+    """
     try:
         require_admin(engine, tenant_id, user_id)
         if not ops_actions_enabled():
             raise HTTPException(status_code=403, detail="ops actions disabled")
     except HTTPException as exc:
-        ops_audit.record(
-            engine, tenant_id=tenant_id, actor=user_id, action=action,
-            target=target, result="denied", reason=str(exc.detail),
-        )
+        try:
+            ops_audit.record(
+                engine, tenant_id=tenant_id, actor=user_id, action=action,
+                target=target, result="denied", reason=str(exc.detail),
+            )
+        except Exception:  # noqa: BLE001 - 审计写失败不能掩盖原始 403
+            logger.exception("failed to record denied ops action")
         raise
 
 
 @router.get("/ops/runs")
-def list_runs_api(kb_id: str, tenant_id: TenantId, engine: EngineDep) -> dict:
+def list_runs_api(
+    kb_id: str,
+    tenant_id: TenantId,
+    engine: EngineDep,
+    kind: str | None = None,
+    limit: int = 20,
+) -> dict:
     ensure_kb(engine, tenant_id, kb_id)
-    return {"runs": ops_runs.list_runs(engine, tenant_id, kb_id)}
+    return {
+        "runs": ops_runs.list_runs(
+            engine, tenant_id, kb_id, kind=kind,
+            limit=max(1, min(limit, 200)),
+        )
+    }
 
 
 @router.get("/ops/runs/{run_id}")
@@ -162,5 +182,8 @@ def get_run_api(run_id: int, tenant_id: TenantId, engine: EngineDep) -> dict:
 def audit_api(
     tenant_id: TenantId, user_id: UserId, engine: EngineDep, limit: int = 50
 ) -> dict:
-    _require_actions(engine, tenant_id, user_id, "audit", None)
+    # 读接口：拒绝不写审计，避免任意调用方刷写审计流水
+    require_admin(engine, tenant_id, user_id)
+    if not ops_actions_enabled():
+        raise HTTPException(status_code=403, detail="ops actions disabled")
     return {"audit": ops_audit.list_records(engine, tenant_id, limit=limit)}

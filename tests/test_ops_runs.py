@@ -90,6 +90,8 @@ def test_claim_is_exclusive_and_finishes(engine) -> None:
     claimed = claim_next(engine, kind="eval_mock")
     assert claimed["id"] == run_id
     assert claimed["status"] == "running"
+    assert claimed["attempts"] == 1
+    assert claimed["started_at"] is not None
     assert claim_next(engine, kind="eval_mock") is None
     mark_succeeded(
         engine, run_id, exit_code=0,
@@ -97,6 +99,19 @@ def test_claim_is_exclusive_and_finishes(engine) -> None:
         artifact_path="data/ops/eval/1.json", output_tail="ok",
     )
     assert get_run(engine, TENANT, run_id)["status"] == "succeeded"
+    # 终态不再占用活跃唯一索引，同 kind 可再次入队
+    assert enqueue(engine, TENANT, KB, "eval_mock", requested_by="u_admin") > run_id
+
+
+def test_mark_succeeded_ignores_non_running(engine) -> None:
+    run_id = enqueue(engine, TENANT, KB, "eval_mock", requested_by="u_admin")
+
+    mark_succeeded(
+        engine, run_id, exit_code=0, summary={}, artifact_path=None,
+        output_tail="",
+    )
+
+    assert get_run(engine, TENANT, run_id)["status"] == "queued"
 
 
 def test_failed_run_records_error(engine) -> None:

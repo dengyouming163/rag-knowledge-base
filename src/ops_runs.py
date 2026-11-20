@@ -23,6 +23,13 @@ _RUN_COLUMNS = (
     "artifact_path, output_tail, error, attempts"
 )
 
+# 列表接口不返回 output_tail：日志尾部可能很长，列表只需摘要。
+_RUN_LIST_COLUMNS = (
+    "id, tenant_id, kb_id, kind, status, params, requested_by, "
+    "requested_at, started_at, finished_at, exit_code, summary, "
+    "artifact_path, error, attempts"
+)
+
 
 class AlreadyRunning(Exception):
     """同一 kind 已有 queued/running 运行。"""
@@ -37,10 +44,12 @@ def list_runs(
     kind: str | None = None,
 ) -> list[dict]:
     query = (
-        f"SELECT {_RUN_COLUMNS} "
+        f"SELECT {_RUN_LIST_COLUMNS} "
         "FROM ops_runs WHERE tenant_id = :t AND kb_id = :kb"
     )
-    params: dict[str, object] = {"t": tenant_id, "kb": kb_id, "limit": limit}
+    params: dict[str, object] = {
+        "t": tenant_id, "kb": kb_id, "limit": max(1, min(limit, 200)),
+    }
     if kind:
         query += " AND kind = :kind"
         params["kind"] = kind
@@ -128,17 +137,19 @@ def mark_succeeded(
     engine: Engine, run_id: int, *, exit_code: int, summary: dict,
     artifact_path: str | None, output_tail: str,
 ) -> None:
+    """仅 running 可转终态；其它状态（queued/succeeded/failed）静默忽略。"""
     with engine.begin() as connection:
         connection.execute(
             text(
                 "UPDATE ops_runs SET status='succeeded', exit_code=:code, "
                 "summary=CAST(:summary AS jsonb), artifact_path=:path, "
-                "output_tail=:tail, finished_at=now(), error=NULL WHERE id=:id"
+                "output_tail=:tail, finished_at=now(), error=NULL "
+                "WHERE id=:id AND status='running'"
             ),
             {
                 "id": run_id, "code": exit_code,
                 "summary": json.dumps(summary, ensure_ascii=False),
-                "path": artifact_path, "tail": output_tail[:8192],
+                "path": artifact_path, "tail": output_tail[-8192:],
             },
         )
 
@@ -148,17 +159,19 @@ def mark_failed(
     summary: dict | None = None, artifact_path: str | None = None,
     output_tail: str = "",
 ) -> None:
+    """仅 running 可转终态；其它状态（queued/succeeded/failed）静默忽略。"""
     with engine.begin() as connection:
         connection.execute(
             text(
                 "UPDATE ops_runs SET status='failed', exit_code=:code, "
                 "summary=CAST(:summary AS jsonb), artifact_path=:path, "
-                "output_tail=:tail, error=:error, finished_at=now() WHERE id=:id"
+                "output_tail=:tail, error=:error, finished_at=now() "
+                "WHERE id=:id AND status='running'"
             ),
             {
                 "id": run_id, "code": exit_code,
                 "summary": json.dumps(summary or {}, ensure_ascii=False),
-                "path": artifact_path, "tail": output_tail[:8192],
-                "error": error[:2000],
+                "path": artifact_path, "tail": output_tail[-8192:],
+                "error": error[-2000:],
             },
         )
