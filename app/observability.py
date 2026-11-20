@@ -1,4 +1,4 @@
-"""不改 pipeline 的前提下采集 chat usage 与检索耗时。"""
+"""不改 pipeline 的前提下采集 chat usage 与检索、精排耗时。"""
 
 from __future__ import annotations
 
@@ -7,16 +7,32 @@ from typing import Any
 
 
 class UsageRecordingChatClient:
-    """旁路记录最近一次 chat 结果，供 trace 读取 token/耗时。"""
+    """旁路记录每次 chat 结果与耗时，并保留最近一次成功结果。"""
 
-    def __init__(self, inner: Any) -> None:
+    def __init__(self, inner: Any, *, origin: float | None = None) -> None:
         self.inner = inner
+        self.origin = origin
         self.last: Any = None
+        self.calls: list[dict] = []
 
     def chat(self, *args, **kwargs):
-        result = self.inner.chat(*args, **kwargs)
-        self.last = result
-        return result
+        started = time.perf_counter()
+        result = None
+        try:
+            result = self.inner.chat(*args, **kwargs)
+            self.last = result
+            return result
+        finally:
+            finished = time.perf_counter()
+            self.calls.append(
+                {
+                    "result": result,
+                    "start_ms": (
+                        0.0 if self.origin is None else (started - self.origin) * 1000
+                    ),
+                    "duration_ms": (finished - started) * 1000,
+                }
+            )
 
 
 class TimedRetriever:
@@ -41,6 +57,34 @@ class TimedRetriever:
             self.last_ms = (finished - started) * 1000
             self.last_span = {
                 "stage": "retrieve",
+                "start_ms": 0.0 if self.origin is None else (started - self.origin) * 1000,
+                "duration_ms": self.last_ms,
+                "status": status,
+            }
+
+
+class TimedReranker:
+    """透明代理精排调用，记录最近一次真实执行的阶段跨度。"""
+
+    def __init__(self, inner: Any, *, origin: float | None = None) -> None:
+        self.inner = inner
+        self.origin = origin
+        self.last_ms: float | None = None
+        self.last_span = None
+
+    def rerank(self, *args, **kwargs):
+        started = time.perf_counter()
+        status = "ok"
+        try:
+            return self.inner.rerank(*args, **kwargs)
+        except Exception:
+            status = "error"
+            raise
+        finally:
+            finished = time.perf_counter()
+            self.last_ms = (finished - started) * 1000
+            self.last_span = {
+                "stage": "rerank",
                 "start_ms": 0.0 if self.origin is None else (started - self.origin) * 1000,
                 "duration_ms": self.last_ms,
                 "status": status,

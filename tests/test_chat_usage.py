@@ -6,6 +6,8 @@ import asyncio
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from app import observability
 from app.observability import (
     TimedRetriever,
@@ -24,6 +26,30 @@ def test_usage_recorder_keeps_last_chat_result() -> None:
     assert wrapper.last is result
 
 
+def test_usage_recorder_records_every_call_with_origin(monkeypatch) -> None:
+    ticks = iter([2.0, 2.04, 3.0, 3.125])
+    monkeypatch.setattr(
+        observability, "time", SimpleNamespace(perf_counter=lambda: next(ticks))
+    )
+    first = SimpleNamespace(text="rewrite")
+    second = SimpleNamespace(text="answer")
+    results = iter([first, second])
+    inner = SimpleNamespace(chat=lambda *args, **kwargs: next(results))
+    wrapper = UsageRecordingChatClient(inner, origin=1.5)
+
+    assert wrapper.chat("rewrite") is first
+    assert wrapper.chat("answer") is second
+    assert wrapper.last is second
+    assert len(wrapper.calls) == 2
+    assert all(set(call) == {"result", "start_ms", "duration_ms"} for call in wrapper.calls)
+    assert wrapper.calls[0]["result"] is first
+    assert wrapper.calls[0]["start_ms"] == 500.0
+    assert wrapper.calls[0]["duration_ms"] == pytest.approx(40.0)
+    assert wrapper.calls[1]["result"] is second
+    assert wrapper.calls[1]["start_ms"] == 1500.0
+    assert wrapper.calls[1]["duration_ms"] == pytest.approx(125.0)
+
+
 def test_timed_retriever_records_last_ms(monkeypatch) -> None:
     ticks = iter([1.0, 1.25])
     monkeypatch.setattr(
@@ -33,6 +59,49 @@ def test_timed_retriever_records_last_ms(monkeypatch) -> None:
     wrapper = TimedRetriever(inner)
     assert wrapper.retrieve("q") == ["hit"]
     assert wrapper.last_ms == 250.0
+
+
+def test_timed_reranker_returns_original_result_and_records_span(monkeypatch) -> None:
+    from app.observability import TimedReranker
+
+    ticks = iter([10.0, 10.125])
+    monkeypatch.setattr(
+        observability, "time", SimpleNamespace(perf_counter=lambda: next(ticks))
+    )
+    result = SimpleNamespace(hits=["hit"], degraded=False)
+    inner = SimpleNamespace(rerank=lambda *args, **kwargs: result)
+    wrapper = TimedReranker(inner, origin=9.5)
+
+    assert wrapper.rerank("q", ["hit"], 3) is result
+    assert wrapper.last_ms == 125.0
+    assert wrapper.last_span == {
+        "stage": "rerank",
+        "start_ms": 500.0,
+        "duration_ms": 125.0,
+        "status": "ok",
+    }
+
+
+def test_timed_reranker_reraises_original_error_and_marks_span(monkeypatch) -> None:
+    from app.observability import TimedReranker
+
+    ticks = iter([4.0, 4.25])
+    monkeypatch.setattr(
+        observability, "time", SimpleNamespace(perf_counter=lambda: next(ticks))
+    )
+    error = LookupError("rerank exploded")
+
+    def fail(*args, **kwargs):
+        raise error
+
+    wrapper = TimedReranker(SimpleNamespace(rerank=fail), origin=3.0)
+    with pytest.raises(LookupError) as caught:
+        wrapper.rerank("q", ["hit"], 3)
+
+    assert caught.value is error
+    assert wrapper.last_ms == 250.0
+    assert wrapper.last_span["status"] == "error"
+    assert wrapper.last_span["start_ms"] == 1000.0
 
 
 def test_usage_from_chat_result_builds_totals() -> None:

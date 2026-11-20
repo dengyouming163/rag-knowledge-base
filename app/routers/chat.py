@@ -21,7 +21,7 @@ import asyncio
 import json
 import time
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 
@@ -36,12 +36,14 @@ from app.deps import (
     user_context_of,
 )
 from app.observability import (
+    TimedReranker,
     TimedRetriever,
     UsageRecordingChatClient,
     usage_from_chat_result,
 )
 from app.schemas import ChatRequest
 from app.services import build_pipeline, ensure_kb
+from src.ops_observability import try_record_rag_metric
 from src.trace import new_trace_id
 
 router = APIRouter(prefix="/v1", tags=["chat"])
@@ -75,24 +77,123 @@ async def chat_stream(
     reranker: RerankerDep,
     user_id: UserId,
     trace_store: TraceStoreDep,
+    request: Request = None,
 ):
     trace_id = new_trace_id()
+    if request is not None:
+        request.state.trace_id = trace_id
+        request.state.kb_id = payload.kb_id
+    origin = time.perf_counter()
     # kb 由请求体指定，但归属必须在生成器外校验：错误直接走 HTTP 404
     ensure_kb(engine, tenant_id, payload.kb_id)
     user_tags, is_admin = user_context_of(engine, tenant_id, user_id)
 
-    usage_client = UsageRecordingChatClient(chat_client)
+    usage_client = UsageRecordingChatClient(chat_client, origin=origin)
+    timed_reranker = (
+        TimedReranker(reranker, origin=origin) if reranker is not None else None
+    )
     pipeline = build_pipeline(
-        engine, tenant_id, payload.kb_id, embed_client, usage_client, reranker
+        engine, tenant_id, payload.kb_id, embed_client, usage_client, timed_reranker
     )
     # 只给检索计时：包一层代理后，pipeline 其余行为不变
     timed_retriever = None
     retriever = getattr(pipeline, "retriever", None)
     if retriever is not None:
-        timed_retriever = TimedRetriever(retriever)
+        timed_retriever = TimedRetriever(retriever, origin=origin)
         pipeline.retriever = timed_retriever
 
+    pipeline_result: dict | None = None
+    chunks: list[str] = []
+    refused = False
+
+    def build_metric_fields(outcome: str, **overrides) -> dict:
+        answer_call = usage_client.calls[-1] if chunks and usage_client.calls else None
+        rewrite_calls = (
+            usage_client.calls[:-1] if answer_call is not None else usage_client.calls
+        )
+        answer_result = answer_call["result"] if answer_call is not None else None
+        answer_usage = (
+            usage_from_chat_result(answer_result) if answer_result is not None else None
+        )
+        spans = [
+            {
+                "stage": "answer" if call is answer_call else "rewrite",
+                "start_ms": call["start_ms"],
+                "duration_ms": call["duration_ms"],
+                "status": "ok" if call["result"] is not None else "error",
+            }
+            for call in usage_client.calls
+        ]
+        if timed_retriever is not None and timed_retriever.last_span is not None:
+            spans.append(timed_retriever.last_span)
+        if timed_reranker is not None and timed_reranker.last_span is not None:
+            spans.append(timed_reranker.last_span)
+        spans.sort(key=lambda span: span["start_ms"])
+
+        fields = {
+            "trace_id": trace_id,
+            "tenant_id": tenant_id,
+            "kb_id": payload.kb_id,
+            "operation": "chat",
+            "mode": "chat",
+            "outcome": outcome,
+            "hits": len(chunks),
+            "citation_ok": (
+                pipeline_result.get("citation_ok", True)
+                if pipeline_result is not None and answer_result is not None
+                else None
+            ),
+            "rerank_degraded": (
+                pipeline_result.get("rerank_degraded", False)
+                if pipeline_result is not None
+                and timed_reranker is not None
+                and timed_reranker.last_span is not None
+                else None
+            ),
+            "total_ms": (time.perf_counter() - origin) * 1000,
+            "rewrite_ms": (
+                sum(call["duration_ms"] for call in rewrite_calls)
+                if rewrite_calls
+                else None
+            ),
+            "retrieval_ms": (
+                timed_retriever.last_ms
+                if timed_retriever is not None and timed_retriever.last_span is not None
+                else None
+            ),
+            "rerank_ms": (
+                timed_reranker.last_ms
+                if timed_reranker is not None and timed_reranker.last_span is not None
+                else None
+            ),
+            "llm_ms": answer_call["duration_ms"] if answer_call is not None else None,
+            "model": answer_usage["model"] if answer_usage is not None else None,
+            "prompt_tokens": (
+                answer_usage["prompt_tokens"] if answer_usage is not None else None
+            ),
+            "completion_tokens": (
+                answer_usage["completion_tokens"] if answer_usage is not None else None
+            ),
+            "error_kind": None,
+            "stage_spans": spans,
+        }
+        fields.update(overrides)
+        return fields
+
+    metric_recorded = False
+
+    async def finalize_metrics(outcome: str, **overrides) -> None:
+        nonlocal metric_recorded
+        if metric_recorded:
+            return
+        metric_recorded = True
+        fields = build_metric_fields(outcome=outcome, **overrides)
+        await asyncio.shield(
+            run_in_threadpool(try_record_rag_metric, engine, **fields)
+        )
+
     async def event_stream():
+        nonlocal pipeline_result, chunks, refused
         started = time.perf_counter()
 
         async def record_stage(
@@ -152,8 +253,10 @@ async def chat_stream(
                     user_tags,
                     is_admin,
                 )
+                pipeline_result = result
             except Exception as exc:  # noqa: BLE001 - 任何失败都要显式告知前端
                 await record_stage("error", hits=0, refused=False, mode="error")
+                await finalize_metrics("error", error_kind=exc.__class__.__name__)
                 message = str(exc)[:300] or exc.__class__.__name__
                 yield f"event: error\ndata: {json.dumps({'message': message}, ensure_ascii=False)}\n\n"
                 return
@@ -207,8 +310,13 @@ async def chat_stream(
             for piece in _deltas(answer):
                 yield _frame({"delta": piece})
             yield _frame("[DONE]")
+            await finalize_metrics("refused" if refused else "succeeded")
         except asyncio.CancelledError:
             await record_cancelled()
+            await finalize_metrics("cancelled")
+            raise
+        except GeneratorExit:
+            await finalize_metrics("cancelled")
             raise
 
     headers = {**SSE_HEADERS, "X-Trace-Id": trace_id}
