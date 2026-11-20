@@ -19,6 +19,7 @@ from src.connectors.base import DocumentRef, Source
 from src.connectors.feishu import FeishuSource
 from src.connectors.local_dir import LocalDirectorySource
 from src.db.base import create_db_engine
+from src.ingest_events import record_worker_heartbeat
 from src.ingest_jobs import receive_source_document
 from src.worker import worker_once
 
@@ -174,8 +175,10 @@ def main(argv: list[str] | None = None) -> int:
     tenant_id, kb_id, sources = load_connector_config()
     retry_refs: RetryRefs = {}
     last_source_sync: float | None = None
+    worker_id = os.environ.get("WORKER_ID") or f"worker-{os.getpid()}"
     try:
         while True:
+            record_worker_heartbeat(engine, worker_id=worker_id)
             last_source_sync = run_due_source_sync(
                 engine,
                 sources,

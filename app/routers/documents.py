@@ -28,6 +28,7 @@ from app.deps import EngineDep, TenantId
 from app.schemas import UploadDocumentResponse
 from app.services import ensure_kb
 from src import ingest_jobs
+from src.ingest_events import record_job_event
 
 router = APIRouter(prefix="/v1", tags=["documents"])
 
@@ -118,6 +119,17 @@ async def upload_document(
                 duplicated = True
 
         job_id = ingest_jobs.enqueue(engine, tenant_id, kb_id, doc_id, source="upload")
+
+    # 任务已入队：写一条 queued 事件，驾驶舱据此展示排队起点（best-effort）
+    record_job_event(
+        engine,
+        job_id=job_id,
+        tenant_id=tenant_id,
+        stage="queued",
+        status="started",
+        progress=0,
+        message=f"source=upload doc_id={doc_id}",
+    )
 
     # 数据库已提交，再落盘：这里的失败只会留下 failed 行，不会留下 pending 行
     relative_path = Path(tenant_id) / kb_id / f"{doc_id}{suffix}"

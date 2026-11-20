@@ -32,7 +32,7 @@ _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 
 _JOB_COLUMNS = (
     "id, tenant_id, kb_id, doc_id, status, error, source, attempts, progress, "
-    "finished_at, created_at, updated_at"
+    "started_at, finished_at, created_at, updated_at"
 )
 
 
@@ -241,6 +241,7 @@ def claim_next(engine: Engine, *, worker: str = "w1") -> dict | None:
             text(
                 "UPDATE ingest_jobs "
                 "SET status = 'running', progress = 10, attempts = attempts + 1, "
+                "started_at = COALESCE(started_at, now()), "
                 "updated_at = now() "
                 f"WHERE id = :id AND status = 'queued' RETURNING {_JOB_COLUMNS}"
             ),
@@ -291,6 +292,22 @@ def mark_failed(engine: Engine, job_id: int, error: str, *, retry: bool = True) 
             ),
             {"max": MAX_ATTEMPTS, "error": error, "id": job_id, "retry": retry},
         )
+
+
+def retry_job(engine: Engine, tenant_id: str, job_id: int) -> dict | None:
+    """只允许 failed 任务人工重试；重置 attempts/progress/error。"""
+    with engine.begin() as connection:
+        row = connection.execute(
+            text(
+                "UPDATE ingest_jobs "
+                "SET status = 'queued', attempts = 0, progress = 0, error = '', "
+                "started_at = NULL, finished_at = NULL, updated_at = now() "
+                "WHERE id = :id AND tenant_id = :t AND status = 'failed' "
+                f"RETURNING {_JOB_COLUMNS}"
+            ),
+            {"id": job_id, "t": tenant_id},
+        ).mappings().first()
+    return dict(row) if row is not None else None
 
 
 def get_job(engine: Engine, tenant_id: str, job_id: int) -> dict | None:

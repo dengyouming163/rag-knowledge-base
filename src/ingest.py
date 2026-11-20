@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,8 @@ from .parsers.pdf import ParserUnavailable, PdfParserClient, blocks_to_text
 from .store_pg import PgVectorStore
 
 _TEXT_SUFFIXES = {".md", ".txt"}
+
+StageCallback = Callable[[str, int, str], None]
 
 
 class NonRetryableIngestError(RuntimeError):
@@ -72,20 +75,31 @@ def ingest_document(
     path: str | Path,
     embed_client: Any,
     parser: Any = None,
+    on_stage: StageCallback | None = None,
 ) -> dict:
     """解析并入库一份文档，成功后返回 {"chunks": int, "doc_status": "ready"}。
 
     `parser` 可注入（测试/自定义解析服务）；为 None 时延迟创建 PdfParserClient。
+    `on_stage` 用于上报阶段进度，属于旁路通知，不影响入库结果。
     """
     file_path = Path(path)
+
+    def stage(name: str, progress: int, message: str = "") -> None:
+        if on_stage is not None:
+            on_stage(name, progress, message)
+
+    stage("parsing", 30, "开始解析")
     text_content = _extract_text(file_path, parser)
     if not text_content.strip():
         # 空内容如果继续走流程，最终会把文档标成 ready 却没有任何块，
         # 这类"假成功"比直接失败更难排查。
         raise ValueError(f"文档 {doc_id} 提取结果为空，无法入库")
 
+    stage("chunking", 50, "开始切分")
     chunks = split_document(text_content, doc_id=doc_id)
     texts = [chunk.text for chunk in chunks if not chunk.is_parent]
+
+    stage("embedding", 65, "开始嵌入")
     vectors = embed_client.embed_texts(texts)
     if len(vectors) != len(texts):
         raise ValueError(
@@ -98,6 +112,7 @@ def ingest_document(
         None if chunk.is_parent else next(remaining) for chunk in chunks
     ]
 
+    stage("publishing", 90, "开始原子发布")
     store = PgVectorStore(engine, tenant_id=tenant_id, kb_id=kb_id)
     with engine.begin() as connection:
         connection.execute(
