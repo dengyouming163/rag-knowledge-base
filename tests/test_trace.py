@@ -9,7 +9,7 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -57,6 +57,35 @@ def test_store_appends_jsonl_and_reads_today_after_memory_miss(tmp_path) -> None
     assert [item["stage"] for item in stages] == ["retrieve", "answer"]
     assert stages[0]["query"] == "退款多久"
     assert restarted.find("abc123def456", "another-tenant") == []
+
+
+def test_find_reads_previous_utc_date_after_restart(tmp_path, monkeypatch) -> None:
+    from src import trace as trace_module
+
+    class FrozenDateTime(datetime):
+        value = datetime(2026, 11, 18, 23, 59, 59, tzinfo=timezone.utc)
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.value if tz is not None else cls.value.replace(tzinfo=None)
+
+    monkeypatch.setattr(trace_module, "datetime", FrozenDateTime)
+    store = trace_module.TraceStore(tmp_path)
+    _record(store, "abc123def456", stage="retrieve", query="original")
+    FrozenDateTime.value = datetime(2026, 11, 19, 0, 0, 1, tzinfo=timezone.utc)
+    _record(store, "abc123def456", stage="answer", query="original")
+
+    assert {path.name for path in tmp_path.glob("*.jsonl")} == {
+        "2026-11-18.jsonl",
+        "2026-11-19.jsonl",
+    }
+    restarted = trace_module.TraceStore(tmp_path)
+    stages = restarted.find("abc123def456", TENANT)
+
+    assert [item["stage"] for item in stages] == ["retrieve", "answer"]
+    assert all(item["kb"] == KB for item in stages)
+    assert restarted.find("abc123def456", "another-tenant") == []
+    assert restarted.find("000000000000", TENANT) == []
 
 
 def test_memory_ring_keeps_latest_1000_records(tmp_path) -> None:

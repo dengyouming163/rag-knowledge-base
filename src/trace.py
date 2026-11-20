@@ -68,11 +68,11 @@ class TraceStore:
         return dict(item)
 
     def find(self, trace_id: str, tenant: str) -> list[dict]:
-        """先复制内存，再读当天文件补齐已淘汰阶段，去重后按时间和序号排序。"""
+        """合并内存与全部保留日期文件，去重后按时间和序号排序。"""
         with self._memory_lock:
             memory = [dict(item) for item in self._records if item["trace_id"] == trace_id]
         with self._file_lock:
-            persisted = self._read_today(trace_id)
+            persisted = self._read_all(trace_id)
 
         merged = self._merge_records(persisted, memory)
         return [item for item in merged if item.get("tenant") == tenant]
@@ -103,14 +103,10 @@ class TraceStore:
         merged.sort(key=lambda item: (item["ts"], item.get("seq", -1)))
         return merged
 
-    def _read_today(self, trace_id: str) -> list[dict]:
-        date = datetime.now(timezone.utc).date().isoformat()
-        return self._read_file(self._root / f"{date}.jsonl", trace_id)
-
-    def _read_all(self) -> list[dict]:
+    def _read_all(self, trace_id: str | None = None) -> list[dict]:
         records: list[dict] = []
         for path in sorted(self._root.glob("????-??-??.jsonl")):
-            records.extend(self._read_file(path))
+            records.extend(self._read_file(path, trace_id))
         return records
 
     def _read_file(self, path: Path, trace_id: str | None = None) -> list[dict]:
