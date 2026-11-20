@@ -21,6 +21,7 @@ from src.ingest_jobs import (
     claim_next,
     enqueue,
     get_job,
+    list_jobs,
     mark_failed,
     mark_succeeded,
 )
@@ -183,6 +184,44 @@ def test_get_job_rejects_other_tenant(engine) -> None:
 
     assert get_job(engine, TENANT, job_id) is not None
     assert get_job(engine, "t_jobs_other", job_id) is None
+
+
+def test_list_jobs_without_limit_returns_all_terminal_jobs_in_scope(engine) -> None:
+    other_kb = "kb_jobs_list_other"
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO knowledge_bases (id, tenant_id, name, description, status) "
+                "VALUES (:kb, :t, 'other jobs kb', '', 'active')"
+            ),
+            {"kb": other_kb, "t": TENANT},
+        )
+        job_ids = connection.execute(
+            text(
+                "INSERT INTO ingest_jobs "
+                "(tenant_id, kb_id, doc_id, status, error, attempts, progress, finished_at) "
+                "SELECT :t, :kb, 'doc_list_all_' || n::text, 'succeeded', '', 1, 100, now() "
+                "FROM generate_series(1, 22) AS n RETURNING id"
+            ),
+            {"t": TENANT, "kb": KB},
+        ).scalars().all()
+        connection.execute(
+            text(
+                "INSERT INTO ingest_jobs "
+                "(tenant_id, kb_id, doc_id, status, error, attempts, progress, finished_at) "
+                "VALUES (:t, :kb, 'doc_list_all_other', 'failed', 'terminal', 3, 10, now())"
+            ),
+            {"t": TENANT, "kb": other_kb},
+        )
+
+    jobs = list_jobs(engine, TENANT, KB, limit=None)
+
+    assert len(jobs) == 22
+    assert [job["id"] for job in jobs] == sorted(job_ids, reverse=True)
+    assert all(job["status"] == "succeeded" for job in jobs)
+    other_kb_jobs = list_jobs(engine, TENANT, other_kb, limit=None)
+    assert [job["doc_id"] for job in other_kb_jobs] == ["doc_list_all_other"]
+    assert list_jobs(engine, "t_jobs_other", KB, limit=None) == []
 
 
 def test_mark_succeeded_sets_finished_at(engine) -> None:

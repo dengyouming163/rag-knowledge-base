@@ -207,6 +207,76 @@ def test_chat_success_requires_consuming_the_complete_sse_stream():
     assert report["endpoints"]["chat"]["latency_ms"]["sample_count"] == 1
 
 
+@pytest.mark.parametrize("done_terminator", ["", "\n"])
+def test_chat_rejects_done_without_sse_event_delimiter(done_terminator):
+    loadtest = _loadtest()
+
+    async def handler(request: httpx.Request):
+        if request.url.path.endswith("/search"):
+            return httpx.Response(200, json={"hits": []})
+        body = (
+            'event: hits\ndata: {"rerank_degraded":false}\n\n'
+            f"data: [DONE]{done_terminator}"
+        )
+        return httpx.Response(200, text=body)
+
+    report = _run(loadtest, handler)
+    chat = report["endpoints"]["chat"]
+
+    assert chat["succeeded"] == 0
+    assert chat["failed"] == 1
+    assert chat["error_counts"] == {"missing_done": 1}
+    assert chat["latency_ms"]["sample_count"] == 1
+    assert chat["rerank_observed"] == 0
+
+
+def test_chat_rejects_malformed_hits_after_valid_hits():
+    loadtest = _loadtest()
+
+    async def handler(request: httpx.Request):
+        if request.url.path.endswith("/search"):
+            return httpx.Response(200, json={"hits": []})
+        body = (
+            'event: hits\ndata: {"rerank_degraded":false}\n\n'
+            "event: hits\ndata: not-json\n\n"
+            "data: [DONE]\n\n"
+        )
+        return httpx.Response(200, text=body)
+
+    report = _run(loadtest, handler)
+    chat = report["endpoints"]["chat"]
+
+    assert chat["succeeded"] == 0
+    assert chat["failed"] == 1
+    assert chat["error_counts"] == {"invalid_hits": 1}
+    assert chat["rerank_observed"] == 0
+    assert chat["rerank_degradation_rate"] is None
+
+
+def test_chat_rejects_conflicting_valid_hits():
+    loadtest = _loadtest()
+
+    async def handler(request: httpx.Request):
+        if request.url.path.endswith("/search"):
+            return httpx.Response(200, json={"hits": []})
+        body = (
+            'event: hits\ndata: {"rerank_degraded":false}\n\n'
+            'event: hits\ndata: {"rerank_degraded":true}\n\n'
+            "data: [DONE]\n\n"
+        )
+        return httpx.Response(200, text=body)
+
+    report = _run(loadtest, handler)
+    chat = report["endpoints"]["chat"]
+
+    assert chat["succeeded"] == 0
+    assert chat["failed"] == 1
+    assert chat["error_counts"] == {"duplicate_hits": 1}
+    assert chat["rerank_degraded"] == 0
+    assert chat["rerank_observed"] == 0
+    assert chat["rerank_degradation_rate"] is None
+
+
 def test_sse_error_and_missing_done_are_failures_not_discarded_samples():
     loadtest = _loadtest()
     chat_calls = 0
@@ -289,6 +359,27 @@ def test_connection_and_http_errors_are_counted_with_latency():
     assert chat["error_counts"] == {"http_503": 1}
     assert search["errors"][0]["error"]
     assert chat["errors"][0]["error"]
+
+
+@pytest.mark.parametrize("timeout", [float("nan"), float("inf")])
+def test_run_loadtest_rejects_non_finite_timeout(timeout):
+    loadtest = _loadtest()
+
+    async def handler(request: httpx.Request):
+        raise AssertionError("无效 timeout 不应发送请求")
+
+    with pytest.raises(ValueError, match="有限且大于 0"):
+        _run(loadtest, handler, timeout=timeout)
+
+
+@pytest.mark.parametrize("value", ["nan", "inf"])
+def test_cli_rejects_non_finite_timeout(value):
+    loadtest = _loadtest()
+
+    with pytest.raises(SystemExit) as exc_info:
+        loadtest.build_parser().parse_args(["--timeout", value])
+
+    assert exc_info.value.code == 2
 
 
 def test_cli_defaults_document_requests_per_endpoint():

@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 import os
 import tempfile
 import time
@@ -143,8 +144,6 @@ async def _sse_events(response: httpx.Response) -> AsyncIterator[tuple[str, str]
             event = value
         elif field == "data":
             data_lines.append(value)
-    if data_lines or event != "message":
-        yield event, "\n".join(data_lines)
 
 
 async def _chat(
@@ -172,7 +171,7 @@ async def _chat(
             )
 
         done = False
-        hits_seen = False
+        hits_count = 0
         invalid_hits = False
         degraded = False
         sse_error: str | None = None
@@ -182,6 +181,7 @@ async def _chat(
             if event == "error":
                 sse_error = data[:300] or "SSE error event"
             elif event == "hits":
+                hits_count += 1
                 try:
                     hits = json.loads(data)
                     value = hits["rerank_degraded"]
@@ -190,7 +190,6 @@ async def _chat(
                 except (KeyError, TypeError, ValueError):
                     invalid_hits = True
                 else:
-                    hits_seen = True
                     degraded = value
 
     # 即使已经看到 error，也已先消费到 EOF，再归类错误并计时。
@@ -198,9 +197,12 @@ async def _chat(
         raise _RequestError("sse_error", f"chat 返回 error 事件：{sse_error}")
     if not done:
         raise _RequestError("missing_done", "chat 流缺少 data: [DONE] 正常终止")
-    if not hits_seen:
-        kind = "invalid_hits" if invalid_hits else "missing_hits"
-        raise _RequestError(kind, "chat 流缺少含布尔 rerank_degraded 的有效 hits 事件")
+    if invalid_hits:
+        raise _RequestError("invalid_hits", "chat 流包含无效 hits 事件")
+    if hits_count > 1:
+        raise _RequestError("duplicate_hits", "chat 流包含重复 hits 事件")
+    if hits_count == 0:
+        raise _RequestError("missing_hits", "chat 流缺少有效 hits 事件")
     return degraded
 
 
@@ -244,8 +246,8 @@ async def run_loadtest(
         raise ValueError("concurrency 与 requests 必须为正整数")
     if not 1 <= top_k <= 20:
         raise ValueError("top_k 必须在 1 到 20 之间（同时满足 chat 契约）")
-    if timeout <= 0:
-        raise ValueError("timeout 必须大于 0")
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("timeout 必须为有限且大于 0 的数值")
 
     timestamp = datetime.now(timezone.utc).isoformat()
     started = time.perf_counter()
@@ -381,8 +383,8 @@ def _positive_int(value: str) -> int:
 
 def _positive_float(value: str) -> float:
     parsed = float(value)
-    if parsed <= 0:
-        raise argparse.ArgumentTypeError("必须大于 0")
+    if not math.isfinite(parsed) or parsed <= 0:
+        raise argparse.ArgumentTypeError("必须为有限且大于 0 的数值")
     return parsed
 
 
