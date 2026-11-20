@@ -11,9 +11,16 @@ import os
 import httpx
 from fastapi import APIRouter, HTTPException
 
-from app.deps import EngineDep, TenantId, TraceStoreDep
+from app.deps import (
+    EngineDep,
+    TenantId,
+    TraceStoreDep,
+    UserId,
+    ops_actions_enabled,
+    require_admin,
+)
 from app.services import ensure_kb
-from src import ingest_jobs, ops_runs
+from src import ingest_jobs, ops_audit, ops_runs
 from src.ingest_events import list_job_events, list_workers
 from src.ops_metrics import build_ops_summary
 
@@ -119,3 +126,41 @@ def ops_traces(
             tenant_id, kb_id, limit=max(1, min(limit, 200))
         )
     }
+
+
+def _require_actions(
+    engine, tenant_id: str, user_id: str, action: str, target: str | None
+) -> None:
+    """运维动作准入：必须管理员且开关开启，拒绝时落一条 denied 审计。"""
+    try:
+        require_admin(engine, tenant_id, user_id)
+        if not ops_actions_enabled():
+            raise HTTPException(status_code=403, detail="ops actions disabled")
+    except HTTPException as exc:
+        ops_audit.record(
+            engine, tenant_id=tenant_id, actor=user_id, action=action,
+            target=target, result="denied", reason=str(exc.detail),
+        )
+        raise
+
+
+@router.get("/ops/runs")
+def list_runs_api(kb_id: str, tenant_id: TenantId, engine: EngineDep) -> dict:
+    ensure_kb(engine, tenant_id, kb_id)
+    return {"runs": ops_runs.list_runs(engine, tenant_id, kb_id)}
+
+
+@router.get("/ops/runs/{run_id}")
+def get_run_api(run_id: int, tenant_id: TenantId, engine: EngineDep) -> dict:
+    run = ops_runs.get_run(engine, tenant_id, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    return run
+
+
+@router.get("/ops/audit")
+def audit_api(
+    tenant_id: TenantId, user_id: UserId, engine: EngineDep, limit: int = 50
+) -> dict:
+    _require_actions(engine, tenant_id, user_id, "audit", None)
+    return {"audit": ops_audit.list_records(engine, tenant_id, limit=limit)}
