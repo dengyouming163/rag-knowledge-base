@@ -29,7 +29,7 @@ py -3.13 -c "import pypdf,httpx; print('pypdf='+pypdf.__version__); print('httpx
 
 ## 1. parser 停止：远端失败退回本地 pypdf
 
-下面命令先检查 parser 是否存在于当前 Compose 配置，再接收 PDF 路径和关键字。Python 编排包含真实 HTTP 异常与本地解析入口追踪，并在 `finally` 中启动 parser、轮询 Docker 健康和 HTTP `/health`；最多尝试 38 次（单次 HTTP 超时 2 秒），未恢复会明确抛错。
+下面命令先检查 parser 是否存在于当前 Compose 配置，再接收 PDF 路径和关键字。Python 编排包含真实 HTTP 异常与本地解析入口追踪，并在 `finally` 中启动 parser、轮询 Docker 健康和 HTTP `/health`；最多尝试 38 次（单次 HTTP 超时 2 秒），未恢复会明确抛错。38 次是次数上限而非 wall-clock 超时，仅在仍有后续尝试时等待 2 秒。
 
 ```powershell
 $services = docker compose --profile parser -f deploy/docker-compose.yml config --services
@@ -74,7 +74,6 @@ def inspect(format_string):
 
 
 def wait_parser():
-    deadline = time.monotonic() + 75
     last = "not checked"
     for attempt in range(1, 39):
         try:
@@ -86,8 +85,9 @@ def wait_parser():
                 return
         except Exception as exc:
             last = f"{type(exc).__name__}: {exc}"
-        time.sleep(2)
-    raise RuntimeError(f"parser recovery timed out after 75s: {last}")
+        if attempt < 38:
+            time.sleep(2)
+    raise RuntimeError(f"parser recovery failed after 38 attempts: {last}")
 
 
 class TraceTransport(httpx.BaseTransport):
@@ -221,7 +221,7 @@ finished_at=2026-11-20T09:13:17+08:00
 
 ## 3. DB 停止：`/ready` 返回 503
 
-下面命令先取得 200，实际等待 6 秒让缓存过期，再停 DB。HTTP 检查位于 `try`，启动和恢复轮询位于 `finally`；最多尝试 45 次（单次 HTTP 超时 10 秒），DB 健康与 `/ready` 未同时恢复会明确抛错。故障请求结束后立即启动 DB，不做额外停留。
+下面命令先读取并打印 worker/DB 状态，独立断言 `db_health_before == "healthy"`；若前置失败，会在首次 `/ready`、缓存等待及 `try` 之前退出，`stop` 和 `start` 都不会执行。初始检查通过后取得 200，实际等待 6 秒让缓存过期，再停 DB。故障检查位于 `try`，启动和恢复轮询位于 `finally`；最多尝试 45 次（单次 HTTP 超时 10 秒），DB 健康与 `/ready` 未同时恢复会明确抛错。45 次是次数上限而非 wall-clock 超时，仅在仍有后续尝试时等待 2 秒。故障请求结束后立即启动 DB，不做额外停留。
 
 ```powershell
 @'
@@ -255,7 +255,6 @@ def inspect(container, format_string):
 
 
 def wait_recovery():
-    deadline = time.monotonic() + 90
     last = "not checked"
     for attempt in range(1, 46):
         try:
@@ -267,12 +266,21 @@ def wait_recovery():
                 return
         except Exception as exc:
             last = f"{type(exc).__name__}: {exc}"
-        time.sleep(2)
-    raise RuntimeError(f"DB/API recovery timed out after 90s: {last}")
+        if attempt < 45:
+            time.sleep(2)
+    raise RuntimeError(f"DB/API recovery failed after 45 attempts: {last}")
 
 
 print(f"started_at={datetime.now().astimezone().isoformat(timespec='seconds')}")
-print(f"worker_state_before={inspect('rag-kb-worker', '{{.State.Status}}')}; db_health_before={inspect('rag-kb-pg', '{{.State.Health.Status}}')}")
+worker_state_before = inspect("rag-kb-worker", "{{.State.Status}}")
+db_health_before = inspect("rag-kb-pg", "{{.State.Health.Status}}")
+print(
+    f"worker_state_before={worker_state_before}; "
+    f"db_health_before={db_health_before}"
+)
+assert db_health_before == "healthy", (
+    f"DB 初始状态不是 healthy：{db_health_before}"
+)
 before = httpx.get(READY_URL, timeout=10)
 print(f"ready_before_http={before.status_code}; body={before.text}")
 assert before.status_code == 200 and before.json() == {"ok": True, "db": "up"}
