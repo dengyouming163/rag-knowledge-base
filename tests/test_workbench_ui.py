@@ -246,7 +246,7 @@ def test_trace_deep_links_survive_lab_clicks_and_direct_loads(workbench_page) ->
         assert page.evaluate("window.location.hash") == "#/traces"
 
 
-def test_search_form_geometry_fits_medium_and_mobile_widths(workbench_page) -> None:
+def test_lab_form_geometry_fits_medium_and_mobile_widths(workbench_page) -> None:
     page, workbench_url = workbench_page
     for width in (821, 900, 390):
         page.set_viewport_size({"width": width, "height": 900})
@@ -276,3 +276,69 @@ def test_search_form_geometry_fits_medium_and_mobile_widths(workbench_page) -> N
         assert any(child["id"] == "search-button" for child in geometry["children"])
         if width == 390:
             assert len(geometry["columns"].split()) == 1, geometry
+
+    for width in (821, 900, 390):
+        page.set_viewport_size({"width": width, "height": 900})
+        page.goto(f"{workbench_url}#/lab/chat")
+        page.locator("#chat-form").wait_for(state="visible")
+        geometry = page.locator("#chat-form").evaluate(
+            """form => {
+                const rect = form.getBoundingClientRect();
+                const container = form.closest(".wb-lab").getBoundingClientRect();
+                const button = form.querySelector("#chat-button");
+                const buttonRect = button.getBoundingClientRect();
+                const centerX = (buttonRect.left + buttonRect.right) / 2;
+                const centerY = (buttonRect.top + buttonRect.bottom) / 2;
+                const centerHit = document.elementFromPoint(centerX, centerY);
+                return {
+                    left: rect.left,
+                    right: rect.right,
+                    clientWidth: form.clientWidth,
+                    scrollWidth: form.scrollWidth,
+                    columns: getComputedStyle(form).gridTemplateColumns,
+                    containerLeft: container.left,
+                    containerRight: container.right,
+                    button: {
+                        left: buttonRect.left,
+                        right: buttonRect.right,
+                        top: buttonRect.top,
+                        bottom: buttonRect.bottom,
+                        centerX,
+                        centerY,
+                        centerHit: centerHit?.id || centerHit?.className || centerHit?.tagName,
+                        centerHitsButton: centerHit === button || button.contains(centerHit),
+                    },
+                    children: [...form.children].map((element) => {
+                        const child = element.getBoundingClientRect();
+                        return { id: element.id, left: child.left, right: child.right };
+                    }),
+                };
+            }"""
+        )
+
+        assert geometry["scrollWidth"] <= geometry["clientWidth"] + 1, (width, geometry)
+        for child in geometry["children"]:
+            assert child["left"] >= geometry["left"] - 1, (width, child, geometry)
+            assert child["right"] <= geometry["right"] + 1, (width, child, geometry)
+        button = geometry["button"]
+        assert button["left"] >= geometry["containerLeft"] - 1, (width, geometry)
+        assert button["right"] <= geometry["containerRight"] + 1, (width, geometry)
+        assert button["top"] >= 0, (width, geometry)
+        assert button["bottom"] <= 901, (width, geometry)
+        if width == 390:
+            assert len(geometry["columns"].split()) == 1, geometry
+        if width == 821:
+            assert button["centerHitsButton"], (width, geometry)
+            page.locator("#chat-question").fill("Geometry click")
+            page.locator("#chat-form").evaluate(
+                """form => {
+                    window.__chatSubmitCount = 0;
+                    form.addEventListener("submit", event => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        window.__chatSubmitCount += 1;
+                    }, { once: true });
+                }"""
+            )
+            page.locator("#chat-button").click()
+            assert page.evaluate("window.__chatSubmitCount") == 1
