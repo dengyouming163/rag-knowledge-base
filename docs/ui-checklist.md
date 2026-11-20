@@ -34,18 +34,21 @@
 
 - [x] **角色/上下文**
   - 操作：将成员切换为用户 `u_member`、管理员切换为 `u_admin`，再将访客恢复为 `demo-user`。
-  - 实际可见结果：scope 预览同步更新，并提示旧轮询、检索、流停止，历史和原文缓存清空。
+  - 实际可见结果（截图直接支持）：管理员 `u_admin` 的 scope 预览更新。
+  - 实际可见结果（操作记录中的当场观察，未单独留图）：`u_member`、`demo-user` 切换时 scope 预览同步更新；切换过程中提示旧轮询、检索、流停止，历史和原文缓存清空。
   - 截图：[`ui-role-admin.jpg`](images/ui-role-admin.jpg)
 
 - [x] **租户/上传**
-  - 操作：切换到 tenant `t_smoke`、KB `kb_smoke`，上传 `policy_single.pdf`。
+  - 操作：切换到 tenant `t_smoke`、KB `kb_smoke`，上传本地相对路径 `eval/fixtures/pdf/policy_single.pdf`。
   - 实际可见结果：最终 progress 为 100%，状态为 succeeded，任务 `#4093`，文档 `kb_smoke-b8f86c49`，来源 upload，attempts 为 1。
+  - 复跑说明：该 PDF 是验收环境既有 fixture，未随 Task 20 提交；复跑可使用任一受支持的 PDF。任务号 `#4093` 与 doc_id `kb_smoke-b8f86c49` 仅为本次历史证据，复跑应以新生成的结果为准。
   - 截图：[`ui-upload-complete.jpg`](images/ui-upload-complete.jpg)
 
-## 控制台与网络
+## 控制台与网络（验收者当场观察）
 
-- 控制台消息为空。
-- 本流程网络请求均为 200/202，无失败请求。
+- 控制台：验收者当场观察到消息为空。
+- 网络：验收者当场观察到本次上传、任务轮询、检索、问答操作的请求均为 200/202，无失败请求。
+- 未留存 DevTools/HAR，可复核证据以六张页面截图为准；上述控制台与网络结果不是截图直接证明的内容。
 
 ## 角色权限边界
 
