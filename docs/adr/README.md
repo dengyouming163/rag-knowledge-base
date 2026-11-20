@@ -10,5 +10,6 @@
 | [0006](0006-版本快照回滚.md) | 发布存 chunk_id 快照，回滚切指针 | 已采纳 |
 | [0007](0007-async-ingest.md) | PostgreSQL 任务表异步入库，单 worker 状态机与重试 | 已采纳 |
 | [0008](0008-ocr-fallback.md) | parser 优先、本地 pypdf 降级，仅解析块列表为空时 OCR | 已采纳 |
+| [0009](0009-ops-cockpit.md) | 调测驾驶舱用单文件三栏 shell，写动作交给白名单 ops-runner | 已采纳 |
 
 > 格式：状态 / 背景 / 决策 / 后果 / 对应代码。新增决策请继续编号，不要改写历史 ADR。
