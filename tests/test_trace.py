@@ -319,6 +319,24 @@ def test_chat_trace_marks_business_refusal(client: TestClient) -> None:
     assert stage["refused"] is True
 
 
+def test_chat_trace_marks_model_refusal_with_hits(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setenv("REFUSAL_MIN_SIMILARITY", "0")
+    client.app.dependency_overrides[get_chat_client] = lambda: FakeChat(
+        "根据现有资料无法确定具体到账时间。"
+    )
+
+    response = client.post(
+        "/v1/chat/stream",
+        json={"kb_id": KB, "question": "退款多久到账"},
+        headers={"X-Tenant-Id": TENANT},
+    )
+
+    assert response.status_code == 200
+    stage = _get_trace(client, response.headers["X-Trace-Id"]).json()["stages"][0]
+    assert stage["hits"] == 1
+    assert stage["refused"] is True
+
+
 def test_chat_failure_is_not_counted_as_business_refusal(client: TestClient, monkeypatch) -> None:
     monkeypatch.setenv("REFUSAL_MIN_SIMILARITY", "0")
     client.app.dependency_overrides[get_chat_client] = lambda: FailingChat()

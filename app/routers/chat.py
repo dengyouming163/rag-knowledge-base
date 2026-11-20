@@ -125,7 +125,9 @@ async def chat_stream(
                 return
 
             chunks = result["chunks"]
-            await record_stage("answer", hits=len(chunks), refused=not chunks, mode="chat")
+            answer = result["answer"]
+            refused = not chunks or "根据现有资料无法确定" in answer
+            await record_stage("answer", hits=len(chunks), refused=refused, mode="chat")
             yield (
                 "event: hits\ndata: "
                 + json.dumps(
@@ -139,7 +141,7 @@ async def chat_stream(
                 )
                 + "\n\n"
             )
-            for piece in _deltas(result["answer"]):
+            for piece in _deltas(answer):
                 yield _frame({"delta": piece})
             yield _frame("[DONE]")
         except asyncio.CancelledError:
