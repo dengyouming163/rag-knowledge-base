@@ -106,7 +106,7 @@
 
 ## 5. 数据模型
 
-新增 Alembic 迁移 `0010_ops_cockpit`。所有业务表都带 `tenant_id`，查询必须显式带租户条件；`ops_workers` 是全局进程表，不带租户。
+新增 Alembic 迁移 `0010_ops_cockpit`。所有业务表都带 `tenant_id`，查询必须显式带租户条件；`ops_workers` 是全局进程表，不带租户。迁移同时给 `ingest_jobs` 增加 `started_at timestamptz`，用于计算排队等待和入库耗时；`claim_next` 首次领取时写入，重试不覆盖。
 
 ### 5.1 `ops_runs`
 
