@@ -43,5 +43,5 @@ PDF 解析、OCR、批量 Embedding 和索引重建都可能耗时数十秒，�
 - `scripts/run_worker.py`（轮询 worker 与连接器定时同步）
 - `migrations/versions/0001_init.py`（ingest_jobs 表）
 - `migrations/versions/0009_ingest_job_fields.py`（source / attempts / progress / finished_at）
-- `deploy/docker-compose.yml`（单 worker、parser profile 与共享 uploads volume）
+- `deploy/docker-compose.yml`（db/api/worker 三服务、单 worker 与共享 uploads volume；不包含 parser 服务）
 - `tests/test_ingest_jobs.py`、`tests/test_api_jobs.py`、`tests/test_worker_connectors.py`

@@ -12,7 +12,7 @@ flowchart LR
         S[(共享 data/uploads<br/>named volume)]
         Q[(PostgreSQL<br/>ingest_jobs)]
         W[单副本 worker<br/>SKIP LOCKED 领取<br/>状态 / 进度 / 重试]
-        P[PDF 解析<br/>parser profile 优先<br/>本地 pypdf 降级]
+        P[PDF 解析<br/>独立 parser 容器优先<br/>本地 pypdf 降级]
         O[RapidOCR<br/>仅提取块为空时]
         E[父子分块 / Embedding<br/>仅子块向量化]
         D[(PostgreSQL + pgvector<br/>HNSW / BM25 / RLS)]
@@ -53,37 +53,39 @@ flowchart LR
 
 ## 五步启动
 
-前置条件：Windows PowerShell、Python 3.13（通过 `py` 启动）和 Docker Compose。以下五条命令均在仓库根目录顺序执行；第 4 步包含可选的 `parser` profile，以支持扫描件 OCR。
+前置条件：Windows PowerShell，以及带 Docker Compose 的 Docker Desktop。以下五条命令均在仓库根目录顺序执行。已提交的 Compose 只定义 `db/api/worker`；扫描件 OCR 所需的 parser 使用已提交的 `parser/Dockerfile` 单独构建和运行，不依赖任何 Compose profile。
 
-1. 安装本机开发、测试及 PDF 测试依赖：
-
-   ```powershell
-   py -3.13 -m pip install -e ".[test]"
-   ```
-
-2. 启动 PostgreSQL 16 + pgvector（宿主端口 `5433`）：
+1. 启动 PostgreSQL 16 + pgvector（宿主端口 `5433`）：
 
    ```powershell
    docker compose -f deploy/docker-compose.yml up -d db
    ```
 
-3. 构建临时 API 镜像并执行全部 Alembic 迁移（包括 `kb_app` 与 RLS）：
+2. 构建临时 API 镜像并执行全部 Alembic 迁移（包括 `kb_app` 与 RLS）：
 
    ```powershell
    docker compose -f deploy/docker-compose.yml run --rm --build api alembic upgrade head
    ```
 
-4. 启动 API、单副本 worker 和 parser；API 与 worker 通过 `uploads` named volume 共享文件：
+3. 启动 API 与单副本 worker；两者通过 `uploads` named volume 共享文件：
 
    ```powershell
-   docker compose --profile parser -f deploy/docker-compose.yml up -d --build api worker parser
+   docker compose -f deploy/docker-compose.yml up -d --build api worker
    ```
 
-5. 查看四个服务的运行与健康状态：
+4. 从已提交的 parser 目录构建独立 OCR 解析镜像：
 
    ```powershell
-   docker compose --profile parser -f deploy/docker-compose.yml ps
+   docker build -t rag-kb-parser ./parser
    ```
+
+5. 把独立 parser 容器接入 Compose 默认网络，并赋予 `parser` 网络别名：
+
+   ```powershell
+   docker run -d --name rag-kb-parser --restart unless-stopped --network deploy_default --network-alias parser -p 8100:8000 rag-kb-parser
+   ```
+
+这里的 `deploy_default` 是上述 `-f deploy/docker-compose.yml` 在未指定 Compose 项目名时创建的默认网络。提交版 worker 已配置 `PARSER_BASE_URL=http://parser:8000`，第 5 步的网络别名使该地址解析到独立 parser 容器；宿主端口 `8100` 仅用于本机访问。parser 不是 Compose 服务，`docker compose ps/down` 不会管理它，需单独启停和清理；自定义 Compose 项目名时也要相应调整网络配置。若不启动 parser，worker 会在连接失败后回退本地 pypdf，但扫描件无法 OCR。
 
 启动后访问 `http://127.0.0.1:8000/ui/`；存活与就绪端点分别为 `/live`、`/ready`，OpenAPI 页面为 `/docs`。完整故障恢复演练见 [运行手册](docs/runbook.md)。
 
@@ -110,7 +112,7 @@ flowchart LR
 | Hit Rate@5 | 1.0000 | 38 条可回答题中，Recall@5 大于 0 的比例 |
 | 拒答准确率 | 1.0000 | 12 条不可回答题中正确拒答的比例（12/12） |
 | 答案覆盖率 | 0.9211 | 38 条可回答题中未拒答的比例（35/38）；本次生成失败 0 条 |
-| 引用准确率 | 1.0000 | 35 条可回答、生成成功且未拒答的回答，逐条计算引用 chunk_id 存在于实际上下文的比例后取均值；无引用回答不进分母，本次为 0 条 |
+| 引用准确率 | 1.0000 | 35 条可回答、生成成功且未拒答的回答，逐条计算引用 chunk_id 存在于实际上下文的比例后取均值；无引用回答按 0 计入分母，本次为 0 条 |
 
 证据边界：原始输出位于本次工作区的 `eval/baseline_real_gen.json`，该文件是**未跟踪的本地证据**，不会随干净检出分发，因此这里不把它链接成仓库基线。以上数值只代表这次小型语料、用例与参数组合，不是通用榜单成绩。复现需使用当前生成评测实现 `scripts/run_eval.py`，自行配置真实模型 Key，并在相同检索与生成条件下重新导出结果；指标实现口径见 `src/metrics.py` 与 `scripts/run_eval.py`。
 

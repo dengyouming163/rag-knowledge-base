@@ -14,7 +14,7 @@
 - 主服务只通过 `PdfParserClient` 调 parser。未配置 `PARSER_BASE_URL` 时直接使用本地 pypdf；parser 网络错误或 HTTP 非 2xx 时也退回本地 pypdf。本地路径只抽取文字层，**不会自行调用 RapidOCR**，也不保留 parser 的表格结构。
 - parser 的 OCR 异常或 OCR 后仍无文本均返回可读的 422。客户端随后尝试本地 pypdf；若本地也无文本，则把“扫描件无文本 / 需要 OCR”归为 `NonRetryableIngestError`，worker 直接将任务置为 failed，不做无意义的三次重试。
 - 若 parser 是网络故障或 5xx，而本地 pypdf 又无法提取文本，则保留可重试语义，由通用任务状态机最多尝试三次。不能因为本地无法 OCR，就把明确的远端服务故障永久判成文档错误。
-- parser 在 Compose 中属于可选 `parser` profile。需要扫描件 OCR 时必须显式启动该服务；只有默认服务时，扫描件仍可能以“需要 OCR”不可重试失败。
+- 已提交的 Compose 仅定义 `db/api/worker`，没有 parser 服务或 profile；worker 固定配置 `PARSER_BASE_URL=http://parser:8000`。需要扫描件 OCR 时，按 `parser/Dockerfile` 构建独立容器，并接入 Compose 默认网络、配置 `parser` 网络别名。README 的五步启动使用与默认项目目录对应的 `deploy_default`。未启动该容器时，DNS/连接失败会触发本地 pypdf 降级。
 
 ## 后果
 
@@ -29,7 +29,8 @@
 
 - 只有空块才触发 OCR 是有意的保守策略：只要文字层留下少量噪声块，就不会对整份 PDF 补做 OCR，可能漏掉其余扫描页。
 - OCR 路径只产生逐页文本块，不恢复标题层级或表格结构；识别质量受扫描清晰度、版面和 200 DPI 渲染影响。
-- 本地 pypdf 只是可用性降级，不等价于 parser：没有表格结构提取，也不能抢救扫描件。生产启用扫描件入库仍需部署 parser profile。
+- 本地 pypdf 只是可用性降级，不等价于 parser：没有表格结构提取，也不能抢救扫描件。生产启用扫描件入库仍需部署独立 parser 容器，并保证 worker 的 `PARSER_BASE_URL` 可达。
+- 独立 parser 不在已提交 Compose 的服务列表中，需单独构建、启停和清理；`docker compose ps/down` 不会管理它。自定义 Compose 项目名时必须同步调整网络名/别名或 `PARSER_BASE_URL`，不能照抄默认的 `deploy_default`。
 - RapidOCR 增大 parser 镜像与构建时间，每页图像渲染和 ONNX 推理增加 CPU / 内存占用；锁保证引擎复用与推理串行，也限制了单 parser 进程的 OCR 并发。
 - parser 返回 4xx/5xx 后主服务还会再读一遍本地 PDF，失败请求会增加一次解析成本；需要根据任务错误区分文档问题与服务问题。
 
@@ -41,7 +42,7 @@
 - `src/parsers/pdf.py`（parser HTTP 客户端、本地 pypdf 降级与错误分类）
 - `src/ingest.py`（空文本检查与 NonRetryableIngestError 转换）
 - `src/worker.py`（不可重试失败与通用重试分流）
-- `deploy/docker-compose.yml`（可选 parser profile 与 worker 的 PARSER_BASE_URL）
+- `deploy/docker-compose.yml`（仅 db/api/worker；worker 的 PARSER_BASE_URL 指向 parser 网络别名）
 - `tests/test_ocr_branch.py`（空块才 OCR、OCR 失败、引擎复用与逐页转换）
 - `tests/test_ingest_jobs.py`（扫描件不可重试、远端故障可重试）
 - `tests/test_ingest.py`（本地解析与入库边界）
