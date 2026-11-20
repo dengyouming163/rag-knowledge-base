@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from src.store_pg import MissingTenantFilterError
 
 from .errors import ScopeNotFoundError
+from .http_metrics import HttpMetricsMiddleware
 from .routers import (
     chat,
     documents,
@@ -32,6 +33,7 @@ from .routers import (
 
 def create_app() -> FastAPI:
     app = FastAPI(title="RAG Knowledge Base", version="0.1.0")
+    app.add_middleware(HttpMetricsMiddleware)
     app.include_router(health.router)
     app.include_router(search.router)
     app.include_router(traces.router)
