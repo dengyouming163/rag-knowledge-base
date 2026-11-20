@@ -92,3 +92,17 @@ def test_ui_has_runs_and_audit_views(client) -> None:
         'id="job-retry-button"',
     ):
         assert marker in html
+
+
+def test_ui_has_run_metrics_and_delta(client) -> None:
+    html = client.get("/ui/").text
+    for marker in (
+        'id="runs-delta"',
+        'id="runs-detail-body"',
+        'id="run-trigger-loadtest"',
+        'id="run-trigger-drill"',
+        'data-drill="drill_parser"',
+        'data-drill="drill_llm"',
+        'data-drill="drill_queue"',
+    ):
+        assert marker in html

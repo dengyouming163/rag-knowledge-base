@@ -49,7 +49,7 @@ flowchart LR
 - **检索与隔离**：子块用于召回，父块用于补充上下文；向量与 BM25 经加权 RRF 融合。强制租户作用域、文档 ACL 和 chunks RLS 共同约束可见范围。
 - **可观测与操作**：`/v1/traces/{trace_id}` 记录阶段耗时与命中情况，`/v1/stats` 汇总任务和问答指标；`/ui/` 提供单页知识运维工作台。
 
-设计取舍见 [ADR 0007：数据库异步入库](docs/adr/0007-async-ingest.md) 与 [ADR 0008：PDF 本地降级与 OCR 回退](docs/adr/0008-ocr-fallback.md)。
+设计取舍见 [ADR 0007：数据库异步入库](docs/adr/0007-async-ingest.md)、[ADR 0008：PDF 本地降级与 OCR 回退](docs/adr/0008-ocr-fallback.md) 与 [ADR 0009：调测驾驶舱](docs/adr/0009-ops-cockpit.md)。
 
 ## 五步启动
 
@@ -100,6 +100,47 @@ flowchart LR
 ![知识运维工作台总览](docs/images/ui-overview-top.jpg)
 
 截图来自已提交的真实浏览器手工验收，覆盖选库、检索、流式问答、引用展开、角色切换和上传完成状态；运行时的检索分数为 mock 模式结果。完整操作、结果与证据边界见 [UI 验收清单](docs/ui-checklist.md)。
+
+## 调测驾驶舱
+
+`/ui` 的“调测驾驶舱”把任务、Trace、AI 指标、评测/压测与身份权限放在同一个三栏工作台里。评测、压测和安全演练由独立 ops-runner 按白名单执行，不在 API 进程里运行脚本或停启容器。
+
+本地启动（数据库沿用 Compose 暴露的 `5433`）：
+
+```powershell
+# 1) 数据库
+docker compose -f deploy/docker-compose.yml up -d db
+
+# 2) API：开启运维写动作（缺省为 0，只读）
+$env:OPS_ENABLE_ACTIONS = "1"
+py -3.13 -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+# 3) 另开两个终端分别启动 worker 与 ops-runner
+py -3.13 scripts/run_worker.py --interval 5
+py -3.13 scripts/run_ops.py --interval 5
+```
+
+用 Docker 启动 API 时同样要把 `OPS_ENABLE_ACTIONS=1` 注入 API 容器，Compose 没有为它预设值；ops-runner 需要与 API 使用同一个数据库。打开 `http://127.0.0.1:8000/ui/` 后，在左侧进入“评测与压测”。
+
+四项能力：
+
+1. **只读驾驶舱**：组件健康、队列、任务事件时间线、AI 指标与 Trace 瀑布。
+2. **评测与压测**：最近一次 mock 评测指标、运行历史与详情、相对上一轮的指标 delta；管理员可触发 `eval_mock` 与固定压测（并发 20、每端点 200 请求）。
+3. **身份与权限**：身份卡、guest / member / admin 身份对比、三层隔离与拒绝原因。
+4. **操作审计**：allowed / denied 时间线，覆盖触发、重试与身份对比。
+
+指标口径（与 `scripts/run_eval.py` 一致，完整说明见 [驾驶舱验收清单](docs/ops-cockpit-checklist.md)）：
+
+| 指标 | 含义 |
+|---|---|
+| `recall_at_k` | 可回答用例中，前 k 条命中的标注 chunk 比例逐题计算后取均值，多标注可部分得分 |
+| `mrr` | 可回答用例中，前 k 条里首个正确结果的倒数排名均值 |
+| `hit_rate` | 可回答用例中 `recall_at_k` 大于 0 的比例 |
+| `refusal_accuracy` | 不可回答用例中正确拒答的比例 |
+| `answer_coverage` | 可回答用例中未拒答的比例，生成失败单独计入 `generation_errors` |
+| `citation_accuracy` | 可回答、生成成功且未拒答的回答中，引用 chunk_id 存在于实际上下文的比例均值 |
+
+安全演练只运行隔离测试（parser 降级、LLM 失败、队列重试），不会真实停容器；同一知识库同类型运行未结束时再次触发会返回 409。`OPS_ENABLE_ACTIONS` 未开启或当前身份不是管理员时，触发按钮保持禁用。
 
 ## 真实模型评测
 

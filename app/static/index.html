@@ -670,6 +670,29 @@
       font-weight: 600;
       overflow-wrap: anywhere;
     }
+    .wx-delta-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--wx-text-secondary);
+    }
+    .wx-delta {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 6px;
+      padding: 4px 8px;
+      border: 1px solid var(--wx-divider);
+      border-radius: 6px;
+      background: #fafafa;
+    }
+    .wx-delta strong {
+      font-family: var(--mono);
+      font-weight: 600;
+    }
+    .wx-delta.is-real strong { color: #1a7f37; }
+    .wx-delta.is-danger strong { color: #b42318; }
     .wx-job-board {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1225,6 +1248,12 @@
                 <button id="run-trigger-loadtest" class="wx-button" disabled>运行固定压测</button>
                 <button id="run-trigger-drill" class="wx-button" disabled>运行安全演练</button>
               </div>
+              <div id="drill-actions" class="wx-actions" hidden>
+                <button data-drill="drill_parser" class="wx-button" disabled>parser 降级演练</button>
+                <button data-drill="drill_llm" class="wx-button" disabled>LLM 失败演练</button>
+                <button data-drill="drill_queue" class="wx-button" disabled>队列重试演练</button>
+              </div>
+              <div id="runs-delta" class="wx-delta-list"></div>
               <p class="wx-hint" id="runs-trigger-hint">固定参数：eval --mock；loadtest 并发 20 / 每端点 200；演练为隔离测试。</p>
             </section>
             <section class="wx-card wx-span-2" id="runs-detail">
@@ -1900,11 +1929,11 @@
         }
       }
 
-      const RUN_TRIGGERS = {
-        "run-trigger-eval": "eval_mock",
-        "run-trigger-loadtest": "loadtest",
-        "run-trigger-drill": "drill_parser"
-      };
+      const RUN_TRIGGER_BUTTONS = [
+        "run-trigger-eval",
+        "run-trigger-loadtest",
+        "run-trigger-drill"
+      ];
 
       function runsView() {
         return document.querySelector('[data-view="runs"]');
@@ -1923,9 +1952,12 @@
 
       function updateActionAvailability() {
         const enabled = window.__identity?.ops?.can_trigger === true;
-        for (const id of Object.keys(RUN_TRIGGERS)) {
+        for (const id of RUN_TRIGGER_BUTTONS) {
           const button = opsElement(id);
           if (button) button.disabled = !enabled;
+        }
+        for (const button of document.querySelectorAll("[data-drill]")) {
+          button.disabled = !enabled;
         }
         const compareButton = opsElement("identity-compare-button");
         if (compareButton) compareButton.disabled = !enabled;
@@ -1999,6 +2031,7 @@
         if (!run || !summary) {
           badge.textContent = "-";
           body.innerHTML = emptyRow("暂无评测结果");
+          opsElement("runs-delta").textContent = "首次运行，暂无对比";
           return;
         }
         badge.textContent = `#${Number(run.id)} · ${fmtTimestamp(run.finished_at || run.requested_at)}`;
@@ -2022,6 +2055,31 @@
               `<div class="wx-metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value ?? "-")}</strong></div>`
           )
           .join("");
+        renderDelta(run);
+      }
+
+      function renderDelta(run) {
+        const container = opsElement("runs-delta");
+        const previous = (window.__runs || []).find(
+          (item) => item.kind === run.kind && item.id < run.id && item.summary
+        );
+        if (!previous) {
+          container.textContent = "首次运行，暂无对比";
+          return;
+        }
+        const current = run.summary?.metrics || {};
+        const before = previous.summary?.metrics || {};
+        const rows = [
+          ["Recall@5", "recall_at_k"],
+          ["MRR@5", "mrr"],
+          ["Hit Rate@5", "hit_rate"]
+        ].map(([label, key]) => {
+          const delta = Number(current[key] || 0) - Number(before[key] || 0);
+          return `<div class="wx-delta ${delta < 0 ? "is-danger" : "is-real"}">
+            <span>${label}</span><strong>${delta >= 0 ? "+" : ""}${delta.toFixed(4)}</strong>
+          </div>`;
+        });
+        container.innerHTML = rows.join("");
       }
 
       async function loadRunDetail(runId) {
@@ -2084,7 +2142,7 @@
           hint.textContent = "请先填写租户 ID 和知识库 ID。";
           return;
         }
-        for (const id of Object.keys(RUN_TRIGGERS)) opsElement(id).disabled = true;
+        for (const id of RUN_TRIGGER_BUTTONS) opsElement(id).disabled = true;
         hint.textContent = `正在提交 ${opsLabel(kind)}…`;
         try {
           const response = await checkedFetch(
@@ -2966,9 +3024,26 @@
       elements.chatForm.addEventListener("submit", startChat);
       opsElement("job-retry-button").addEventListener("click", retrySelectedJob);
       opsElement("identity-compare-button").addEventListener("click", compareIdentity);
-      for (const [id, kind] of Object.entries(RUN_TRIGGERS)) {
-        opsElement(id).addEventListener("click", () => triggerRun(kind));
-      }
+      opsElement("run-trigger-eval").addEventListener("click", () => triggerRun("eval_mock"));
+      opsElement("run-trigger-loadtest").addEventListener("click", () => {
+        if (confirm("固定压测：并发 20，每端点 200 请求，会占用本机资源。继续？")) {
+          triggerRun("loadtest");
+        }
+      });
+      opsElement("run-trigger-drill").addEventListener("click", () => {
+        opsElement("drill-actions").hidden = false;
+      });
+      document.querySelectorAll("[data-drill]").forEach((button) => {
+        button.addEventListener("click", () => {
+          if (
+            confirm(
+              `安全演练：${button.dataset.drill}，只运行隔离测试，不影响运行中的服务。继续？`
+            )
+          ) {
+            triggerRun(button.dataset.drill);
+          }
+        });
+      });
 
       elements.role.addEventListener("change", () => {
         if (elements.role.value !== "custom") {
