@@ -1100,7 +1100,7 @@
             method: "POST",
             headers: requestHeaders(chat.scope, true, true),
             body: JSON.stringify({
-              query: chat.question,
+              query: chat.rewritten || chat.question,
               top_k: chat.topK,
               mode: "hybrid",
               audience: chat.audience
@@ -1214,6 +1214,7 @@
         }
         if (eventName === "hits") {
           chat.citations = Array.isArray(payload.chunks) ? payload.chunks.map(String) : [];
+          chat.rewritten = typeof payload.rewritten === "string" ? payload.rewritten : "";
           renderStreamMeta(payload);
           renderCitationList(chat);
           return false;
@@ -1290,6 +1291,7 @@
           controller,
           scope,
           question,
+          rewritten: "",
           topK: Number(elements.chatTopK.value),
           audience: elements.chatAudience.value,
           answer: "",
@@ -1313,7 +1315,7 @@
             body: JSON.stringify({
               kb_id: scope.kb,
               question,
-              history: state.history.map((turn) => ({ ...turn })),
+              history: state.history.slice(-12).map((turn) => ({ ...turn })),
               top_k: chat.topK,
               audience: chat.audience
             }),
@@ -1327,6 +1329,7 @@
             { role: "user", content: question },
             { role: "assistant", content: chat.answer }
           );
+          state.history = state.history.slice(-12);
           setStatus(elements.chatStatus, `回答完成 · 收到 [DONE] · ${chat.citations.length} 条引用`, "success");
         } catch (error) {
           if (state.chat !== chat || isAbort(error)) return;
