@@ -127,7 +127,7 @@ py -3.13 scripts/run_ops.py --interval 5
 1. **只读驾驶舱**：组件健康、队列、任务事件时间线、AI 指标与 Trace 瀑布。
 2. **评测与压测**：最近一次 mock 评测指标、运行历史与详情、相对上一轮的指标 delta；管理员可触发 `eval_mock` 与固定压测（并发 20、每端点 200 请求）。
 3. **身份与权限**：身份卡、guest / member / admin 身份对比、三层隔离与拒绝原因。
-4. **操作审计**：allowed / denied 时间线，覆盖触发、重试与身份对比。
+4. **操作审计**：allowed / denied 时间线，覆盖触发与任务重试；身份对比记录拒绝尝试。
 
 指标口径（与 `scripts/run_eval.py` 一致，完整说明见 [驾驶舱验收清单](docs/ops-cockpit-checklist.md)）：
 
