@@ -64,7 +64,7 @@ async def upload_document(
     if suffix not in ALLOWED_SUFFIX:
         raise HTTPException(status_code=422, detail=f"unsupported file type: {suffix or '(none)'}")
 
-    content = await file.read()
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
     if not content:
         raise HTTPException(status_code=422, detail="empty file")
     if len(content) > MAX_UPLOAD_BYTES:

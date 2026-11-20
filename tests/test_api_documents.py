@@ -10,10 +10,13 @@
 
 from __future__ import annotations
 
+import asyncio
+import io
 import shutil
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException, UploadFile
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
@@ -154,6 +157,26 @@ def test_upload_too_large_returns_413(client: TestClient, monkeypatch) -> None:
     response = _upload(client, b"x" * 11)
 
     assert response.status_code == 413
+
+
+def test_upload_reads_only_one_byte_past_limit(monkeypatch) -> None:
+    monkeypatch.setattr(documents, "MAX_UPLOAD_BYTES", 10)
+    monkeypatch.setattr(documents, "ensure_kb", lambda *_args: None)
+    upload = UploadFile(file=io.BytesIO(b"x" * 11), filename="policy.pdf")
+    original_read = upload.read
+    read_sizes: list[int] = []
+
+    async def recording_read(size: int = -1) -> bytes:
+        read_sizes.append(size)
+        return await original_read(size)
+
+    monkeypatch.setattr(upload, "read", recording_read)
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(documents.upload_document(KB, TENANT, None, upload))
+
+    assert exc_info.value.status_code == 413
+    assert read_sizes == [documents.MAX_UPLOAD_BYTES + 1]
 
 
 def test_upload_persists_pending_document_and_file(
