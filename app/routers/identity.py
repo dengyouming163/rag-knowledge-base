@@ -11,16 +11,31 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+import logging
+import time
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from app.deps import EngineDep, TenantId, UserId, ops_actions_enabled
-from app.services import ensure_kb
+from app.deps import (
+    EmbedderDep,
+    EngineDep,
+    TenantId,
+    UserId,
+    ops_actions_enabled,
+    require_admin,
+    user_context_of,
+)
+from app.services import build_retriever, ensure_kb
+from src import ops_audit
 from src.acl import acl_condition
 from src.db.session import tenant_scope
 
 router = APIRouter(prefix="/v1", tags=["identity"])
+
+logger = logging.getLogger(__name__)
 
 
 def _user_row(engine: Engine, tenant_id: str, user_id: str) -> dict:
@@ -170,3 +185,72 @@ def permissions(
         "decision": decision,
         "reason": reason,
     }
+
+
+def _safe_audit(engine, **kwargs) -> None:
+    """审计是旁路：写入失败只记日志，不能把原始 403 变成 500。"""
+    try:
+        ops_audit.record(engine, **kwargs)
+    except Exception:  # 审计失败不能掩盖动作结果
+        logger.exception("ops audit write failed: %s", kwargs.get("action"))
+
+
+def _require_admin_and_switch(
+    engine, tenant_id: str, user_id: str, action: str, target: str
+) -> None:
+    """写动作准入：必须管理员且开关开启，拒绝时落一条 denied 审计。"""
+    try:
+        require_admin(engine, tenant_id, user_id)
+        if not ops_actions_enabled():
+            raise HTTPException(status_code=403, detail="ops actions disabled")
+    except HTTPException as exc:
+        _safe_audit(
+            engine, tenant_id=tenant_id, actor=user_id, action=action,
+            target=target, result="denied", reason=str(exc.detail),
+        )
+        raise
+
+
+class CompareRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=500)
+    user_ids: list[str] = Field(min_length=1, max_length=3)
+    top_k: int = Field(default=5, ge=1, le=10)
+
+
+@router.post("/ops/kbs/{kb_id}/identity-compare")
+def identity_compare(
+    kb_id: str,
+    payload: CompareRequest,
+    tenant_id: TenantId,
+    user_id: UserId,
+    engine: EngineDep,
+    embed_client: EmbedderDep,
+) -> dict:
+    # KB 先校验：跨租户与不存在都返回 404，不泄露资源是否存在。
+    ensure_kb(engine, tenant_id, kb_id)
+    _require_admin_and_switch(engine, tenant_id, user_id, "identity_compare", kb_id)
+    retriever = build_retriever(engine, tenant_id, kb_id, embed_client, need_bm25=True)
+    rows = []
+    for candidate in payload.user_ids:
+        tags, is_admin = user_context_of(engine, tenant_id, candidate)
+        user = _user_row(engine, tenant_id, candidate)
+        started = time.perf_counter()
+        hits = retriever.retrieve(
+            payload.query,
+            top_k=payload.top_k,
+            filters={"audience": None, "user_tags": tags, "is_admin": is_admin},
+            mode="hybrid",
+        )
+        rows.append(
+            {
+                "user": candidate,
+                "role": str(user.get("role") or "guest"),
+                "tags": tags,
+                "is_admin": is_admin,
+                "hits": len(hits),
+                "top_score": round(float(hits[0].score), 6) if hits else None,
+                "visible_chunk_ids": [hit.chunk_id for hit in hits],
+                "latency_ms": round((time.perf_counter() - started) * 1000, 2),
+            }
+        )
+    return {"query": payload.query, "users": rows}

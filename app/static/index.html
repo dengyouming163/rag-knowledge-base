@@ -1201,6 +1201,9 @@
             </section>
             <section class="wx-card wx-span-2" id="identity-compare">
               <div class="wx-card-head"><h2>身份切换对比</h2><span class="wx-badge">管理员可用</span></div>
+              <div class="wx-actions">
+                <button id="identity-compare-button" class="wx-button" disabled>对比当前 query</button>
+              </div>
               <div id="identity-compare-body" class="wx-empty">选择 query 后对比 guest / member / admin</div>
             </section>
           </div>
@@ -1924,6 +1927,8 @@
           const button = opsElement(id);
           if (button) button.disabled = !enabled;
         }
+        const compareButton = opsElement("identity-compare-button");
+        if (compareButton) compareButton.disabled = !enabled;
         const badge = opsElement("runs-trigger-badge");
         if (badge) {
           badge.textContent = enabled ? "管理员可用" : "只读";
@@ -2236,6 +2241,65 @@
         opsElement("isolation-body").innerHTML = emptyRow(message);
         opsElement("permission-reason-body").innerHTML = emptyRow(message);
         updateActionAvailability();
+      }
+
+      async function compareIdentity() {
+        const scope = currentScope();
+        const query = elements.searchQuery.value.trim();
+        const button = opsElement("identity-compare-button");
+        const body = opsElement("identity-compare-body");
+        if (!query) {
+          body.innerHTML = emptyRow("请先在工作台填写检索问题，作为对比用的 query。");
+          return;
+        }
+        const previousText = button ? button.textContent : "";
+        if (button) {
+          button.disabled = true;
+          button.textContent = "对比中…";
+        }
+        try {
+          const data = await opsJson(
+            `/v1/ops/kbs/${encodeURIComponent(scope.kb)}/identity-compare`,
+            {
+              method: "POST",
+              headers: requestHeaders(scope, true, true),
+              body: JSON.stringify({
+                query,
+                user_ids: ["guest", "u_member", "u_admin"],
+                top_k: 5
+              })
+            }
+          );
+          const rows = Array.isArray(data.users) ? data.users : [];
+          body.innerHTML = `
+    <table class="wx-table">
+      <thead><tr><th>用户</th><th>角色</th><th>标签</th><th>命中</th><th>最高分</th><th>耗时</th></tr></thead>
+      <tbody>${rows
+        .map((row) => {
+          const tags = (Array.isArray(row.tags) ? row.tags : [])
+            .map((tag) => escapeHtml(tag))
+            .join(", ");
+          return `
+        <tr>
+          <td>${escapeHtml(row.user)}</td>
+          <td>${escapeHtml(row.role)}</td>
+          <td>${tags || "-"}</td>
+          <td>${escapeHtml(row.hits)}</td>
+          <td>${row.top_score == null ? "-" : escapeHtml(row.top_score)}</td>
+          <td>${escapeHtml(row.latency_ms)} ms</td>
+        </tr>`;
+        })
+        .join("")}</tbody>
+    </table>`;
+        } catch (error) {
+          console.warn("身份对比失败", error);
+          body.innerHTML = emptyRow(`身份对比失败：${error.message}`);
+        } finally {
+          if (button) {
+            button.textContent = previousText;
+            button.disabled = window.__identity?.ops?.can_trigger !== true;
+          }
+        }
       }
 
       async function loadIdentity() {
@@ -2901,6 +2965,7 @@
       elements.searchForm.addEventListener("submit", startSearch);
       elements.chatForm.addEventListener("submit", startChat);
       opsElement("job-retry-button").addEventListener("click", retrySelectedJob);
+      opsElement("identity-compare-button").addEventListener("click", compareIdentity);
       for (const [id, kind] of Object.entries(RUN_TRIGGERS)) {
         opsElement(id).addEventListener("click", () => triggerRun(kind));
       }
