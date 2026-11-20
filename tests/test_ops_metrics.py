@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from src.ops_metrics import build_ops_summary, percentile, summarize_ai, summarize_queue
+from src.ops_metrics import build_ops_summary, percentile, summarize_queue
 
 
 def test_percentile_interpolates() -> None:
@@ -30,32 +30,38 @@ def test_queue_counts_wait_and_duration() -> None:
     assert summary["avg_duration_seconds"] == 16.5
 
 
-def test_ai_metrics_use_real_denominators() -> None:
-    traces = [
-        {"stage": "retrieve", "hits": 0, "refused": False, "mode": "hybrid"},
-        {"stage": "retrieve", "hits": 3, "refused": False, "mode": "hybrid"},
-        {"stage": "answer", "hits": 3, "refused": False, "mode": "chat",
-         "prompt_tokens": 100, "completion_tokens": 20, "llm_ms": 500,
-         "citation_ok": True, "rerank_degraded": False},
-        {"stage": "answer", "hits": 0, "refused": True, "mode": "chat",
-         "prompt_tokens": 50, "completion_tokens": 0, "llm_ms": 300,
-         "citation_ok": None, "rerank_degraded": True},
-    ]
-    summary = summarize_ai(traces)
-    assert summary["requests"] == 2
-    assert summary["refusal_rate"] == 0.5
-    assert summary["zero_result_rate"] == 0.5
-    assert summary["tokens"]["total"] == 170
-    assert summary["llm_latency_ms"]["p50"] == 400
-    assert summary["citation_ok_rate"] == 1.0
-    assert summary["rerank_degraded_rate"] == 0.5
-
-
-def test_build_summary_keeps_empty_values_nullable() -> None:
+def test_build_summary_maps_legacy_ai_from_observability() -> None:
+    observability = {
+        "window": "1h",
+        "http": {"requests": 8},
+        "rag": {
+            "refusal": {"numerator": 1, "denominator": 3, "rate": 0.3333},
+            "zero_hit": {"numerator": 1, "denominator": 4, "rate": 0.25},
+            "citation": {"numerator": 2, "denominator": 3, "rate": 0.6667},
+            "rerank_degraded": {"numerator": 1, "denominator": 2, "rate": 0.5},
+            "tokens": {"prompt": 240, "completion": 70, "total": 310},
+            "latency_ms": {"llm": {"p50": 55.0, "p95": 77.5, "p99": 79.5, "samples": 2}},
+            "model": "m1",
+            "cost": {"estimated_cost_usd": 0.00024},
+        },
+    }
+    latest_traces = [{"trace_id": "new"}, {"trace_id": "old"}]
     summary = build_ops_summary(
         health={"api": "up", "db": "up", "parser": "unconfigured", "workers": []},
-        jobs=[], traces=[], runs=[], workers=[],
+        jobs=[], observability=observability, latest_traces=latest_traces,
+        runs=[], workers=[],
     )
-    assert summary["queue"]["total"] == 0
-    assert summary["ai"]["requests"] == 0
-    assert summary["ai"]["refusal_rate"] is None
+
+    assert summary["observability"] is observability
+    assert summary["latest_traces"] is latest_traces
+    assert summary["ai"] == {
+        "requests": 3,
+        "refusal_rate": 0.3333,
+        "zero_result_rate": 0.25,
+        "citation_ok_rate": 0.6667,
+        "rerank_degraded_rate": 0.5,
+        "tokens": {"prompt": 240, "completion": 70, "total": 310},
+        "llm_latency_ms": {"p50": 55.0, "p95": 77.5},
+        "model": "m1",
+        "estimated_cost": 0.00024,
+    }

@@ -6,13 +6,8 @@
 
 from __future__ import annotations
 
-import os
 from collections import Counter
 from datetime import datetime, timezone
-
-
-def _ratio(numerator: float, denominator: float) -> float | None:
-    return round(numerator / denominator, 4) if denominator else None
 
 
 def percentile(values: list[float], quantile: float) -> float | None:
@@ -66,72 +61,34 @@ def summarize_queue(jobs: list[dict]) -> dict:
     }
 
 
-def summarize_ai(traces: list[dict]) -> dict:
-    retrieves = [trace for trace in traces if trace.get("stage") == "retrieve"]
-    answers = [trace for trace in traces if trace.get("stage") == "answer"]
-    citations = [
-        trace["citation_ok"] for trace in answers
-        if trace.get("citation_ok") is not None
-    ]
-    reranks = [
-        bool(trace.get("rerank_degraded")) for trace in answers
-        if trace.get("rerank_degraded") is not None
-    ]
-    prompt = sum(int(trace.get("prompt_tokens") or 0) for trace in answers)
-    completion = sum(int(trace.get("completion_tokens") or 0) for trace in answers)
-    llm_latencies = [
-        float(trace["llm_ms"]) for trace in answers if trace.get("llm_ms") is not None
-    ]
-    input_price = os.environ.get("LLM_INPUT_PRICE_PER_1K")
-    output_price = os.environ.get("LLM_OUTPUT_PRICE_PER_1K")
-    estimated_cost = None
-    if input_price and output_price:
-        estimated_cost = round(
-            prompt / 1000 * float(input_price)
-            + completion / 1000 * float(output_price),
-            6,
-        )
-    return {
-        "requests": len(answers),
-        "refusal_rate": _ratio(
-            sum(trace.get("refused") is True for trace in answers), len(answers)
-        ),
-        "zero_result_rate": _ratio(
-            sum(int(trace.get("hits") or 0) == 0 for trace in retrieves),
-            len(retrieves),
-        ),
-        "citation_ok_rate": _ratio(sum(bool(item) for item in citations), len(citations)),
-        "rerank_degraded_rate": _ratio(sum(reranks), len(reranks)),
-        "tokens": {
-            "prompt": prompt,
-            "completion": completion,
-            "total": prompt + completion,
-        },
-        "llm_latency_ms": {
-            "p50": percentile(llm_latencies, 0.50),
-            "p95": percentile(llm_latencies, 0.95),
-        },
-        "model": next(
-            (trace.get("model") for trace in reversed(answers) if trace.get("model")),
-            None,
-        ),
-        "estimated_cost": estimated_cost,
-    }
-
-
 def build_ops_summary(
     *,
     health: dict,
     jobs: list[dict],
-    traces: list[dict],
+    observability: dict,
+    latest_traces: list[dict],
     runs: list[dict],
     workers: list[dict],
 ) -> dict:
+    rag = observability["rag"]
+    llm_latency = rag["latency_ms"]["llm"]
+    ai = {
+        "requests": rag["refusal"]["denominator"],
+        "refusal_rate": rag["refusal"]["rate"],
+        "zero_result_rate": rag["zero_hit"]["rate"],
+        "citation_ok_rate": rag["citation"]["rate"],
+        "rerank_degraded_rate": rag["rerank_degraded"]["rate"],
+        "tokens": rag["tokens"],
+        "llm_latency_ms": {"p50": llm_latency["p50"], "p95": llm_latency["p95"]},
+        "model": rag["model"],
+        "estimated_cost": rag["cost"]["estimated_cost_usd"],
+    }
     return {
         "health": health,
         "queue": summarize_queue(jobs),
-        "ai": summarize_ai(traces),
+        "ai": ai,
         "latest_runs": runs[:5],
-        "latest_traces": traces[-10:],
+        "latest_traces": latest_traces,
         "workers": workers,
+        "observability": observability,
     }
