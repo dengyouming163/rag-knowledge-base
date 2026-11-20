@@ -670,14 +670,6 @@
       font-weight: 600;
       overflow-wrap: anywhere;
     }
-    .wx-sparkline {
-      width: 100%;
-      height: 48px;
-      margin-top: 10px;
-      fill: none;
-      stroke: var(--wx-primary);
-      stroke-width: 2;
-    }
     .wx-job-board {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -804,6 +796,7 @@
       overflow-wrap: anywhere;
     }
     .wx-empty {
+      grid-column: 1 / -1;
       margin: 0;
       padding: 12px;
       color: var(--wx-text-tertiary);
@@ -1039,10 +1032,9 @@
             <section class="wx-card" id="ops-queue">
               <div class="wx-card-head"><h2>任务队列</h2><span class="wx-badge" id="ops-queue-badge">-</span></div>
               <div class="wx-metrics" id="ops-queue-body"></div>
-              <svg class="wx-sparkline" id="ops-queue-sparkline" viewBox="0 0 240 48" aria-label="队列趋势"></svg>
             </section>
             <section class="wx-card wx-span-2" id="ops-ai">
-              <div class="wx-card-head"><h2>AI 指标</h2><span class="wx-badge" id="ops-ai-badge">最近 7 天</span></div>
+              <div class="wx-card-head"><h2>AI 指标</h2><span class="wx-badge" id="ops-ai-badge">全部历史</span></div>
               <div class="wx-metrics" id="ops-ai-body"></div>
             </section>
             <section class="wx-card wx-span-2" id="ops-jobs">
@@ -1299,14 +1291,40 @@
         selectedJobId: null,
         selectedTraceId: null,
         timer: null,
-        loading: false
+        loading: false,
+        epoch: 0
       };
 
+      const OPS_LABELS = {
+        queued: "排队",
+        running: "运行",
+        succeeded: "成功",
+        failed: "失败",
+        started: "开始",
+        parsing: "解析",
+        chunking: "切分",
+        embedding: "嵌入",
+        publishing: "发布",
+        claimed: "已领取"
+      };
+
+      function opsLabel(value) {
+        const key = String(value == null ? "" : value);
+        return OPS_LABELS[key] || key || "-";
+      }
+
+      function fmtTimestamp(value) {
+        if (value == null || value === "") return "-";
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+      }
+
       function escapeHtml(value) {
-        return String(value == null ? "" : value).replace(/[&<>"]/g, (char) => {
+        return String(value == null ? "" : value).replace(/[&<>"']/g, (char) => {
           if (char === "&") return "&amp;";
           if (char === "<") return "&lt;";
           if (char === ">") return "&gt;";
+          if (char === "'") return "&#39;";
           return "&quot;";
         });
       }
@@ -1323,10 +1341,14 @@
         return `<div class="wx-empty">${escapeHtml(message)}</div>`;
       }
 
-      async function opsJson(path) {
+      async function opsJson(path, options = {}) {
         const scope = currentScope();
         const response = await checkedFetch(path, {
-          headers: requestHeaders(scope, true)
+          ...options,
+          headers: {
+            ...requestHeaders(scope, true),
+            ...(options.headers || {})
+          }
         });
         return response.json();
       }
@@ -1348,10 +1370,12 @@
       }
 
       function resetOpsPanels(message) {
-        ["ops-health", "ops-queue", "ops-ai", "ops-jobs"].forEach((id) => {
+        ["ops-health", "ops-queue", "ops-jobs"].forEach((id) => {
           opsElement(`${id}-badge`).textContent = "-";
           opsElement(`${id}-body`).innerHTML = emptyRow(message);
         });
+        opsElement("ops-ai-badge").textContent = "全部历史";
+        opsElement("ops-ai-body").innerHTML = emptyRow(message);
         opsElement("ops-job-events-badge").textContent = "未选择";
         opsElement("ops-job-events-body").innerHTML = emptyRow("点击任务查看阶段时间线");
         opsElement("ops-traces-badge").textContent = "-";
@@ -1359,9 +1383,9 @@
         opsElement("ops-trace-waterfall").innerHTML = emptyRow("点击左侧 Trace 查看阶段耗时");
       }
 
-      function renderOpsError(error) {
+      function renderSummaryError(error) {
         const message = `加载失败：${error && error.message ? error.message : "未知错误"}`;
-        ["ops-health", "ops-queue", "ops-ai", "ops-jobs", "ops-traces"].forEach((id) => {
+        ["ops-health", "ops-queue", "ops-ai"].forEach((id) => {
           opsElement(`${id}-badge`).textContent = "加载失败";
           opsElement(`${id}-body`).innerHTML = emptyRow(message);
         });
@@ -1374,44 +1398,56 @@
           resetOpsPanels("请先填写租户 ID 和知识库 ID。");
           return;
         }
-        const key = scopeKey(scope);
+        const epoch = opsState.epoch;
         opsState.loading = true;
+        loadOpsJobs();
+        loadOpsTraces();
         try {
           const data = await opsJson(
             `/v1/ops/summary?kb_id=${encodeURIComponent(scope.kb)}`
           );
-          if (scopeKey(currentScope()) !== key) return;
+          if (epoch !== opsState.epoch) return;
           opsState.summary = data;
           renderHealth(data.health);
           renderQueue(data.queue);
           renderAi(data.ai);
-          await loadOpsJobs();
-          await loadOpsTraces();
         } catch (error) {
-          if (scopeKey(currentScope()) !== key) return;
+          if (epoch !== opsState.epoch) return;
           console.warn("驾驶舱摘要加载失败", error);
-          renderOpsError(error);
+          renderSummaryError(error);
         } finally {
-          opsState.loading = false;
+          if (epoch === opsState.epoch) opsState.loading = false;
         }
       }
 
       async function loadOpsJobs() {
-        const data = await opsJson(
-          `/v1/ops/jobs?kb_id=${encodeURIComponent(currentScope().kb)}&limit=50`
-        );
-        opsState.jobs = Array.isArray(data.jobs) ? data.jobs : [];
-        renderJobs(opsState.jobs, data.counts || {});
+        const epoch = opsState.epoch;
+        try {
+          const data = await opsJson(
+            `/v1/ops/jobs?kb_id=${encodeURIComponent(currentScope().kb)}&limit=50`
+          );
+          if (epoch !== opsState.epoch) return;
+          opsState.jobs = Array.isArray(data.jobs) ? data.jobs : [];
+          renderJobs(opsState.jobs, data.counts || {});
+        } catch (error) {
+          if (epoch !== opsState.epoch) return;
+          console.warn("任务看板加载失败", error);
+          opsElement("ops-jobs-badge").textContent = "加载失败";
+          opsElement("ops-jobs-body").innerHTML = emptyRow(
+            `任务看板加载失败：${error.message}`
+          );
+        }
       }
 
       async function loadJobEvents(jobId) {
         opsState.selectedJobId = jobId;
+        const epoch = opsState.epoch;
         try {
           const data = await opsJson(`/v1/ops/jobs/${encodeURIComponent(jobId)}/events`);
-          if (opsState.selectedJobId !== jobId) return;
+          if (epoch !== opsState.epoch || opsState.selectedJobId !== jobId) return;
           renderTimeline(jobId, Array.isArray(data.events) ? data.events : []);
         } catch (error) {
-          if (opsState.selectedJobId !== jobId) return;
+          if (epoch !== opsState.epoch || opsState.selectedJobId !== jobId) return;
           console.warn("任务事件加载失败", error);
           opsElement("ops-job-events-badge").textContent = "加载失败";
           opsElement("ops-job-events-body").innerHTML = emptyRow(
@@ -1421,11 +1457,22 @@
       }
 
       async function loadOpsTraces() {
-        const data = await opsJson(
-          `/v1/ops/traces?kb_id=${encodeURIComponent(currentScope().kb)}&limit=50`
-        );
-        opsState.traces = Array.isArray(data.traces) ? data.traces : [];
-        renderTraceList(opsState.traces);
+        const epoch = opsState.epoch;
+        try {
+          const data = await opsJson(
+            `/v1/ops/traces?kb_id=${encodeURIComponent(currentScope().kb)}&limit=50`
+          );
+          if (epoch !== opsState.epoch) return;
+          opsState.traces = Array.isArray(data.traces) ? data.traces : [];
+          renderTraceList(opsState.traces);
+        } catch (error) {
+          if (epoch !== opsState.epoch) return;
+          console.warn("Trace 列表加载失败", error);
+          opsElement("ops-traces-badge").textContent = "加载失败";
+          opsElement("ops-traces-body").innerHTML = emptyRow(
+            `Trace 列表加载失败：${error.message}`
+          );
+        }
       }
 
       function renderHealth(health) {
@@ -1479,6 +1526,7 @@
 
       function renderAi(ai) {
         const body = opsElement("ops-ai-body");
+        opsElement("ops-ai-badge").textContent = "全部历史";
         if (!ai) {
           body.innerHTML = "";
           return;
@@ -1520,7 +1568,7 @@
                 <button class="wx-job ${statusClass}" type="button" data-job-id="${Number(job.id)}">
                   <span class="wx-job-id">#${Number(job.id)}</span>
                   <span class="wx-job-doc">${escapeHtml(job.doc_id || "-")}</span>
-                  <span class="wx-job-status">${escapeHtml(status)}</span>
+                  <span class="wx-job-status">${escapeHtml(opsLabel(status))}</span>
                   <span class="wx-job-meta">${Number(job.progress) || 0}% · ${Number(job.attempts) || 0} 次</span>
                   <span class="wx-job-wait">等待 ${fmtSeconds(job.wait_seconds)} · 耗时 ${fmtSeconds(job.duration_seconds)}</span>
                 </button>
@@ -1545,9 +1593,9 @@
                 <div class="wx-timeline-item ${statusClass}">
                   <span class="wx-timeline-dot"></span>
                   <div>
-                    <strong>${escapeHtml(event.stage || "-")}</strong>
-                    <span class="wx-timeline-status">${escapeHtml(status)}</span>
-                    <span class="wx-timeline-meta">${event.progress == null ? "-" : `${Number(event.progress)}%`} · ${escapeHtml(event.created_at ?? "-")}</span>
+                    <strong>${escapeHtml(opsLabel(event.stage))}</strong>
+                    <span class="wx-timeline-status">${escapeHtml(opsLabel(status))}</span>
+                    <span class="wx-timeline-meta">${event.progress == null ? "-" : `${Number(event.progress)}%`} · ${escapeHtml(fmtTimestamp(event.created_at))}</span>
                     ${event.message ? `<p>${escapeHtml(event.message)}</p>` : ""}
                   </div>
                 </div>
@@ -1592,14 +1640,17 @@
 
       function renderWaterfall(stages) {
         const container = opsElement("ops-trace-waterfall");
-        const total = stages.reduce((sum, stage) => sum + Number(stage.ms || 0), 0) || 1;
-        container.innerHTML = stages.length
-          ? `${stages
+        const ordered = [...stages].sort((a, b) =>
+          String(a.ts ?? "").localeCompare(String(b.ts ?? ""))
+        );
+        const total = ordered.reduce((sum, stage) => sum + Number(stage.ms || 0), 0) || 1;
+        container.innerHTML = ordered.length
+          ? `${ordered
               .map((stage) => {
                 const width = Math.max(2, (Number(stage.ms || 0) / total) * 100);
                 return `
                   <div class="wx-waterfall-row">
-                    <span class="wx-waterfall-label">${escapeHtml(stage.stage || "-")}</span>
+                    <span class="wx-waterfall-label">${escapeHtml(opsLabel(stage.stage))}</span>
                     <svg viewBox="0 0 100 12" preserveAspectRatio="none" class="wx-waterfall-bar">
                       <rect x="0" y="0" width="${width.toFixed(2)}" height="12" rx="3"></rect>
                     </svg>
@@ -1630,6 +1681,8 @@
 
       function resetOpsState() {
         stopOpsPolling();
+        opsState.epoch += 1;
+        opsState.loading = false;
         opsState.summary = null;
         opsState.jobs = [];
         opsState.traces = [];

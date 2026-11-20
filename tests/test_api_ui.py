@@ -61,3 +61,5 @@ def test_ui_has_cockpit_panels(client: TestClient) -> None:
         'id="ops-trace-waterfall"',
     ):
         assert marker in html
+    assert 'id="ops-ai-badge">全部历史' in html
+    assert 'id="ops-queue-sparkline"' not in html
