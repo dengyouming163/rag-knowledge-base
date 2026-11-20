@@ -63,3 +63,16 @@ def test_ui_has_cockpit_panels(client: TestClient) -> None:
         assert marker in html
     assert 'id="ops-ai-badge">全部历史' in html
     assert 'id="ops-queue-sparkline"' not in html
+
+
+def test_ui_has_identity_panels(client: TestClient) -> None:
+    html = client.get("/ui/").text
+    for marker in (
+        'id="identity-card"',
+        'id="identity-tags"',
+        'id="identity-kbs"',
+        'id="isolation-layers"',
+        'id="permission-reason"',
+        'id="identity-compare"',
+    ):
+        assert marker in html

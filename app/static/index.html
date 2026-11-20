@@ -810,6 +810,46 @@
       color: var(--wx-text-tertiary);
       font-size: 11px;
     }
+    .wx-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .wx-tag {
+      padding: 2px 8px;
+      border: 1px solid var(--wx-divider);
+      border-radius: 999px;
+      background: var(--wx-list);
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--wx-text-secondary);
+      overflow-wrap: anywhere;
+    }
+    .wx-list-simple { display: grid; gap: 6px; }
+    .wx-list-simple .wx-list-row { grid-template-columns: minmax(0, 1fr); }
+    .wx-layers { display: grid; gap: 8px; }
+    .wx-layer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 10px;
+      border: 1px solid var(--wx-divider);
+      border-radius: 6px;
+      background: #fafafa;
+      font-size: 13px;
+    }
+    .wx-layer > div {
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+    }
+    .wx-layer > div > span {
+      font-size: 12px;
+      color: var(--wx-text-secondary);
+      overflow-wrap: anywhere;
+    }
 
     @media (max-width: 899px) {
       .wx-grid, .wx-metrics, .wx-job-board, .wx-trace-layout { grid-template-columns: 1fr; }
@@ -1058,7 +1098,31 @@
             </section>
           </div>
         </section>
-        <section data-view="identity" hidden></section>
+        <section data-view="identity" hidden>
+          <div class="wx-grid">
+            <section class="wx-card" id="identity-card">
+              <div class="wx-card-head"><h2>身份卡</h2><span class="wx-badge" id="identity-role">-</span></div>
+              <div class="wx-kv" id="identity-body"></div>
+              <div class="wx-tags" id="identity-tags"></div>
+            </section>
+            <section class="wx-card" id="identity-kbs">
+              <div class="wx-card-head"><h2>可见知识库</h2><span class="wx-badge" id="identity-kb-count">-</span></div>
+              <div class="wx-list-simple" id="identity-kb-body"></div>
+            </section>
+            <section class="wx-card wx-span-2" id="isolation-layers">
+              <div class="wx-card-head"><h2>三层隔离</h2><span class="wx-badge">租户 → ACL → RLS</span></div>
+              <div class="wx-layers" id="isolation-body"></div>
+            </section>
+            <section class="wx-card wx-span-2" id="permission-reason">
+              <div class="wx-card-head"><h2>拒绝原因</h2><span class="wx-badge" id="permission-decision">-</span></div>
+              <div id="permission-reason-body"></div>
+            </section>
+            <section class="wx-card wx-span-2" id="identity-compare">
+              <div class="wx-card-head"><h2>身份切换对比</h2><span class="wx-badge">管理员可用</span></div>
+              <div id="identity-compare-body" class="wx-empty">选择 query 后对比 guest / member / admin</div>
+            </section>
+          </div>
+        </section>
         <section data-view="runs" hidden></section>
         <section data-view="audit" hidden></section>
       </main>
@@ -1697,11 +1761,180 @@
         }
       }
 
+      function identityView() {
+        return document.querySelector('[data-view="identity"]');
+      }
+
+      function resetIdentityPanels(message) {
+        opsElement("identity-role").textContent = "-";
+        opsElement("identity-role").classList.remove("is-real");
+        opsElement("identity-body").innerHTML = emptyRow(message);
+        opsElement("identity-tags").innerHTML = "";
+        opsElement("identity-kb-count").textContent = "-";
+        opsElement("identity-kb-body").innerHTML = emptyRow(message);
+        opsElement("permission-decision").textContent = "-";
+        opsElement("permission-decision").classList.remove("is-danger");
+        opsElement("isolation-body").innerHTML = emptyRow(message);
+        opsElement("permission-reason-body").innerHTML = emptyRow(message);
+      }
+
+      async function loadIdentity() {
+        const epoch = opsState.epoch;
+        const scope = currentScope();
+        if (!scope.tenant || !scope.user) {
+          resetIdentityPanels("请先填写租户 ID 和用户 ID。");
+          return;
+        }
+        // 两条请求各自承接错误，任一失败只影响自己的卡片。
+        const identityTask = opsJson("/v1/identity").then(
+          (data) => ({ data }),
+          (error) => ({ error })
+        );
+        const permissionTask = scope.kb
+          ? opsJson(
+              `/v1/ops/permissions?kb_id=${encodeURIComponent(scope.kb)}`
+            ).then(
+              (data) => ({ data }),
+              (error) => ({ error })
+            )
+          : Promise.resolve({ error: new Error("请先填写知识库 ID。") });
+
+        const identityResult = await identityTask;
+        if (epoch !== opsState.epoch) return;
+        if (identityResult.error) {
+          console.warn("身份卡加载失败", identityResult.error);
+          renderIdentityError(identityResult.error);
+        } else {
+          window.__identity = identityResult.data;
+          renderIdentityCard(identityResult.data);
+        }
+
+        const permissionResult = await permissionTask;
+        if (epoch !== opsState.epoch) return;
+        if (permissionResult.error) {
+          console.warn("权限解释加载失败", permissionResult.error);
+          renderPermissionError(permissionResult.error);
+        } else {
+          renderPermissions(permissionResult.data);
+        }
+
+        if (typeof updateActionAvailability === "function") updateActionAvailability();
+      }
+
+      function renderIdentityCard(identity) {
+        const role = opsElement("identity-role");
+        role.textContent = identity.role || "-";
+        role.classList.toggle("is-real", Boolean(identity.is_admin));
+        opsElement("identity-body").innerHTML = [
+          ["租户", identity.tenant],
+          ["用户", identity.user],
+          ["角色", identity.role],
+          ["管理员", identity.is_admin ? "是" : "否"],
+          [
+            "可触发调测",
+            identity.ops && identity.ops.can_trigger ? "是" : "否（管理员/开关限制）"
+          ]
+        ]
+          .map(
+            ([key, value]) =>
+              `<div><span>${escapeHtml(key)}</span><strong>${escapeHtml(value)}</strong></div>`
+          )
+          .join("");
+        const tags = Array.isArray(identity.tags) ? identity.tags : [];
+        opsElement("identity-tags").innerHTML = tags.length
+          ? tags.map((tag) => `<span class="wx-tag">${escapeHtml(tag)}</span>`).join("")
+          : '<span class="wx-empty">无标签</span>';
+        const kbs = Array.isArray(identity.kbs) ? identity.kbs : [];
+        opsElement("identity-kb-count").textContent = `${kbs.length} 个`;
+        opsElement("identity-kb-body").innerHTML = kbs.length
+          ? kbs
+              .map(
+                (kb) =>
+                  `<button class="wx-list-row" type="button" data-kb="${escapeHtml(kb)}"><span>${escapeHtml(kb)}</span></button>`
+              )
+              .join("")
+          : emptyRow("当前租户无知识库");
+        identityView()
+          .querySelectorAll("[data-kb]")
+          .forEach((button) => {
+            button.addEventListener("click", () => {
+              elements.kb.value = button.dataset.kb;
+              updateScopePreview();
+              loadIdentity();
+            });
+          });
+      }
+
+      function renderPermissions(permissions) {
+        const acl = permissions.acl || {};
+        const rls = permissions.rls || {};
+        const kb = permissions.kb || {};
+        opsElement("isolation-body").innerHTML = [
+          [
+            "1. 租户作用域",
+            kb.tenant_match ? "启用" : "缺失",
+            "缺 tenant 直接抛错"
+          ],
+          [
+            "2. 文档 ACL",
+            acl.mode || "-",
+            `tags: ${(acl.user_tags || []).join(", ") || "无"}`
+          ],
+          [
+            "3. 数据库 RLS",
+            rls.enabled ? "启用" : "未启用",
+            `bare_count=${rls.bare_count == null ? "-" : rls.bare_count}`
+          ]
+        ]
+          .map(
+            ([name, status, detail]) => `
+    <div class="wx-layer">
+      <div><strong>${escapeHtml(name)}</strong><span>${escapeHtml(detail)}</span></div>
+      <span class="wx-badge ${status === "启用" ? "is-real" : ""}">${escapeHtml(status)}</span>
+    </div>
+  `
+          )
+          .join("");
+        const decision = opsElement("permission-decision");
+        decision.textContent = permissions.decision === "allow" ? "允许" : "拒绝";
+        decision.classList.toggle("is-danger", permissions.decision !== "allow");
+        opsElement("permission-reason-body").innerHTML = `
+    <p>${escapeHtml(permissions.reason)}</p>
+    <div class="wx-kv">
+      <div><span>KB</span><strong>${escapeHtml(kb.id)}</strong></div>
+      <div><span>租户匹配</span><strong>${kb.tenant_match ? "是" : "否"}</strong></div>
+      <div><span>可见 chunk</span><strong>${rls.scoped_count == null ? "-" : rls.scoped_count}</strong></div>
+      <div><span>RLS 裸连接</span><strong>${rls.bare_count == null ? "-" : rls.bare_count}</strong></div>
+    </div>
+  `;
+      }
+
+      function renderIdentityError(error) {
+        const message = `加载失败：${error && error.message ? error.message : "未知错误"}`;
+        opsElement("identity-role").textContent = "加载失败";
+        opsElement("identity-role").classList.remove("is-real");
+        opsElement("identity-body").innerHTML = emptyRow(message);
+        opsElement("identity-tags").innerHTML = "";
+        opsElement("identity-kb-count").textContent = "加载失败";
+        opsElement("identity-kb-body").innerHTML = emptyRow(message);
+      }
+
+      function renderPermissionError(error) {
+        const message = `加载失败：${error && error.message ? error.message : "未知错误"}`;
+        const decision = opsElement("permission-decision");
+        decision.textContent = "加载失败";
+        decision.classList.add("is-danger");
+        opsElement("isolation-body").innerHTML = emptyRow(message);
+        opsElement("permission-reason-body").innerHTML = emptyRow(message);
+      }
+
       function invalidateWork() {
         stopUpload();
         stopSearch();
         stopChat();
         resetOpsState();
+        const identityPanel = identityView();
+        if (identityPanel && !identityPanel.hidden) loadIdentity();
         state.history = [];
         state.hitCache.clear();
         setUploadProgress(0);
