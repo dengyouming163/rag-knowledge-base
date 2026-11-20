@@ -175,6 +175,33 @@ test("renderTrend emits numeric-only geometry and escapes all source text", () =
   assert.doesNotMatch(path, /NaN|Infinity|undefined|null/);
 });
 
+test("renderTrend preserves finite geometry for extreme finite inputs", async (t) => {
+  const scenarios = [
+    ["single maximum", [{ ts: "max", requests: Number.MAX_VALUE }]],
+    ["opposite extremes", [
+      { ts: "max", requests: Number.MAX_VALUE },
+      { ts: "min", requests: -Number.MAX_VALUE },
+    ]],
+  ];
+
+  for (const [name, series] of scenarios) {
+    await t.test(name, () => {
+      const output = renderTrend(series, { key: "requests" });
+      assert.match(output, /<svg/);
+      assert.doesNotMatch(output, /NaN|Infinity/);
+      const path = output.match(/<path[^>]*\bd="([^"]+)"/)?.[1];
+      assert.ok(path);
+      for (const value of path.replaceAll(/[ML]/g, "").trim().split(/\s+/)) {
+        assert.equal(Number.isFinite(Number(value)), true, value);
+      }
+      for (const match of output.matchAll(/<circle cx="([^"]+)" cy="([^"]+)"/g)) {
+        assert.equal(Number.isFinite(Number(match[1])), true, match[1]);
+        assert.equal(Number.isFinite(Number(match[2])), true, match[2]);
+      }
+    });
+  }
+});
+
 test("costStatus distinguishes unconfigured, partial, and complete estimates", () => {
   assert.equal(costStatus({ pricing_configured: false, pricing_complete: false }), "Not configured");
   assert.equal(costStatus({ pricing_configured: true, pricing_complete: false }), "Partial estimate");
@@ -357,4 +384,36 @@ test("only refresh for Overview starts business loads; scopechange is notificati
   fixture.window.dispatchEvent(new CustomEvent("workbuddy:refresh", { detail }));
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(calls, 2);
+});
+
+test("same-scope Lab refresh renews the Overview timer without loading Lab data", async (t) => {
+  const calls = [];
+  const fixture = createFixture(t, {
+    api: async (path, options) => {
+      calls.push({ path, options });
+      return path.includes("/timeseries") ? timeseriesFixture() : summaryFixture();
+    },
+  });
+  const overviewContext = fixture.snapshot();
+  await fixture.view.loadOverview(overviewContext);
+  assert.equal(calls.length, 2);
+
+  fixture.view.setActive(false);
+  assert.equal(fixture.timers.callbacks.size, 0);
+  fixture.guard.invalidate();
+  const labContext = { view: "lab", ...fixture.snapshot() };
+  fixture.window.dispatchEvent(new CustomEvent("workbuddy:refresh", { detail: labContext }));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.length, 2);
+
+  fixture.view.setActive(true);
+  assert.equal(fixture.timers.callbacks.size, 1);
+  const callback = [...fixture.timers.callbacks.values()][0];
+  await callback();
+
+  assert.equal(calls.length, 4);
+  assert.equal(calls[2].options.signal, labContext.signal);
+  assert.equal(calls[3].options.signal, labContext.signal);
+  assert.notEqual(labContext.signal, overviewContext.signal);
+  assert.equal(fixture.timers.callbacks.size, 1);
 });

@@ -47,8 +47,12 @@ export function renderTrend(series, { key = "requests", label = "Requests", unit
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
   const values = points.map((point) => point.value);
-  let minimum = Math.min(...values);
-  let maximum = Math.max(...values);
+  const dataMinimum = Math.min(...values);
+  const dataMaximum = Math.max(...values);
+  const scale = Math.max(...values.map((value) => Math.abs(value))) || 1;
+  const normalizedValues = values.map((value) => value / scale);
+  let minimum = Math.min(...normalizedValues);
+  let maximum = Math.max(...normalizedValues);
   if (minimum === maximum) {
     const padding = Math.max(1, Math.abs(maximum) * 0.1);
     minimum -= padding;
@@ -57,8 +61,11 @@ export function renderTrend(series, { key = "requests", label = "Requests", unit
   const coordinate = (value) => Number(value.toFixed(2));
   const coordinates = points.map((point, index) => ({
     x: coordinate(points.length === 1 ? left + plotWidth / 2 : left + index * plotWidth / (points.length - 1)),
-    y: coordinate(top + (maximum - point.value) * plotHeight / (maximum - minimum)),
+    y: coordinate(top + (maximum - normalizedValues[index]) * plotHeight / (maximum - minimum)),
   }));
+  if (!coordinates.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y))) {
+    return `<div class="wb-overview-empty" data-trend-empty>No trend data for ${escapeHtml(label)}.</div>`;
+  }
   const path = coordinates.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ");
   const circles = coordinates.map((point) => (
     `<circle cx="${point.x}" cy="${point.y}" r="2.5"></circle>`
@@ -69,8 +76,8 @@ export function renderTrend(series, { key = "requests", label = "Requests", unit
   return `<svg class="wb-overview-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(label)} trend">
     <title>${escapeHtml(label)}</title>
     <line class="wb-overview-axis" x1="${left}" y1="${height - bottom}" x2="${width - right}" y2="${height - bottom}"></line>
-    <text class="wb-overview-axis-label" x="4" y="${top + 4}">${escapeHtml(formatMetric(maximum, "", 1))}</text>
-    <text class="wb-overview-axis-label" x="4" y="${height - bottom}">${escapeHtml(formatMetric(minimum, "", 1))}</text>
+    <text class="wb-overview-axis-label" x="4" y="${top + 4}">${escapeHtml(formatMetric(dataMaximum, "", 1))}</text>
+    <text class="wb-overview-axis-label" x="4" y="${height - bottom}">${escapeHtml(formatMetric(dataMinimum, "", 1))}</text>
     <text class="wb-overview-unit" x="${width - right}" y="12" text-anchor="end">${escapeHtml(unit)}</text>
     <path d="${path}" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"></path>
     ${circles}
@@ -344,8 +351,17 @@ export function createOverview({
   }
 
   function onRefresh(event) {
-    if (event.detail?.view !== "overview" || !active || document.visibilityState !== "visible") return;
-    void loadOverview(event.detail);
+    const detail = event.detail;
+    if (
+      currentContext
+      && detail?.scope
+      && scopeKey(detail.scope) === currentScopeKey
+      && guard.isCurrent(detail)
+    ) {
+      currentContext = detail;
+    }
+    if (detail?.view !== "overview" || !active || document.visibilityState !== "visible") return;
+    void loadOverview(detail);
   }
 
   function onVisibilityChange() {
