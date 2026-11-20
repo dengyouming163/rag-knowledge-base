@@ -76,3 +76,19 @@ def test_ui_has_identity_panels(client: TestClient) -> None:
         'id="identity-compare"',
     ):
         assert marker in html
+
+
+def test_ui_has_runs_and_audit_views(client) -> None:
+    html = client.get("/ui/").text
+    for marker in (
+        'data-view="runs"',
+        'data-view="audit"',
+        'id="runs-metrics"',
+        'id="runs-history"',
+        'id="run-trigger-eval"',
+        'id="run-trigger-loadtest"',
+        'id="run-trigger-drill"',
+        'id="audit-timeline"',
+        'id="job-retry-button"',
+    ):
+        assert marker in html

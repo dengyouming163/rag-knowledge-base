@@ -828,6 +828,7 @@
     }
     .wx-list-simple { display: grid; gap: 6px; }
     .wx-list-simple .wx-list-row { grid-template-columns: minmax(0, 1fr); }
+    .wx-list-simple .wx-list-row .wx-badge { justify-self: start; }
     .wx-list-simple .wx-list-row.is-active {
       border-color: var(--wx-primary);
       background: rgba(7, 193, 96, 0.08);
@@ -853,6 +854,76 @@
     .wx-layer > div > span {
       font-size: 12px;
       color: var(--wx-text-secondary);
+      overflow-wrap: anywhere;
+    }
+
+    .wx-head-actions { display: flex; align-items: center; gap: 8px; }
+    .wx-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .wx-button {
+      min-height: 32px;
+      padding: 6px 12px;
+      border: 1px solid var(--wx-primary);
+      border-radius: 6px;
+      background: var(--wx-primary);
+      color: #fff;
+      font-size: 13px;
+      transition: background-color 120ms ease;
+    }
+    .wx-button:hover:not(:disabled) { background: var(--wx-primary-hover); }
+    .wx-button:disabled { cursor: not-allowed; opacity: .5; }
+    .wx-button.is-danger { border-color: var(--wx-danger); background: var(--wx-danger); }
+    .wx-audit { display: grid; gap: 0; }
+    .wx-audit-item {
+      display: grid;
+      grid-template-columns: 12px minmax(0, 1fr);
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px dashed var(--wx-divider);
+      font-size: 13px;
+    }
+    .wx-audit-item:last-child { padding-bottom: 0; border-bottom: 0; }
+    .wx-audit-dot {
+      width: 8px;
+      height: 8px;
+      margin-top: 7px;
+      border-radius: 50%;
+      background: var(--wx-neutral);
+    }
+    .wx-audit-item.allowed .wx-audit-dot { background: var(--wx-primary); }
+    .wx-audit-item.denied .wx-audit-dot { background: var(--wx-danger); }
+    .wx-audit-meta {
+      display: block;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--wx-text-tertiary);
+      overflow-wrap: anywhere;
+    }
+    .wx-audit-item p {
+      margin: 4px 0 0;
+      font-size: 12px;
+      color: var(--wx-text-secondary);
+      overflow-wrap: anywhere;
+    }
+    .wx-output {
+      max-height: 240px;
+      margin: 10px 0 0;
+      padding: 10px;
+      overflow: auto;
+      border: 1px solid var(--wx-divider);
+      border-radius: 6px;
+      background: var(--wx-list);
+      font-family: var(--mono);
+      font-size: 11px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .wx-error {
+      margin: 10px 0 0;
+      padding: 8px 10px;
+      border-left: 3px solid var(--wx-danger);
+      background: #fff5f5;
+      color: #a12b2b;
+      font-size: 12px;
       overflow-wrap: anywhere;
     }
 
@@ -1083,7 +1154,13 @@
               <div class="wx-metrics" id="ops-ai-body"></div>
             </section>
             <section class="wx-card wx-span-2" id="ops-jobs">
-              <div class="wx-card-head"><h2>任务看板</h2><span class="wx-badge" id="ops-jobs-badge">-</span></div>
+              <div class="wx-card-head">
+                <h2>任务看板</h2>
+                <div class="wx-head-actions">
+                  <span class="wx-badge" id="ops-jobs-badge">-</span>
+                  <button id="job-retry-button" class="wx-button is-danger" hidden>重试失败任务</button>
+                </div>
+              </div>
               <div class="wx-job-board" id="ops-jobs-body"></div>
             </section>
             <section class="wx-card wx-span-2" id="ops-job-events">
@@ -1128,8 +1205,37 @@
             </section>
           </div>
         </section>
-        <section data-view="runs" hidden></section>
-        <section data-view="audit" hidden></section>
+        <section data-view="runs" hidden>
+          <div class="wx-grid">
+            <section class="wx-card wx-span-2" id="runs-metrics">
+              <div class="wx-card-head"><h2>最近一次评测</h2><span class="wx-badge" id="runs-metrics-badge">-</span></div>
+              <div class="wx-metrics" id="runs-metrics-body"></div>
+            </section>
+            <section class="wx-card" id="runs-history">
+              <div class="wx-card-head"><h2>运行历史</h2><span class="wx-badge" id="runs-history-badge">-</span></div>
+              <div id="runs-history-body" class="wx-list-simple"></div>
+            </section>
+            <section class="wx-card" id="runs-trigger">
+              <div class="wx-card-head"><h2>受控触发</h2><span class="wx-badge" id="runs-trigger-badge">只读</span></div>
+              <div class="wx-actions">
+                <button id="run-trigger-eval" class="wx-button" disabled>运行 mock 评测</button>
+                <button id="run-trigger-loadtest" class="wx-button" disabled>运行固定压测</button>
+                <button id="run-trigger-drill" class="wx-button" disabled>运行安全演练</button>
+              </div>
+              <p class="wx-hint" id="runs-trigger-hint">固定参数：eval --mock；loadtest 并发 20 / 每端点 200；演练为隔离测试。</p>
+            </section>
+            <section class="wx-card wx-span-2" id="runs-detail">
+              <div class="wx-card-head"><h2>运行详情</h2><span class="wx-badge" id="runs-detail-badge">未选择</span></div>
+              <div id="runs-detail-body" class="wx-empty">选择一条运行记录</div>
+            </section>
+          </div>
+        </section>
+        <section data-view="audit" hidden>
+          <div class="wx-card">
+            <div class="wx-card-head"><h2>操作审计</h2><span class="wx-badge" id="audit-badge">最近 50 条</span></div>
+            <div id="audit-timeline" class="wx-audit"></div>
+          </div>
+        </section>
       </main>
     </div>
   </div>
@@ -1359,6 +1465,9 @@
         traceGroups: new Map(),
         selectedJobId: null,
         selectedTraceId: null,
+        runs: [],
+        selectedRunId: null,
+        runTimer: null,
         timer: null,
         loading: false,
         epoch: 0
@@ -1374,7 +1483,14 @@
         chunking: "切分",
         embedding: "嵌入",
         publishing: "发布",
-        claimed: "已领取"
+        claimed: "已领取",
+        eval_mock: "mock 评测",
+        loadtest: "固定压测",
+        drill_parser: "解析演练",
+        drill_llm: "LLM 演练",
+        drill_queue: "队列演练",
+        allowed: "放行",
+        denied: "拒绝"
       };
 
       function opsLabel(value) {
@@ -1432,6 +1548,12 @@
 
       function fmtMs(value) {
         return value == null ? "-" : `${Number(value).toFixed(0)}ms`;
+      }
+
+      function fmtNumber(value) {
+        if (value == null || value === "") return "-";
+        const number = Number(value);
+        return Number.isFinite(number) ? number.toFixed(4) : "-";
       }
 
       function opsScopeReady(scope) {
@@ -1523,6 +1645,9 @@
             `任务 #${jobId} 事件加载失败：${error.message}`
           );
         }
+        updateRetryButton(
+          opsState.jobs.find((job) => Number(job.id) === Number(jobId)) || null
+        );
       }
 
       async function loadOpsTraces() {
@@ -1750,6 +1875,8 @@
 
       function resetOpsState() {
         stopOpsPolling();
+        if (opsState.runTimer) clearTimeout(opsState.runTimer);
+        opsState.runTimer = null;
         opsState.epoch += 1;
         opsState.loading = false;
         opsState.summary = null;
@@ -1758,11 +1885,337 @@
         opsState.traceGroups = new Map();
         opsState.selectedJobId = null;
         opsState.selectedTraceId = null;
+        opsState.runs = [];
+        opsState.selectedRunId = null;
+        window.__runs = [];
         resetOpsPanels("上下文已切换，等待重新加载。");
+        resetRunsPanels("上下文已切换，等待重新加载。");
         const view = opsView();
         if (view && !view.hidden) {
           loadOpsSummary();
           startOpsPolling();
+        }
+      }
+
+      const RUN_TRIGGERS = {
+        "run-trigger-eval": "eval_mock",
+        "run-trigger-loadtest": "loadtest",
+        "run-trigger-drill": "drill_parser"
+      };
+
+      function runsView() {
+        return document.querySelector('[data-view="runs"]');
+      }
+
+      function resetRunsPanels(message) {
+        opsElement("runs-metrics-badge").textContent = "-";
+        opsElement("runs-metrics-body").innerHTML = emptyRow(message);
+        opsElement("runs-history-badge").textContent = "-";
+        opsElement("runs-history-body").innerHTML = emptyRow(message);
+        opsElement("runs-detail-badge").textContent = "未选择";
+        opsElement("runs-detail-badge").classList.remove("is-real", "is-danger");
+        opsElement("runs-detail-body").className = "wx-empty";
+        opsElement("runs-detail-body").textContent = "选择一条运行记录";
+      }
+
+      function updateActionAvailability() {
+        const enabled = window.__identity?.ops?.can_trigger === true;
+        for (const id of Object.keys(RUN_TRIGGERS)) {
+          const button = opsElement(id);
+          if (button) button.disabled = !enabled;
+        }
+        const badge = opsElement("runs-trigger-badge");
+        if (badge) {
+          badge.textContent = enabled ? "管理员可用" : "只读";
+          badge.classList.toggle("is-real", enabled);
+        }
+        const job = opsState.jobs.find(
+          (item) => Number(item.id) === Number(opsState.selectedJobId)
+        );
+        updateRetryButton(enabled ? job || null : null);
+      }
+
+      async function loadRuns() {
+        const scope = currentScope();
+        updateActionAvailability();
+        if (!opsScopeReady(scope)) {
+          resetRunsPanels("请先填写租户 ID 和知识库 ID。");
+          return;
+        }
+        const epoch = opsState.epoch;
+        try {
+          const data = await opsJson(
+            `/v1/ops/runs?kb_id=${encodeURIComponent(scope.kb)}&limit=20`
+          );
+          if (epoch !== opsState.epoch) return;
+          opsState.runs = Array.isArray(data.runs) ? data.runs : [];
+          window.__runs = opsState.runs;
+          renderRuns(opsState.runs);
+          updateActionAvailability();
+        } catch (error) {
+          if (epoch !== opsState.epoch) return;
+          console.warn("运行历史加载失败", error);
+          opsElement("runs-history-badge").textContent = "加载失败";
+          opsElement("runs-history-body").innerHTML = emptyRow(
+            `运行历史加载失败：${error.message}`
+          );
+        }
+      }
+
+      function renderRuns(runs) {
+        const body = opsElement("runs-history-body");
+        opsElement("runs-history-badge").textContent = `${runs.length} 条`;
+        body.innerHTML =
+          runs
+            .map((run) => {
+              const status = String(run.status || "unknown");
+              const statusClass = status === "failed" ? "is-danger" : "is-real";
+              const active = Number(opsState.selectedRunId) === Number(run.id);
+              return `
+                <button class="wx-list-row${active ? " is-active" : ""}" type="button" data-run-id="${Number(run.id)}">
+                  <span>#${Number(run.id)} · ${escapeHtml(opsLabel(run.kind))}</span>
+                  <span class="wx-badge ${statusClass}">${escapeHtml(opsLabel(status))}</span>
+                  <span class="wx-audit-meta">${escapeHtml(run.requested_by || "-")} · ${escapeHtml(fmtTimestamp(run.requested_at))}</span>
+                </button>
+              `;
+            })
+            .join("") || emptyRow("暂无运行记录");
+        for (const button of body.querySelectorAll("[data-run-id]")) {
+          button.addEventListener("click", () => loadRunDetail(Number(button.dataset.runId)));
+        }
+        const latestEval = runs.find((run) => run.kind === "eval_mock") || null;
+        renderRunMetrics(latestEval);
+      }
+
+      function renderRunMetrics(run) {
+        const badge = opsElement("runs-metrics-badge");
+        const body = opsElement("runs-metrics-body");
+        const summary = run && run.summary ? run.summary : null;
+        if (!run || !summary) {
+          badge.textContent = "-";
+          body.innerHTML = emptyRow("暂无评测结果");
+          return;
+        }
+        badge.textContent = `#${Number(run.id)} · ${fmtTimestamp(run.finished_at || run.requested_at)}`;
+        const metrics = summary.metrics || {};
+        const counts = summary.counts || {};
+        body.innerHTML = [
+          ["Recall@k", fmtNumber(metrics.recall_at_k)],
+          ["MRR", fmtNumber(metrics.mrr)],
+          ["Hit Rate", fmtNumber(metrics.hit_rate)],
+          ["拒答准确率", fmtNumber(metrics.refusal_accuracy)],
+          ["答案覆盖率", fmtNumber(metrics.answer_coverage)],
+          ["引用准确率", fmtNumber(metrics.citation_accuracy)],
+          ["用例数", counts.cases == null ? "-" : String(Number(counts.cases))],
+          [
+            "生成错误",
+            counts.generation_errors == null ? "-" : String(Number(counts.generation_errors))
+          ]
+        ]
+          .map(
+            ([label, value]) =>
+              `<div class="wx-metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value ?? "-")}</strong></div>`
+          )
+          .join("");
+      }
+
+      async function loadRunDetail(runId) {
+        opsState.selectedRunId = runId;
+        const epoch = opsState.epoch;
+        renderRuns(opsState.runs);
+        try {
+          const data = await opsJson(`/v1/ops/runs/${encodeURIComponent(runId)}`);
+          if (epoch !== opsState.epoch || Number(opsState.selectedRunId) !== Number(runId)) return;
+          showRun(data);
+        } catch (error) {
+          if (epoch !== opsState.epoch || Number(opsState.selectedRunId) !== Number(runId)) return;
+          console.warn("运行详情加载失败", error);
+          opsElement("runs-detail-badge").textContent = "加载失败";
+          opsElement("runs-detail-badge").classList.add("is-danger");
+          opsElement("runs-detail-body").className = "wx-empty";
+          opsElement("runs-detail-body").innerHTML = emptyRow(
+            `运行详情加载失败：${error.message}`
+          );
+        }
+      }
+
+      function showRun(run) {
+        opsState.selectedRunId = run.id;
+        const status = String(run.status || "unknown");
+        const badge = opsElement("runs-detail-badge");
+        const body = opsElement("runs-detail-body");
+        badge.textContent = `#${Number(run.id)} · ${opsLabel(status)}`;
+        badge.classList.toggle("is-danger", status === "failed");
+        badge.classList.toggle("is-real", status !== "failed");
+        body.className = "";
+        const rows = [
+          ["类型", opsLabel(run.kind)],
+          ["状态", opsLabel(status)],
+          ["退出码", run.exit_code == null ? "-" : String(run.exit_code)],
+          ["发起人", run.requested_by || "-"],
+          ["开始时间", fmtTimestamp(run.started_at)],
+          ["结束时间", fmtTimestamp(run.finished_at)],
+          ["产物路径", run.artifact_path || "-"]
+        ];
+        body.innerHTML = `
+          <div class="wx-kv">
+            ${rows
+              .map(
+                ([label, value]) =>
+                  `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`
+              )
+              .join("")}
+          </div>
+          ${run.error ? `<p class="wx-error">${escapeHtml(run.error)}</p>` : ""}
+          ${run.output_tail ? `<pre class="wx-output">${escapeHtml(run.output_tail)}</pre>` : ""}
+        `;
+      }
+
+      async function triggerRun(kind) {
+        const scope = currentScope();
+        const badge = opsElement("runs-trigger-badge");
+        const hint = opsElement("runs-trigger-hint");
+        if (!opsScopeReady(scope)) {
+          hint.textContent = "请先填写租户 ID 和知识库 ID。";
+          return;
+        }
+        for (const id of Object.keys(RUN_TRIGGERS)) opsElement(id).disabled = true;
+        hint.textContent = `正在提交 ${opsLabel(kind)}…`;
+        try {
+          const response = await checkedFetch(
+            `/v1/ops/kbs/${encodeURIComponent(scope.kb)}/runs`,
+            {
+              method: "POST",
+              headers: requestHeaders(scope, true, true),
+              body: JSON.stringify({ kind, params: {} })
+            }
+          );
+          const data = await response.json();
+          hint.textContent = `已入队 #${Number(data.run_id)}，正在轮询 ${opsLabel(kind)} 状态。`;
+          await loadRuns();
+          pollRun(Number(data.run_id));
+        } catch (error) {
+          console.warn("运行触发失败", error);
+          updateActionAvailability();
+          badge.textContent = "触发失败";
+          badge.classList.remove("is-real");
+          badge.classList.add("is-danger");
+          hint.textContent = `触发失败：${error.message}`;
+        }
+      }
+
+      async function pollRun(runId) {
+        const epoch = opsState.epoch;
+        const view = runsView();
+        if (!view || view.hidden) return;
+        try {
+          const data = await opsJson(`/v1/ops/runs/${encodeURIComponent(runId)}`);
+          if (epoch !== opsState.epoch) return;
+          showRun(data);
+          const viewNow = runsView();
+          if (
+            (data.status === "queued" || data.status === "running") &&
+            viewNow &&
+            !viewNow.hidden
+          ) {
+            if (opsState.runTimer) clearTimeout(opsState.runTimer);
+            opsState.runTimer = setTimeout(() => pollRun(runId), 2000);
+          } else if (data.status !== "queued" && data.status !== "running") {
+            loadRuns();
+          }
+        } catch (error) {
+          if (epoch !== opsState.epoch) return;
+          console.warn("运行详情轮询失败", error);
+          opsElement("runs-detail-badge").textContent = "加载失败";
+          opsElement("runs-detail-badge").classList.add("is-danger");
+          opsElement("runs-detail-body").className = "wx-empty";
+          opsElement("runs-detail-body").innerHTML = emptyRow(
+            `运行详情加载失败：${error.message}`
+          );
+        }
+      }
+
+      async function loadAudit() {
+        const scope = currentScope();
+        if (!scope.tenant || !scope.user) {
+          opsElement("audit-badge").textContent = "不可用";
+          opsElement("audit-timeline").innerHTML = emptyRow(
+            "请先填写租户 ID 和用户 ID。"
+          );
+          return;
+        }
+        const epoch = opsState.epoch;
+        try {
+          const data = await opsJson("/v1/ops/audit?limit=50");
+          if (epoch !== opsState.epoch) return;
+          renderAudit(Array.isArray(data.audit) ? data.audit : []);
+        } catch (error) {
+          if (epoch !== opsState.epoch) return;
+          console.warn("审计加载失败", error);
+          opsElement("audit-badge").textContent = "不可用";
+          opsElement("audit-timeline").innerHTML = emptyRow(
+            `审计不可用：${error.message}`
+          );
+        }
+      }
+
+      function renderAudit(records) {
+        opsElement("audit-badge").textContent = `最近 ${records.length} 条`;
+        opsElement("audit-timeline").innerHTML =
+          records
+            .map((record) => {
+              const result = String(record.result || "");
+              const resultClass = result === "denied" ? "is-danger" : "is-real";
+              const itemClass = result === "denied" ? "denied" : result === "allowed" ? "allowed" : "";
+              return `
+                <div class="wx-audit-item ${itemClass}">
+                  <span class="wx-audit-dot"></span>
+                  <div>
+                    <strong>${escapeHtml(record.actor || "-")}</strong> · ${escapeHtml(record.action || "-")}
+                    <span class="wx-badge ${resultClass}">${escapeHtml(opsLabel(result))}</span>
+                    <span class="wx-audit-meta">target=${escapeHtml(record.target || "-")} · ${escapeHtml(fmtTimestamp(record.created_at))}</span>
+                    ${record.reason ? `<p>${escapeHtml(record.reason)}</p>` : ""}
+                  </div>
+                </div>
+              `;
+            })
+            .join("") || emptyRow("暂无审计记录");
+      }
+
+      function updateRetryButton(job) {
+        const button = opsElement("job-retry-button");
+        if (!button) return;
+        const canTrigger = window.__identity?.ops?.can_trigger === true;
+        button.hidden = !(canTrigger && job && job.status === "failed");
+      }
+
+      async function retrySelectedJob() {
+        const jobId = opsState.selectedJobId;
+        if (!jobId) return;
+        const button = opsElement("job-retry-button");
+        const previousText = button.textContent;
+        button.disabled = true;
+        button.textContent = "重试中…";
+        try {
+          const response = await checkedFetch(
+            `/v1/ops/jobs/${encodeURIComponent(jobId)}/retry`,
+            {
+              method: "POST",
+              headers: requestHeaders(currentScope(), true)
+            }
+          );
+          await response.json();
+          await Promise.all([loadOpsJobs(), loadJobEvents(jobId), loadAudit()]);
+        } catch (error) {
+          console.warn("任务重试失败", error);
+          opsElement("ops-job-events-badge").textContent = "重试失败";
+          opsElement("ops-job-events-body").innerHTML = emptyRow(
+            `任务 #${jobId} 重试失败：${error.message}`
+          );
+        } finally {
+          button.textContent = previousText;
+          button.disabled = false;
+          updateActionAvailability();
         }
       }
 
@@ -1782,6 +2235,7 @@
         opsElement("permission-decision").classList.remove("is-danger");
         opsElement("isolation-body").innerHTML = emptyRow(message);
         opsElement("permission-reason-body").innerHTML = emptyRow(message);
+        updateActionAvailability();
       }
 
       async function loadIdentity() {
@@ -1995,6 +2449,7 @@
         stopChat();
         resetOpsState();
         window.__identity = null;
+        updateActionAvailability();
         const identityPanel = identityView();
         if (identityPanel && !identityPanel.hidden) loadIdentity();
         state.history = [];
@@ -2445,6 +2900,10 @@
       elements.uploadForm.addEventListener("submit", startUpload);
       elements.searchForm.addEventListener("submit", startSearch);
       elements.chatForm.addEventListener("submit", startChat);
+      opsElement("job-retry-button").addEventListener("click", retrySelectedJob);
+      for (const [id, kind] of Object.entries(RUN_TRIGGERS)) {
+        opsElement(id).addEventListener("click", () => triggerRun(kind));
+      }
 
       elements.role.addEventListener("change", () => {
         if (elements.role.value !== "custom") {
@@ -2497,7 +2956,11 @@
           stopOpsPolling();
         }
         if (name === "identity" && typeof loadIdentity === "function") loadIdentity();
-        if (name === "runs" && typeof loadRuns === "function") loadRuns();
+        if (name === "runs") {
+          if (typeof loadRuns === "function") loadRuns();
+          // 触发按钮依赖身份卡里的 ops.can_trigger，进入评测页时同步拉取。
+          if (typeof loadIdentity === "function") loadIdentity();
+        }
         if (name === "audit" && typeof loadAudit === "function") loadAudit();
       }
 
