@@ -58,10 +58,23 @@ class FakeRoot {
     this.listeners.get(type).push(callback);
   }
 
-  dispatch(type) {
-    for (const callback of this.listeners.get(type) ?? []) {
-      callback({ preventDefault() {}, target: { dataset: { labTab: "chat" } } });
-    }
+  removeEventListener(type, callback) {
+    const callbacks = this.listeners.get(type) ?? [];
+    this.listeners.set(type, callbacks.filter((listener) => listener !== callback));
+  }
+
+  listenerCount(type) {
+    return (this.listeners.get(type) ?? []).length;
+  }
+
+  dispatch(type, target = { dataset: { labTab: "chat" } }) {
+    const event = {
+      defaultPrevented: false,
+      preventDefault() { this.defaultPrevented = true; },
+      target,
+    };
+    for (const callback of [...(this.listeners.get(type) ?? [])]) callback(event);
+    return event;
   }
 
   text(selector) {
@@ -637,6 +650,138 @@ test("Lab tabs update accessible selection and the hash without triggering busin
   assert.equal(root.querySelector('[data-lab-tab="chat"]').getAttribute("aria-selected"), "true");
   assert.equal(root.querySelector('[data-lab-tab="search"]').getAttribute("aria-selected"), "false");
   assert.equal(window.location.hash, "#/lab/chat");
+});
+
+function domState(root) {
+  return [...root.elements.entries()].map(([selector, element]) => [selector, {
+    textContent: element.textContent,
+    innerHTML: element.innerHTML,
+    value: element.value,
+    hidden: element.hidden,
+    disabled: element.disabled,
+    scrollTop: element.scrollTop,
+    dataset: { ...element.dataset },
+    attributes: { ...element.attributes },
+  }]);
+}
+
+test("destroy removes every listener and residual form dispatch cannot enter Lab", async (t) => {
+  const requests = [];
+  const fixture = createFixture(t, {
+    api: async () => {
+      requests.push("api");
+      return { hits: [] };
+    },
+    fetchImpl: async () => {
+      requests.push("fetch");
+      throw new Error("unexpected fetch");
+    },
+  });
+  const { root, window, document, lab } = fixture;
+  const removals = [];
+  for (const [target, name] of [[window, "window"], [document, "document"]]) {
+    const remove = target.removeEventListener.bind(target);
+    target.removeEventListener = (type, callback, options) => {
+      removals.push(`${name}:${type}`);
+      remove(type, callback, options);
+    };
+  }
+  assert.equal(root.listenerCount("submit"), 1);
+  assert.equal(root.listenerCount("click"), 1);
+
+  lab.destroy();
+  lab.destroy();
+  const state = domState(root);
+  const submit = root.dispatch("submit", { id: "search-form", dataset: {} });
+  root.dispatch("click");
+  await flush();
+
+  assert.equal(root.listenerCount("submit"), 0);
+  assert.equal(root.listenerCount("click"), 0);
+  assert.equal(submit.defaultPrevented, false);
+  assert.deepEqual(domState(root), state);
+  assert.deepEqual(requests, []);
+  assert.deepEqual(removals.sort(), [
+    "document:visibilitychange",
+    "window:hashchange",
+    "window:workbuddy:refresh",
+    "window:workbuddy:scopechange",
+  ].sort());
+});
+
+test("destroy blocks reentrant business calls during abort cleanup", async (t) => {
+  const requests = [];
+  const fixture = createFixture(t, {
+    api: (_path, options) => {
+      const pending = deferred();
+      requests.push({ ...pending, signal: options.signal });
+      options.signal.addEventListener("abort", () => pending.reject(abortError()), { once: true });
+      return pending.promise;
+    },
+  });
+  const { root, lab, context } = fixture;
+  root.querySelector("#search-query").value = "initial";
+  const snapshot = context();
+  const initial = lab.search(snapshot);
+  await flush();
+  assert.equal(requests.length, 1);
+  let reentrant;
+  requests[0].signal.addEventListener("abort", () => {
+    reentrant = lab.search(snapshot, { query: "reentrant" });
+  }, { once: true });
+
+  lab.destroy();
+  for (const request of requests) request.reject(abortError());
+  await Promise.allSettled([initial, reentrant].filter(Boolean));
+
+  assert.equal(requests.length, 1);
+  assert.ok(requests.every((request) => request.signal.aborted));
+});
+
+test("destroy makes every public method terminal before validation DOM or route writes", async (t) => {
+  const invalid = { scope: { tenant: "", kb: "", user: "" } };
+  const cancelledChat = { done: false, cancelled: true, citations: [] };
+  const cases = [
+    ["search", (lab) => lab.search(invalid), undefined],
+    ["startChat", (lab) => lab.startChat(invalid, { question: "after destroy", topK: 5, audience: "public" }), cancelledChat],
+    ["upload", (lab) => lab.upload(invalid, null), undefined],
+    ["showCitation", (lab) => lab.showCitation("chunk"), undefined],
+    ["selectTab", (lab) => lab.selectTab("chat", { updateHash: true }), undefined],
+    ["setActive", (lab) => { lab.setActive(true); lab.setActive(false); }, undefined],
+    ["clear", (lab) => lab.clear(), undefined],
+  ];
+
+  for (const [name, invoke, expected] of cases) {
+    await t.test(name, async (t) => {
+      const requests = [];
+      const window = new EventTarget();
+      window.location = { hash: "#/lab/search" };
+      const fixture = createFixture(t, {
+        scope: { tenant: "tenant_a", kb: "kb_1", user: "user_1" },
+        window,
+        api: async () => {
+          requests.push("api");
+          return { hits: [] };
+        },
+        fetchImpl: async () => {
+          requests.push("fetch");
+          throw new Error("unexpected fetch");
+        },
+      });
+      const { root, lab } = fixture;
+      lab.destroy();
+      root.querySelector("#answer").textContent = "sentinel answer";
+      root.querySelector("#search-status").textContent = "sentinel status";
+      const state = domState(root);
+
+      const result = await invoke(lab);
+
+      assert.deepEqual(result, expected);
+      assert.deepEqual(domState(root), state);
+      assert.equal(window.location.hash, "#/lab/search");
+      assert.deepEqual(requests, []);
+    });
+  }
 });
 
 test("createLab without a root is a safe no-op for lightweight shell tests", async () => {

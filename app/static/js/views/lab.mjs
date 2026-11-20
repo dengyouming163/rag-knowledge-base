@@ -239,7 +239,7 @@ export function createLab({
     for (const kind of ["search", "chat", "upload"]) setButton(kind, false);
   }
 
-  function clear({ preserveContext = false } = {}) {
+  function clearState({ preserveContext = false } = {}) {
     cancelAll();
     if (!preserveContext) currentContext = null;
     chatState = null;
@@ -247,6 +247,11 @@ export function createLab({
     hitCache = new Map();
     citationRequests = new Map();
     clearView();
+  }
+
+  function clear({ preserveContext = false } = {}) {
+    if (destroyed) return;
+    clearState({ preserveContext });
   }
 
   function cacheHits(hits) {
@@ -284,6 +289,7 @@ export function createLab({
   }
 
   async function search(context = currentContext, input = {}) {
+    if (destroyed) return undefined;
     let query;
     try {
       validateScope(context);
@@ -456,6 +462,7 @@ export function createLab({
   }
 
   async function startChat(context = currentContext, input = {}, { fetch: fetchOverride } = {}) {
+    if (destroyed) return { done: false, cancelled: true, citations: [] };
     const options = chatInput(input);
     try {
       validateScope(context);
@@ -539,8 +546,9 @@ export function createLab({
   }
 
   async function showCitation(chunkId) {
+    if (destroyed) return undefined;
     const chat = chatState;
-    if (!chat || destroyed || !active || document?.visibilityState === "hidden") {
+    if (!chat || !active || document?.visibilityState === "hidden") {
       setStatus("#citation-status", "Source unavailable: complete a chat in the active scope first.", "warning");
       return undefined;
     }
@@ -617,7 +625,9 @@ export function createLab({
     setText("#upload-progress-value", `${Math.round(progress)}%`);
   }
 
-  async function upload(context = currentContext, file = byId("upload-input")?.files?.[0]) {
+  async function upload(context = currentContext, file) {
+    if (destroyed) return undefined;
+    file = file === undefined ? byId("upload-input")?.files?.[0] : file;
     try {
       validateScope(context, false);
       if (!file) throw new Error("Select a document to upload.");
@@ -683,6 +693,7 @@ export function createLab({
   }
 
   function selectTab(tab, { updateHash = false } = {}) {
+    if (destroyed) return;
     const selected = LAB_TABS.has(tab) ? tab : "search";
     currentTab = selected;
     for (const name of LAB_TABS) {
@@ -733,18 +744,22 @@ export function createLab({
   }
 
   function setActive(value) {
+    if (destroyed) return;
     active = Boolean(value);
     if (!active) clear({ preserveContext: true });
   }
 
-  root.addEventListener("submit", (event) => {
+  function onRootSubmit(event) {
+    if (destroyed) return;
     const form = event.target?.closest?.("form") ?? event.target;
     if (!["upload-form", "search-form", "chat-form"].includes(form?.id)) return;
     event.preventDefault();
     if (form.id === "upload-form") void upload();
     else if (form.id === "search-form") void search();
     else void startChat();
-  });
+  }
+
+  root.addEventListener("submit", onRootSubmit);
   root.addEventListener("click", onRootClick);
   window?.addEventListener("workbuddy:scopechange", onScopeChange);
   window?.addEventListener("workbuddy:refresh", onRefresh);
@@ -764,11 +779,12 @@ export function createLab({
     destroy() {
       if (destroyed) return;
       destroyed = true;
-      clear();
+      clearState();
       window?.removeEventListener("workbuddy:scopechange", onScopeChange);
       window?.removeEventListener("workbuddy:refresh", onRefresh);
       window?.removeEventListener("hashchange", onHashChange);
       document?.removeEventListener("visibilitychange", onVisibilityChange);
+      root.removeEventListener?.("submit", onRootSubmit);
       root.removeEventListener?.("click", onRootClick);
     },
   };
