@@ -1,0 +1,60 @@
+{
+  "timestamp": "2026-11-20T04:51:20.445751+00:00",
+  "elapsed_ms": 10043.523699998332,
+  "config": {
+    "base_url": "http://127.0.0.1:8000",
+    "kb_id": "kb_after_sale",
+    "tenant_id": "demo",
+    "user_id": null,
+    "query": "退款多久到账",
+    "concurrency": 20,
+    "requests_per_endpoint": 200,
+    "total_requests": 400,
+    "top_k": 5,
+    "mode": "hybrid",
+    "audience": "public",
+    "timeout_seconds": 30.0
+  },
+  "metric_definitions": {
+    "latency_ms": "从请求开始到完整响应或 SSE 流结束；成功和失败请求均计入",
+    "error_rate": "failed / total；total 为 0 时为 null",
+    "percentile": "升序样本在 (n-1)*q 位置线性插值；空样本为 null",
+    "rerank_degradation_rate": "rerank_degraded / rerank_observed；分母仅含成功且有有效 hits 事件的 chat 响应，search 与失败 chat 均不参与"
+  },
+  "endpoints": {
+    "search": {
+      "total": 200,
+      "succeeded": 200,
+      "failed": 0,
+      "error_rate": 0.0,
+      "latency_ms": {
+        "sample_count": 200,
+        "p50": 165.2762999983679,
+        "p95": 195.6733899995014,
+        "p99": 219.73361999982436
+      },
+      "error_counts": {},
+      "errors": [],
+      "errors_truncated": 0
+    },
+    "chat": {
+      "total": 200,
+      "succeeded": 200,
+      "failed": 0,
+      "error_rate": 0.0,
+      "latency_ms": {
+        "sample_count": 200,
+        "p50": 684.5402500039199,
+        "p95": 1132.8804049997416,
+        "p99": 1403.0539150024538
+      },
+      "error_counts": {},
+      "errors": [],
+      "errors_truncated": 0,
+      "rerank_degraded": 0,
+      "rerank_observed": 200,
+      "rerank_degradation_rate": 0.0,
+      "rerank_denominator": "successful_chat_responses_with_valid_hits_event"
+    }
+  }
+}
