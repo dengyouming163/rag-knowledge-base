@@ -6,12 +6,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 
 import httpx
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.deps import (
     EngineDep,
@@ -132,6 +133,14 @@ def ops_traces(
     }
 
 
+def _safe_audit(engine, **kwargs) -> None:
+    """审计是旁路：写入失败只记日志，不把已成功的动作变成 500。"""
+    try:
+        ops_audit.record(engine, **kwargs)
+    except Exception:  # 审计失败不能掩盖动作结果
+        logger.exception("ops audit write failed: %s", kwargs.get("action"))
+
+
 def _require_actions(
     engine, tenant_id: str, user_id: str, action: str, target: str | None
 ) -> None:
@@ -144,19 +153,25 @@ def _require_actions(
         if not ops_actions_enabled():
             raise HTTPException(status_code=403, detail="ops actions disabled")
     except HTTPException as exc:
-        try:
-            ops_audit.record(
-                engine, tenant_id=tenant_id, actor=user_id, action=action,
-                target=target, result="denied", reason=str(exc.detail),
-            )
-        except Exception:  # 审计写失败不能掩盖原始 403
-            logger.exception("failed to record denied ops action")
+        _safe_audit(
+            engine, tenant_id=tenant_id, actor=user_id, action=action,
+            target=target, result="denied", reason=str(exc.detail),
+        )
         raise
 
 
 class RunRequest(BaseModel):
     kind: str = Field(pattern="^(eval_mock|loadtest|drill_parser|drill_llm|drill_queue)$")
-    params: dict = Field(default_factory=dict)
+    params: dict[str, str | int | float | bool] = Field(
+        default_factory=dict, max_length=20
+    )
+
+    @field_validator("params")
+    @classmethod
+    def _limit_params_size(cls, value: dict) -> dict:
+        if len(json.dumps(value, ensure_ascii=False)) > 4096:
+            raise ValueError("params too large: max 4096 characters")
+        return value
 
 
 @router.post("/ops/kbs/{kb_id}/runs", status_code=202)
@@ -175,7 +190,7 @@ def enqueue_run(
             requested_by=user_id, params=payload.params,
         )
     except ops_runs.AlreadyRunning as exc:
-        ops_audit.record(
+        _safe_audit(
             engine, tenant_id=tenant_id, actor=user_id,
             action=f"run_{payload.kind}", target=str(exc.run_id),
             result="denied", reason="already_running",
@@ -184,10 +199,14 @@ def enqueue_run(
             status_code=409,
             detail={"message": "run already active", "run_id": exc.run_id},
         ) from exc
-    ops_audit.record(
+    _safe_audit(
         engine, tenant_id=tenant_id, actor=user_id,
         action=f"run_{payload.kind}", target=str(run_id),
-        result="allowed", detail={"params": payload.params},
+        result="allowed",
+        detail={
+            "params_keys": sorted(payload.params),
+            "params_size": len(json.dumps(payload.params, ensure_ascii=False)),
+        },
     )
     return {"run_id": run_id, "status": "queued"}
 
@@ -211,7 +230,7 @@ def retry_job_api(
         stage="queued", status="started", progress=0,
         message="manual retry",
     )
-    ops_audit.record(
+    _safe_audit(
         engine, tenant_id=tenant_id, actor=user_id,
         action="job_retry", target=str(job_id), result="allowed",
     )

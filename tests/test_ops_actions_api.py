@@ -1,17 +1,20 @@
 """驾驶舱写动作接口：任务重试与通用运行入队。
 
-规则：写动作必须管理员且 `OPS_ENABLE_ACTIONS=1`；被拒时落一条 denied 审计。
-重试只接受 failed 任务；同 kind 已有活跃运行时入队返回 409。
+规则：写动作必须管理员且 `OPS_ENABLE_ACTIONS=1`；被拒时落一条 denied 审计，
+审计写失败不影响动作结果。重试只接受 failed 任务；同 kind 已有活跃运行时
+入队返回 409。
 """
 
 from __future__ import annotations
+
+import json
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from app.main import create_app
-from src import ingest_jobs
+from src import ingest_jobs, ops_audit
 from src.db.base import create_db_engine
 
 TENANT = "t_ops_actions"
@@ -94,15 +97,42 @@ def client(engine) -> TestClient:
     return TestClient(create_app())
 
 
+def _audit(client: TestClient) -> list[dict]:
+    response = client.get("/v1/ops/audit", headers=ADMIN_HEADERS)
+    assert response.status_code == 200
+    return response.json()["audit"]
+
+
+def _fail_job(engine, job_id: int, *, attempts: int = 3, progress: int = 80) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE ingest_jobs SET status='failed', attempts=:attempts, "
+                "progress=:progress, error='boom', finished_at=now() WHERE id=:id"
+            ),
+            {"id": job_id, "attempts": attempts, "progress": progress},
+        )
+
+
+def _document_status(engine, doc_id: str) -> str:
+    with engine.connect() as connection:
+        return str(
+            connection.execute(
+                text(
+                    "SELECT status FROM documents "
+                    "WHERE id = :id AND tenant_id = :t"
+                ),
+                {"id": doc_id, "t": TENANT},
+            ).scalar_one()
+        )
+
+
 def test_non_admin_cannot_retry_job(
     client: TestClient, engine, monkeypatch
 ) -> None:
+    monkeypatch.setenv("OPS_ENABLE_ACTIONS", "1")
     job_id = ingest_jobs.enqueue(engine, TENANT, KB, doc_id="doc_retry")
-    with engine.begin() as connection:
-        connection.execute(
-            text("UPDATE ingest_jobs SET status='failed', error='boom' WHERE id=:id"),
-            {"id": job_id},
-        )
+    _fail_job(engine, job_id)
 
     response = client.post(
         f"/v1/ops/jobs/{job_id}/retry",
@@ -110,35 +140,71 @@ def test_non_admin_cannot_retry_job(
     )
 
     assert response.status_code == 403
-    # 读审计前打开开关（审计读接口同样要求管理员 + 开关）
-    monkeypatch.setenv("OPS_ENABLE_ACTIONS", "1")
-    audit = client.get("/v1/ops/audit", headers=ADMIN_HEADERS).json()["audit"]
-    assert any(item["result"] == "denied" for item in audit)
+    assert response.json()["detail"] == "admin required"
+    audit = _audit(client)
+    denied = [
+        item
+        for item in audit
+        if item["action"] == "job_retry"
+        and item["target"] == str(job_id)
+        and item["result"] == "denied"
+    ]
+    assert len(denied) == 1
 
 
 def test_admin_retry_resets_failed_job(
     client: TestClient, engine, monkeypatch
 ) -> None:
     monkeypatch.setenv("OPS_ENABLE_ACTIONS", "1")
-    job_id = ingest_jobs.enqueue(engine, TENANT, KB, doc_id="doc_retry_ok")
+    doc_id = "doc_retry_ok"
+    job_id = ingest_jobs.enqueue(engine, TENANT, KB, doc_id=doc_id)
     with engine.begin() as connection:
         connection.execute(
             text(
-                "UPDATE ingest_jobs SET status='failed', attempts=3, progress=80, "
-                "error='boom', finished_at=now() WHERE id=:id"
+                "INSERT INTO documents "
+                "(id, tenant_id, kb_id, title, source_url, content_hash, status, meta) "
+                "VALUES (:id, :t, :kb, 'retry doc', '', 'hash_retry', 'failed', "
+                "'{}'::jsonb)"
             ),
-            {"id": job_id},
+            {"id": doc_id, "t": TENANT, "kb": KB},
         )
+    _fail_job(engine, job_id)
 
-    response = client.post(
-        f"/v1/ops/jobs/{job_id}/retry", headers=ADMIN_HEADERS
-    )
+    response = client.post(f"/v1/ops/jobs/{job_id}/retry", headers=ADMIN_HEADERS)
 
     assert response.status_code == 202
     job = client.get(f"/v1/jobs/{job_id}", headers={"X-Tenant-Id": TENANT}).json()
     assert job["status"] == "queued"
     assert job["attempts"] == 0
     assert job["progress"] == 0
+    assert _document_status(engine, doc_id) == "pending"
+    allowed = [
+        item
+        for item in _audit(client)
+        if item["action"] == "job_retry" and item["result"] == "allowed"
+    ]
+    assert [item["target"] for item in allowed] == [str(job_id)]
+
+
+def test_retry_missing_job_returns_404(
+    client: TestClient, monkeypatch
+) -> None:
+    monkeypatch.setenv("OPS_ENABLE_ACTIONS", "1")
+
+    response = client.post("/v1/ops/jobs/999999/retry", headers=ADMIN_HEADERS)
+
+    assert response.status_code == 404
+
+
+def test_retry_non_failed_job_returns_409(
+    client: TestClient, engine, monkeypatch
+) -> None:
+    monkeypatch.setenv("OPS_ENABLE_ACTIONS", "1")
+    job_id = ingest_jobs.enqueue(engine, TENANT, KB, doc_id="doc_running")
+
+    response = client.post(f"/v1/ops/jobs/{job_id}/retry", headers=ADMIN_HEADERS)
+
+    assert response.status_code == 409
 
 
 def test_admin_can_enqueue_eval_run(client: TestClient, monkeypatch) -> None:
@@ -146,12 +212,22 @@ def test_admin_can_enqueue_eval_run(client: TestClient, monkeypatch) -> None:
 
     response = client.post(
         f"/v1/ops/kbs/{KB}/runs",
-        json={"kind": "eval_mock", "params": {}},
+        json={"kind": "eval_mock", "params": {"limit": 5, "note": "smoke"}},
         headers=ADMIN_HEADERS,
     )
 
     assert response.status_code == 202
     assert response.json()["run_id"] > 0
+    allowed = [
+        item
+        for item in _audit(client)
+        if item["action"] == "run_eval_mock" and item["result"] == "allowed"
+    ]
+    assert len(allowed) == 1
+    detail = allowed[0]["detail"]
+    assert detail["params_keys"] == ["limit", "note"]
+    assert detail["params_size"] > 0
+    assert "params" not in detail
 
 
 def test_duplicate_active_run_returns_409(
@@ -165,3 +241,92 @@ def test_duplicate_active_run_returns_409(
 
     assert first.status_code == 202
     assert second.status_code == 409
+
+
+def test_invalid_run_kind_returns_422(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setenv("OPS_ENABLE_ACTIONS", "1")
+
+    response = client.post(
+        f"/v1/ops/kbs/{KB}/runs",
+        json={"kind": "rm_rf", "params": {}},
+        headers=ADMIN_HEADERS,
+    )
+
+    assert response.status_code == 422
+
+
+def test_run_params_too_many_keys_returns_422(
+    client: TestClient, monkeypatch
+) -> None:
+    monkeypatch.setenv("OPS_ENABLE_ACTIONS", "1")
+
+    response = client.post(
+        f"/v1/ops/kbs/{KB}/runs",
+        json={"kind": "eval_mock", "params": {f"k{i}": i for i in range(21)}},
+        headers=ADMIN_HEADERS,
+    )
+
+    assert response.status_code == 422
+
+
+def test_run_params_too_large_returns_422(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setenv("OPS_ENABLE_ACTIONS", "1")
+
+    response = client.post(
+        f"/v1/ops/kbs/{KB}/runs",
+        json={"kind": "eval_mock", "params": {"blob": "x" * 5000}},
+        headers=ADMIN_HEADERS,
+    )
+
+    assert response.status_code == 422
+
+
+def test_run_params_rejects_nested_values(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setenv("OPS_ENABLE_ACTIONS", "1")
+
+    response = client.post(
+        f"/v1/ops/kbs/{KB}/runs",
+        json={"kind": "eval_mock", "params": {"nested": {"a": 1}}},
+        headers=ADMIN_HEADERS,
+    )
+
+    assert response.status_code == 422
+
+
+def test_audit_failure_does_not_break_actions(
+    client: TestClient, engine, monkeypatch
+) -> None:
+    monkeypatch.setenv("OPS_ENABLE_ACTIONS", "1")
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("audit write failed")
+
+    monkeypatch.setattr(ops_audit, "record", _boom)
+    body = {"kind": "eval_mock", "params": {}}
+
+    first = client.post(f"/v1/ops/kbs/{KB}/runs", json=body, headers=ADMIN_HEADERS)
+    second = client.post(f"/v1/ops/kbs/{KB}/runs", json=body, headers=ADMIN_HEADERS)
+
+    assert first.status_code == 202
+    assert second.status_code == 409
+
+    job_id = ingest_jobs.enqueue(engine, TENANT, KB, doc_id="doc_audit_boom")
+    _fail_job(engine, job_id)
+    retried = client.post(f"/v1/ops/jobs/{job_id}/retry", headers=ADMIN_HEADERS)
+    assert retried.status_code == 202
+
+
+def test_params_size_guard_matches_json_encoding(
+    client: TestClient, monkeypatch
+) -> None:
+    """略小于上限的 params 仍可通过，确保 4096 是按 JSON 编码长度判定。"""
+    monkeypatch.setenv("OPS_ENABLE_ACTIONS", "1")
+    params = {"blob": "x" * (4096 - len(json.dumps({"blob": ""})))}
+
+    response = client.post(
+        f"/v1/ops/kbs/{KB}/runs",
+        json={"kind": "eval_mock", "params": params},
+        headers=ADMIN_HEADERS,
+    )
+
+    assert response.status_code == 202
