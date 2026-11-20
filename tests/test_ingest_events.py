@@ -142,14 +142,25 @@ def test_retry_job_rejects_other_tenant(engine) -> None:
 
 def test_worker_heartbeat_upserts_single_row(engine) -> None:
     worker_id = "worker-test-events"
+    job_id = enqueue(engine, TENANT, KB, doc_id="doc_events")
     try:
         record_worker_heartbeat(engine, worker_id=worker_id)
-        record_worker_heartbeat(engine, worker_id=worker_id, current_job_id=42)
+        record_worker_heartbeat(engine, worker_id=worker_id, current_job_id=job_id)
 
-        rows = [row for row in list_workers(engine) if row["worker_id"] == worker_id]
+        rows = [
+            row for row in list_workers(engine, TENANT) if row["worker_id"] == worker_id
+        ]
         assert len(rows) == 1
-        assert rows[0]["current_job_id"] == 42
+        assert rows[0]["current_job_id"] == job_id
         assert rows[0]["age_seconds"] >= 0
+
+        # 全局 worker 健康对其它租户可见，但当前任务 id 跨租户不可见
+        other = [
+            row for row in list_workers(engine, "t_other") if row["worker_id"] == worker_id
+        ]
+        assert len(other) == 1
+        assert other[0]["current_job_id"] is None
+        assert other[0]["last_seen"] == rows[0]["last_seen"]
     finally:
         with engine.begin() as connection:
             connection.execute(

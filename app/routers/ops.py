@@ -53,7 +53,7 @@ def ops_summary(
     ensure_kb(engine, tenant_id, kb_id)
     jobs = ingest_jobs.list_jobs(engine, tenant_id, kb_id, limit=500)
     traces = trace_store.list_records(tenant_id, kb_id)
-    workers = list_workers(engine)
+    workers = list_workers(engine, tenant_id)
     health = {
         "api": "up",
         "db": "up",

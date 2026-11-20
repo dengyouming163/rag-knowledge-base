@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import text
 
+from scripts import run_ops
 from scripts.run_ops import build_command, run_once
 from src.db.base import create_db_engine
 from src.ops_runs import enqueue, get_run
@@ -199,3 +200,19 @@ def test_build_command_error_marks_failed(engine, monkeypatch) -> None:
 
 def test_run_once_returns_false_when_queue_empty(engine) -> None:
     assert run_once(engine, kind="drill_parser") is False
+
+
+def test_main_retries_after_transient_error(monkeypatch) -> None:
+    """DB 瞬时错误不能让常驻进程整体退出；中断信号仍然正常收尾。"""
+    calls = {"n": 0}
+
+    def flaky_run_once(_engine, **_kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("db blip")
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(run_ops, "run_once", flaky_run_once)
+
+    assert run_ops.main(["--interval", "0.01"]) == 0
+    assert calls["n"] == 2

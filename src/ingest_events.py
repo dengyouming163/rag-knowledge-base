@@ -86,13 +86,19 @@ def record_worker_heartbeat(
         logger.exception("worker 心跳写入失败：worker_id=%s", worker_id)
 
 
-def list_workers(engine: Engine) -> list[dict]:
+def list_workers(engine: Engine, tenant_id: str) -> list[dict]:
+    """worker 健康是全局的，但 current_job_id 只在属于本租户时返回。"""
     with engine.connect() as connection:
         rows = connection.execute(
             text(
-                "SELECT worker_id, last_seen, version, current_job_id "
-                "FROM ops_workers ORDER BY last_seen DESC"
-            )
+                "SELECT w.worker_id, w.last_seen, w.version, "
+                "CASE WHEN j.tenant_id = :tenant_id THEN w.current_job_id ELSE NULL END "
+                "AS current_job_id "
+                "FROM ops_workers w "
+                "LEFT JOIN ingest_jobs j ON j.id = w.current_job_id "
+                "ORDER BY w.last_seen DESC"
+            ),
+            {"tenant_id": tenant_id},
         ).mappings().all()
     now = datetime.now(timezone.utc)
     return [

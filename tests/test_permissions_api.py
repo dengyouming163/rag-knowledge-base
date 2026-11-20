@@ -65,17 +65,31 @@ def _seed(engine) -> None:
         )
         chunks = [
             # (chunk_id, content_hash, text, meta, is_parent, embedding)
-            ("ident#public", "ident_public_hash", "公开内容", "{}", False, VECTOR),
+            (
+                "ident#public",
+                "ident_public_hash",
+                "公开内容",
+                '{"audience": "public"}',
+                False,
+                VECTOR,
+            ),
             (
                 "ident#secret",
                 "ident_secret_hash",
                 "受限内容",
-                '{"acl_tags": ["dept:secret"]}',
+                '{"audience": "public", "acl_tags": ["dept:secret"]}',
                 False,
                 VECTOR,
             ),
             # 父块 embedding 为空且不参与召回，计入统计会让口径虚高
-            ("ident#parent", "ident_parent_hash", "父块内容", "{}", True, None),
+            (
+                "ident#parent",
+                "ident_parent_hash",
+                "父块内容",
+                '{"audience": "public"}',
+                True,
+                None,
+            ),
         ]
         for chunk_id, content_hash, body, meta, is_parent, vector in chunks:
             connection.execute(
@@ -111,7 +125,8 @@ def _seed(engine) -> None:
                 "text, token_count, embedding, embed_model_version, meta, is_parent) "
                 "VALUES ('ident#locked', :t, :kb, 'doc_identity_locked', "
                 "'ident_locked_hash', '仅密级可见', 5, CAST(:vec AS vector), 'test', "
-                'CAST(\'{"acl_tags": ["dept:secret"]}\' AS jsonb), false)'
+                "CAST('{\"audience\": \"public\", \"acl_tags\": [\"dept:secret\"]}' AS jsonb), "
+                "false)"
             ),
             {"t": TENANT, "kb": KB_LOCKED, "vec": VECTOR},
         )
@@ -210,3 +225,34 @@ def test_permissions_denies_when_acl_filters_everything(client: TestClient) -> N
     assert body["decision"] == "deny"
     assert body["rls"]["scoped_count"] == 0
     assert body["reason"]
+
+
+def test_permissions_excludes_non_public_audience(
+    client: TestClient, engine
+) -> None:
+    """默认检索 audience=public，内部 audience 的块不该被算成"可见"。"""
+    with tenant_scope(engine, TENANT, write=True) as connection:
+        connection.execute(
+            text(
+                "INSERT INTO chunks (chunk_id, tenant_id, kb_id, doc_id, content_hash, "
+                "text, token_count, embedding, embed_model_version, meta, is_parent) "
+                "VALUES ('ident#internal', :t, :kb, 'doc_identity', "
+                "'ident_internal_hash', '内部内容', 5, CAST(:vec AS vector), 'test', "
+                "CAST('{\"audience\": \"internal\"}' AS jsonb), false)"
+            ),
+            {"t": TENANT, "kb": KB, "vec": VECTOR},
+        )
+
+    member = client.get(
+        "/v1/ops/permissions",
+        params={"kb_id": KB},
+        headers={"X-Tenant-Id": TENANT, "X-User-Id": "u_member"},
+    ).json()
+    assert member["rls"]["scoped_count"] == 1
+
+    admin = client.get(
+        "/v1/ops/permissions",
+        params={"kb_id": KB},
+        headers={"X-Tenant-Id": TENANT, "X-User-Id": "u_admin"},
+    ).json()
+    assert admin["rls"]["scoped_count"] == 2

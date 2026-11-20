@@ -167,7 +167,11 @@ def main(argv: list[str] | None = None) -> int:
     engine = create_db_engine()
     try:
         while True:
-            if not run_once(engine):
+            try:
+                if not run_once(engine):
+                    time.sleep(args.interval)
+            except Exception:  # noqa: BLE001 - DB 瞬时错误不能让常驻进程退出
+                logger.exception("ops-runner 循环异常，%ss 后重试", args.interval)
                 time.sleep(args.interval)
     except KeyboardInterrupt:
         print("ops-runner 收到中断信号，已停止。")

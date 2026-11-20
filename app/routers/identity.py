@@ -141,7 +141,8 @@ def permissions(
 
     condition, params = acl_condition(tags, is_admin)
     with tenant_scope(engine, tenant_id) as connection:
-        # 口径与真实召回一致（src/store_pg.py 的检索 SQL）：父块与无向量的块不参与召回；
+        # 口径与真实召回一致（src/store_pg.py 的检索 SQL）：默认检索 audience=public，
+        # 所以只统计 public 的块；父块与无向量的块不参与召回。
         # 用 EXISTS 而不是 JOIN documents：documents 也有 meta 列，
         # JOIN 会让 acl_condition 里的未限定 `meta` 变成歧义列。
         scoped_count = connection.execute(
@@ -149,6 +150,7 @@ def permissions(
                 "SELECT count(*) FROM chunks c "
                 "WHERE c.tenant_id = :t AND c.kb_id = :kb "
                 "AND c.is_parent = false AND c.embedding IS NOT NULL "
+                "AND c.meta->>'audience' = 'public' "
                 "AND EXISTS ("
                 "SELECT 1 FROM documents d WHERE d.id = c.doc_id "
                 "AND d.tenant_id = c.tenant_id AND d.kb_id = c.kb_id AND d.status = 'ready'"
