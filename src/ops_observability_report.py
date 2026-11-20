@@ -199,18 +199,14 @@ _RAG_TIMESERIES = text(
     """
 )
 
-_LATEST_RAG_ROWS = text(
-    """
+_LATEST_RAG_ROWS = """
     SELECT id, trace_id, occurred_at, operation, mode, outcome, hits,
            citation_ok, rerank_degraded, total_ms, rewrite_ms, retrieval_ms,
            rerank_ms, llm_ms, model, prompt_tokens, completion_tokens,
            error_kind, stage_spans
     FROM ops_rag_metrics
     WHERE tenant_id = :tenant_id AND kb_id = :kb_id
-    ORDER BY occurred_at DESC, id DESC
-    LIMIT :limit
-    """
-)
+"""
 
 
 def resolve_window(
@@ -394,11 +390,53 @@ def build_observability_timeseries(
 
 
 def list_rag_metric_rows(
-    engine: Engine, tenant_id: str, kb_id: str, *, limit: int = 8
+    engine: Engine,
+    tenant_id: str,
+    kb_id: str,
+    *,
+    limit: int = 8,
+    window: str | None = None,
+    outcome: str | None = None,
+    operation: str | None = None,
+    mode: str | None = None,
+    min_ms: float | None = None,
+    trace_id: str | None = None,
+    before_occurred_at: datetime | None = None,
+    before_id: int | None = None,
+    now: datetime | None = None,
 ) -> list[dict]:
+    params = {"tenant_id": tenant_id, "kb_id": kb_id, "limit": limit}
+    filters = []
+    if window is not None:
+        start, end, _ = resolve_window(window, now=now)
+        params.update({"start": start, "end": end})
+        filters.append(" AND occurred_at >= :start AND occurred_at < :end")
+    for name, value in (
+        ("outcome", outcome),
+        ("operation", operation),
+        ("mode", mode),
+        ("trace_id", trace_id),
+    ):
+        if value is not None:
+            params[name] = value
+            filters.append(f" AND {name} = :{name}")
+    if min_ms is not None:
+        params["min_ms"] = min_ms
+        filters.append(" AND total_ms >= :min_ms")
+    if (before_occurred_at is None) != (before_id is None):
+        raise ValueError("cursor parameters must be provided together")
+    if before_occurred_at is not None:
+        params.update({
+            "before_occurred_at": before_occurred_at,
+            "before_id": before_id,
+        })
+        filters.append(
+            " AND (occurred_at < :before_occurred_at"
+            " OR (occurred_at = :before_occurred_at AND id < :before_id))"
+        )
+
+    query = _LATEST_RAG_ROWS + "\n".join(filters)
+    query += "\nORDER BY occurred_at DESC, id DESC\nLIMIT :limit"
     with engine.connect() as connection:
-        rows = connection.execute(
-            _LATEST_RAG_ROWS,
-            {"tenant_id": tenant_id, "kb_id": kb_id, "limit": limit},
-        ).mappings().all()
+        rows = connection.execute(text(query), params).mappings().all()
     return [dict(row) for row in rows]

@@ -8,10 +8,13 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
+from datetime import datetime
+from typing import Literal
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
 from app.deps import (
@@ -158,6 +161,82 @@ def ops_job_events(
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
     return {"job_id": job_id, "events": list_job_events(engine, tenant_id, job_id)}
+
+
+@router.get("/ops/trace-list")
+def ops_trace_list(
+    kb_id: str,
+    tenant_id: TenantId,
+    engine: EngineDep,
+    window: str = "24h",
+    limit: int = Query(default=20, ge=1, le=100),
+    outcome: Literal["succeeded", "refused", "error", "cancelled"] | None = None,
+    operation: Literal["search", "chat"] | None = None,
+    mode: str | None = None,
+    min_ms: float | None = Query(default=None, ge=0),
+    trace_id: str | None = None,
+    before_occurred_at: datetime | None = None,
+    before_id: int | None = Query(default=None, gt=0),
+) -> dict:
+    ensure_kb(engine, tenant_id, kb_id)
+    if (before_occurred_at is None) != (before_id is None):
+        raise HTTPException(status_code=422, detail="cursor parameters must be paired")
+    if min_ms is not None and not math.isfinite(min_ms):
+        raise HTTPException(status_code=422, detail="min_ms must be finite")
+    try:
+        rows = list_rag_metric_rows(
+            engine,
+            tenant_id,
+            kb_id,
+            limit=limit + 1,
+            window=window,
+            outcome=outcome,
+            operation=operation,
+            mode=mode,
+            min_ms=min_ms,
+            trace_id=trace_id,
+            before_occurred_at=before_occurred_at,
+            before_id=before_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    has_next = len(rows) > limit
+    if has_next:
+        rows.pop()
+    next_cursor = None
+    if has_next:
+        last = rows[-1]
+        next_cursor = {
+            "before_occurred_at": last["occurred_at"],
+            "before_id": last["id"],
+        }
+    return {"items": rows, "next_cursor": next_cursor}
+
+
+@router.get("/ops/traces/{trace_id}/detail")
+def ops_trace_detail(
+    trace_id: str,
+    kb_id: str,
+    tenant_id: TenantId,
+    engine: EngineDep,
+    trace_store: TraceStoreDep,
+) -> dict:
+    ensure_kb(engine, tenant_id, kb_id)
+    metrics = list_rag_metric_rows(
+        engine, tenant_id, kb_id, trace_id=trace_id, limit=1
+    )
+    metric = metrics[0] if metrics else None
+    events = [
+        event
+        for event in trace_store.find(trace_id, tenant_id)
+        if event.get("kb") == kb_id
+    ]
+    if metric is None and not events:
+        raise HTTPException(status_code=404, detail="trace not found")
+    missing = ([] if metric is not None else ["metric"])
+    missing.extend([] if events else ["events"])
+    return {"metric": metric, "events": events, "missing": missing}
 
 
 @router.get("/ops/traces")
