@@ -23,6 +23,8 @@ EXPECTED_TABLES = {
     "ops_audit",
     "ingest_job_events",
     "ops_workers",
+    "ops_http_metrics",
+    "ops_rag_metrics",
 }
 
 

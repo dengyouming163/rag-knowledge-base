@@ -22,6 +22,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -351,4 +352,60 @@ class OpsWorker(Base):
     current_job_id: Mapped[int | None] = mapped_column(BigInteger)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class OpsHttpMetric(Base):
+    __tablename__ = "ops_http_metrics"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    tenant_id: Mapped[str] = mapped_column(Text, nullable=False)
+    kb_id: Mapped[str | None] = mapped_column(Text)
+    route: Mapped[str] = mapped_column(Text, nullable=False)
+    method: Mapped[str] = mapped_column(Text, nullable=False)
+    status_code: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    duration_ms: Mapped[float] = mapped_column(nullable=False)
+    trace_id: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        Index("ix_ops_http_metrics_tenant_time", "tenant_id", "occurred_at", "id"),
+        Index("ix_ops_http_metrics_tenant_kb_time", "tenant_id", "kb_id", "occurred_at"),
+    )
+
+
+class OpsRagMetric(Base):
+    __tablename__ = "ops_rag_metrics"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    trace_id: Mapped[str] = mapped_column(Text, nullable=False)
+    tenant_id: Mapped[str] = mapped_column(Text, nullable=False)
+    kb_id: Mapped[str] = mapped_column(Text, nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    operation: Mapped[str] = mapped_column(Text, nullable=False)
+    mode: Mapped[str] = mapped_column(Text, nullable=False)
+    outcome: Mapped[str] = mapped_column(Text, nullable=False)
+    hits: Mapped[int] = mapped_column(Integer, nullable=False)
+    citation_ok: Mapped[bool | None] = mapped_column()
+    rerank_degraded: Mapped[bool | None] = mapped_column()
+    total_ms: Mapped[float] = mapped_column(nullable=False)
+    rewrite_ms: Mapped[float | None] = mapped_column()
+    retrieval_ms: Mapped[float | None] = mapped_column()
+    rerank_ms: Mapped[float | None] = mapped_column()
+    llm_ms: Mapped[float | None] = mapped_column()
+    model: Mapped[str | None] = mapped_column(Text)
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer)
+    error_kind: Mapped[str | None] = mapped_column(Text)
+    stage_spans: Mapped[list[dict]] = mapped_column(JSONB, nullable=False, default=list)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "trace_id", name="uq_ops_rag_metrics_tenant_trace"
+        ),
+        Index("ix_ops_rag_metrics_tenant_kb_time", "tenant_id", "kb_id", "occurred_at", "id"),
     )
