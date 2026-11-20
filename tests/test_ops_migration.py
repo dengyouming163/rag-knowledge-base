@@ -35,6 +35,23 @@ def test_ops_runs_has_active_unique_index(engine) -> None:
     active = [item for item in indexes if item["name"] == "uq_ops_runs_active_kind"]
     assert active and active[0]["unique"] is True
 
+    # 必须是"仅活跃行唯一"的局部索引；误写成全局唯一会让同一 kb 永远只能跑一次同类任务
+    where = (active[0].get("dialect_options") or {}).get("postgresql_where")
+    if where:
+        predicate = str(where)
+        assert "queued" in predicate and "running" in predicate
+    else:  # 某些 SQLAlchemy 版本不反射谓词，回退查 pg_indexes
+        with engine.connect() as connection:
+            indexdef = connection.execute(
+                text(
+                    "SELECT indexdef FROM pg_indexes "
+                    "WHERE tablename = 'ops_runs' "
+                    "AND indexname = 'uq_ops_runs_active_kind'"
+                )
+            ).scalar_one()
+        assert "WHERE" in indexdef.upper()
+        assert "queued" in indexdef and "running" in indexdef
+
 
 def test_ops_workers_has_no_tenant_id(engine) -> None:
     columns = {column["name"] for column in inspect(engine).get_columns("ops_workers")}
