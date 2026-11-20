@@ -92,6 +92,36 @@ def test_workbench_overview_contains_operational_metrics_and_trends(
     assert client.get("/ui/js/views/overview.mjs").status_code == 200
 
 
+def test_workbench_lab_contains_retrieval_chat_and_ingestion_controls(
+    client: TestClient,
+) -> None:
+    html = client.get("/ui/workbench.html").text
+    lab = html.split('<section id="view-lab"', 1)[1].split("</section>", 1)[0]
+
+    for tab in ("search", "chat", "ingest"):
+        assert f'data-lab-tab="{tab}"' in lab
+        assert f'data-lab-panel="{tab}"' in lab
+    element_ids = (
+        "upload-form",
+        "upload-input",
+        "upload-progress",
+        "search-form",
+        "search-results",
+        "search-trace-link",
+        "chat-form",
+        "answer",
+        "citation-list",
+        "stream-meta",
+        "chat-trace-link",
+    )
+    for element_id in element_ids:
+        assert f'id="{element_id}"' in lab
+        assert html.count(f'id="{element_id}"') == 1
+
+    assert 'from "./views/lab.mjs"' in client.get("/ui/js/app.mjs").text
+    assert client.get("/ui/js/views/lab.mjs").status_code == 200
+
+
 def test_workbench_core_modules(client: TestClient) -> None:
     app_response = client.get("/ui/js/app.mjs")
     css_response = client.get("/ui/css/workbench.css")

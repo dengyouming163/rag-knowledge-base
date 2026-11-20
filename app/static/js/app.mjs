@@ -1,10 +1,12 @@
 import { ScopeGuard } from "./core.mjs";
 import { createOverview } from "./views/overview.mjs";
+import { createLab } from "./views/lab.mjs";
 
 const VIEW_NAMES = ["overview", "lab", "traces", "ingestion", "evaluation", "access", "audit"];
 const scopeGuard = new ScopeGuard();
 let activeScope = null;
 let overviewController = null;
+let labController = null;
 
 function normalizeView(name) {
   return VIEW_NAMES.includes(name) ? name : "overview";
@@ -36,6 +38,7 @@ export function showView(name, root = globalThis.document) {
     }
   });
   overviewController?.setActive(activeView === "overview");
+  labController?.setActive(activeView === "lab");
   return activeView;
 }
 
@@ -51,13 +54,14 @@ function readScope() {
 
 function clearViewState() {
   document.querySelectorAll("[data-view]").forEach((view) => {
-    if (view.dataset.view === "overview") return;
+    if (view.dataset.view === "overview" || view.dataset.view === "lab") return;
     view.querySelectorAll("[data-view-body]").forEach((body) => body.replaceChildren());
     view.querySelectorAll(".is-selected").forEach((item) => item.classList.remove("is-selected"));
     view.querySelectorAll("[aria-selected]").forEach((item) => item.setAttribute("aria-selected", "false"));
     view.querySelectorAll("[data-selected]").forEach((item) => item.removeAttribute("data-selected"));
   });
   overviewController?.clear();
+  labController?.clear();
 }
 
 function setStatus(message) {
@@ -83,7 +87,10 @@ function applyScope() {
 
 function restoreRoute() {
   const view = viewFromHash(window.location.hash);
-  const canonicalHash = `#/${view}`;
+  const labTab = view === "lab"
+    ? window.location.hash.match(/^#\/lab\/(search|chat|ingest)$/)?.[1]
+    : null;
+  const canonicalHash = labTab ? `#/lab/${labTab}` : `#/${view}`;
   if (window.location.hash !== canonicalHash) {
     window.history.replaceState(null, "", canonicalHash);
   }
@@ -96,6 +103,11 @@ function initializeWorkbench() {
   overviewController = createOverview({
     root: document.getElementById("view-overview"),
     guard: scopeGuard,
+  });
+  labController = createLab({
+    root: document.getElementById("view-lab"),
+    guard: scopeGuard,
+    scope: activeScope,
   });
   restoreRoute();
 

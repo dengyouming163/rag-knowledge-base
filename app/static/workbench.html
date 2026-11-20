@@ -192,7 +192,67 @@
             <div><span class="wb-view-kicker">MODULE / 02</span><h1 id="view-lab-title">Query Lab</h1></div>
             <p>Inspect retrieval and generation behavior in a controlled scope.</p>
           </header>
-          <div class="wb-view-body" data-view-body></div>
+          <div class="wb-view-body wb-lab" data-view-body>
+            <div class="wb-lab-tabs" role="tablist" aria-label="Query Lab tools">
+              <button id="lab-tab-search" class="wb-lab-tab" type="button" role="tab" data-lab-tab="search" aria-selected="true" aria-controls="lab-panel-search">Search</button>
+              <button id="lab-tab-chat" class="wb-lab-tab" type="button" role="tab" data-lab-tab="chat" aria-selected="false" aria-controls="lab-panel-chat" tabindex="-1">Chat</button>
+              <button id="lab-tab-ingest" class="wb-lab-tab" type="button" role="tab" data-lab-tab="ingest" aria-selected="false" aria-controls="lab-panel-ingest" tabindex="-1">Ingest</button>
+            </div>
+
+            <div id="lab-panel-search" class="wb-lab-panel" role="tabpanel" data-lab-panel="search" aria-labelledby="lab-tab-search">
+              <div class="wb-lab-panel-heading">
+                <div><span class="wb-lab-index">01 / RETRIEVAL</span><h2>Retrieval inspection</h2></div>
+                <a id="search-trace-link" class="wb-lab-trace" href="#/traces" hidden>Open search trace</a>
+              </div>
+              <form id="search-form" class="wb-lab-form">
+                <div class="wb-lab-field wb-lab-field-wide"><label for="search-query">Query</label><input id="search-query" maxlength="2000" required autocomplete="off" placeholder="What evidence should the knowledge base return?"></div>
+                <div class="wb-lab-field"><label for="search-top-k">Top K</label><input id="search-top-k" type="number" value="5" min="1" max="50" required></div>
+                <div class="wb-lab-field"><label for="search-mode">Mode</label><select id="search-mode"><option value="hybrid">Hybrid</option><option value="vector">Vector</option><option value="bm25">BM25</option></select></div>
+                <div class="wb-lab-field"><label for="search-audience">Audience</label><select id="search-audience"><option value="public">Public</option><option value="internal">Internal</option></select></div>
+                <button id="search-button" class="wb-lab-action" type="submit">Run search</button>
+              </form>
+              <p id="search-status" class="wb-lab-status" role="status" aria-live="polite">Awaiting a retrieval query.</p>
+              <ol id="search-results" class="wb-lab-results" aria-label="Retrieval results"><li class="wb-lab-empty">No retrieval runs yet.</li></ol>
+            </div>
+
+            <div id="lab-panel-chat" class="wb-lab-panel" role="tabpanel" data-lab-panel="chat" aria-labelledby="lab-tab-chat" hidden>
+              <div class="wb-lab-panel-heading">
+                <div><span class="wb-lab-index">02 / GENERATION</span><h2>Streaming answer</h2></div>
+                <a id="chat-trace-link" class="wb-lab-trace" href="#/traces" hidden>Open chat trace</a>
+              </div>
+              <form id="chat-form" class="wb-lab-form">
+                <div class="wb-lab-field wb-lab-field-wide"><label for="chat-question">Question</label><textarea id="chat-question" maxlength="2000" required placeholder="Ask a question grounded in the active knowledge base…"></textarea></div>
+                <div class="wb-lab-field"><label for="chat-top-k">Top K</label><input id="chat-top-k" type="number" value="5" min="1" max="20" required></div>
+                <div class="wb-lab-field"><label for="chat-audience">Audience</label><select id="chat-audience"><option value="public">Public</option><option value="internal">Internal</option></select></div>
+                <button id="chat-button" class="wb-lab-action" type="submit">Start streaming chat</button>
+              </form>
+              <p id="chat-status" class="wb-lab-status" role="status" aria-live="polite">Awaiting a question.</p>
+              <div id="answer" class="wb-lab-answer" aria-label="Streaming answer"></div>
+              <p id="stream-meta" class="wb-lab-stream-meta"></p>
+              <div class="wb-lab-citations">
+                <div class="wb-lab-citations-heading"><h3>Citation sources</h3><p>Select an inline marker or citation to inspect cached text. A cache miss uses retrieval.</p></div>
+                <ul id="citation-list" class="wb-lab-citation-list" aria-label="Answer citations"></ul>
+                <p id="citation-status" class="wb-lab-status" role="status" aria-live="polite">No citations to expand.</p>
+                <article id="citation-detail" class="wb-lab-citation-detail" hidden>
+                  <h3 id="citation-heading"></h3>
+                  <p id="citation-source" class="wb-lab-source"></p>
+                  <pre id="citation-text"></pre>
+                  <pre id="citation-metadata" class="wb-lab-metadata"></pre>
+                </article>
+              </div>
+            </div>
+
+            <div id="lab-panel-ingest" class="wb-lab-panel" role="tabpanel" data-lab-panel="ingest" aria-labelledby="lab-tab-ingest" hidden>
+              <div class="wb-lab-panel-heading"><div><span class="wb-lab-index">03 / INGESTION</span><h2>Document intake</h2></div><p>Real job status, progress, and terminal errors.</p></div>
+              <form id="upload-form" class="wb-lab-form">
+                <div class="wb-lab-field wb-lab-field-wide"><label for="upload-input">Document</label><input id="upload-input" name="file" type="file" accept=".pdf,.md,.txt" required></div>
+                <button id="upload-button" class="wb-lab-action" type="submit">Upload and track job</button>
+              </form>
+              <div class="wb-lab-progress"><progress id="upload-progress" max="100" value="0" aria-label="Ingestion job progress"></progress><output id="upload-progress-value" for="upload-progress">0%</output></div>
+              <p id="upload-status" class="wb-lab-status" role="status" aria-live="polite">Awaiting a document.</p>
+              <p id="upload-error" class="wb-lab-error" role="alert" hidden></p>
+            </div>
+          </div>
         </section>
 
         <section id="view-traces" data-view="traces" hidden aria-labelledby="view-traces-title">
