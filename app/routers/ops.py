@@ -148,7 +148,7 @@ def _require_actions(
                 engine, tenant_id=tenant_id, actor=user_id, action=action,
                 target=target, result="denied", reason=str(exc.detail),
             )
-        except Exception:  # noqa: BLE001 - 审计写失败不能掩盖原始 403
+        except Exception:  # 审计写失败不能掩盖原始 403
             logger.exception("failed to record denied ops action")
         raise
 
