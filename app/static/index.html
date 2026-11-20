@@ -828,6 +828,11 @@
     }
     .wx-list-simple { display: grid; gap: 6px; }
     .wx-list-simple .wx-list-row { grid-template-columns: minmax(0, 1fr); }
+    .wx-list-simple .wx-list-row.is-active {
+      border-color: var(--wx-primary);
+      background: rgba(7, 193, 96, 0.08);
+      box-shadow: inset 3px 0 0 var(--wx-primary);
+    }
     .wx-layers { display: grid; gap: 8px; }
     .wx-layer {
       display: flex;
@@ -1766,6 +1771,7 @@
       }
 
       function resetIdentityPanels(message) {
+        window.__identity = null;
         opsElement("identity-role").textContent = "-";
         opsElement("identity-role").classList.remove("is-real");
         opsElement("identity-body").innerHTML = emptyRow(message);
@@ -1779,6 +1785,8 @@
       }
 
       async function loadIdentity() {
+        // 身份只在本次请求成功后落盘，避免跨租户/跨用户残留旧角色。
+        window.__identity = null;
         const epoch = opsState.epoch;
         const scope = currentScope();
         if (!scope.tenant || !scope.user) {
@@ -1797,24 +1805,31 @@
               (data) => ({ data }),
               (error) => ({ error })
             )
-          : Promise.resolve({ error: new Error("请先填写知识库 ID。") });
+          : Promise.resolve({ skipped: true });
 
         const identityResult = await identityTask;
         if (epoch !== opsState.epoch) return;
+        const identity = identityResult.error ? null : identityResult.data;
         if (identityResult.error) {
           console.warn("身份卡加载失败", identityResult.error);
           renderIdentityError(identityResult.error);
         } else {
-          window.__identity = identityResult.data;
-          renderIdentityCard(identityResult.data);
+          window.__identity = identity;
+          renderIdentityCard(identity);
         }
 
         const permissionResult = await permissionTask;
         if (epoch !== opsState.epoch) return;
-        if (permissionResult.error) {
+        if (permissionResult.skipped) {
+          renderIsolation(identity, null);
+          renderPermissionUnavailable();
+        } else if (permissionResult.error) {
           console.warn("权限解释加载失败", permissionResult.error);
+          // 权限接口不可用时，层 1/3 仍用身份卡的隔离数据展示。
+          renderIsolation(identity, null);
           renderPermissionError(permissionResult.error);
         } else {
+          renderIsolation(identity, permissionResult.data);
           renderPermissions(permissionResult.data);
         }
 
@@ -1845,13 +1860,14 @@
           ? tags.map((tag) => `<span class="wx-tag">${escapeHtml(tag)}</span>`).join("")
           : '<span class="wx-empty">无标签</span>';
         const kbs = Array.isArray(identity.kbs) ? identity.kbs : [];
+        const activeKb = currentScope().kb;
         opsElement("identity-kb-count").textContent = `${kbs.length} 个`;
         opsElement("identity-kb-body").innerHTML = kbs.length
           ? kbs
-              .map(
-                (kb) =>
-                  `<button class="wx-list-row" type="button" data-kb="${escapeHtml(kb)}"><span>${escapeHtml(kb)}</span></button>`
-              )
+              .map((kb) => {
+                const active = kb === activeKb;
+                return `<button class="wx-list-row${active ? " is-active" : ""}" type="button" data-kb="${escapeHtml(kb)}" title="${escapeHtml(kb)}" aria-pressed="${active}"><span>${escapeHtml(kb)}</span></button>`;
+              })
               .join("")
           : emptyRow("当前租户无知识库");
         identityView()
@@ -1859,42 +1875,78 @@
           .forEach((button) => {
             button.addEventListener("click", () => {
               elements.kb.value = button.dataset.kb;
-              updateScopePreview();
-              loadIdentity();
+              // 走统一失效路径：epoch+1、工作台缓存清空、身份面板重载。
+              invalidateWork();
             });
           });
       }
 
-      function renderPermissions(permissions) {
-        const acl = permissions.acl || {};
-        const rls = permissions.rls || {};
-        const kb = permissions.kb || {};
-        opsElement("isolation-body").innerHTML = [
-          [
-            "1. 租户作用域",
-            kb.tenant_match ? "启用" : "缺失",
-            "缺 tenant 直接抛错"
-          ],
-          [
-            "2. 文档 ACL",
-            acl.mode || "-",
-            `tags: ${(acl.user_tags || []).join(", ") || "无"}`
-          ],
-          [
-            "3. 数据库 RLS",
-            rls.enabled ? "启用" : "未启用",
-            `bare_count=${rls.bare_count == null ? "-" : rls.bare_count}`
-          ]
-        ]
+      const ACL_MODE_LABELS = {
+        admin_bypass: "管理员直通（ACL 旁路）",
+        public_or_tag_intersection: "公开或标签交集"
+      };
+
+      function aclModeLabel(mode) {
+        if (!mode) return "-";
+        return ACL_MODE_LABELS[mode] || mode;
+      }
+
+      function renderIsolation(identity, permissions) {
+        const acl = (permissions && permissions.acl) || {};
+        const permissionRls = (permissions && permissions.rls) || null;
+        const permissionKb = (permissions && permissions.kb) || {};
+        const identityIsolation = (identity && identity.isolation) || {};
+        const identityRls = identityIsolation.rls || null;
+
+        const tenantScope = permissions
+          ? Boolean(permissionKb.tenant_match)
+          : Boolean(identityIsolation.tenant_scope);
+        const layers = [
+          {
+            name: "1. 租户作用域",
+            status: tenantScope ? "启用" : "缺失",
+            ok: tenantScope,
+            detail: "缺 tenant 直接抛错"
+          },
+          {
+            name: "2. 文档 ACL",
+            status: permissions ? aclModeLabel(acl.mode) : "未知",
+            ok: Boolean(permissions && acl.mode),
+            detail: permissions
+              ? `tags: ${(acl.user_tags || []).join(", ") || "无"}`
+              : "未知（权限接口不可用）"
+          },
+          permissionRls
+            ? {
+                name: "3. 数据库 RLS",
+                status: permissionRls.enabled ? "启用" : "未启用",
+                ok: Boolean(permissionRls.enabled),
+                detail: `bare_count=${permissionRls.bare_count == null ? "-" : permissionRls.bare_count}`
+              }
+            : {
+                name: "3. 数据库 RLS",
+                status: identityRls && identityRls.enabled ? "启用" : "未知",
+                ok: Boolean(identityRls && identityRls.enabled),
+                detail: identityRls
+                  ? `policy_count=${identityRls.policy_count == null ? "-" : identityRls.policy_count}${identityRls.forced ? " · forced" : ""}`
+                  : "身份接口不可用"
+              }
+        ];
+        opsElement("isolation-body").innerHTML = layers
           .map(
-            ([name, status, detail]) => `
+            (layer) => `
     <div class="wx-layer">
-      <div><strong>${escapeHtml(name)}</strong><span>${escapeHtml(detail)}</span></div>
-      <span class="wx-badge ${status === "启用" ? "is-real" : ""}">${escapeHtml(status)}</span>
+      <div><strong>${escapeHtml(layer.name)}</strong><span>${escapeHtml(layer.detail)}</span></div>
+      <span class="wx-badge ${layer.ok ? "is-real" : ""}">${escapeHtml(layer.status)}</span>
     </div>
   `
           )
           .join("");
+      }
+
+      function renderPermissions(permissions) {
+        const rls = permissions.rls || {};
+        const kb = permissions.kb || {};
         const decision = opsElement("permission-decision");
         decision.textContent = permissions.decision === "allow" ? "允许" : "拒绝";
         decision.classList.toggle("is-danger", permissions.decision !== "allow");
@@ -1909,13 +1961,23 @@
   `;
       }
 
+      function renderPermissionUnavailable() {
+        const decision = opsElement("permission-decision");
+        decision.textContent = "未选择知识库";
+        decision.classList.remove("is-danger");
+        opsElement("permission-reason-body").innerHTML = emptyRow(
+          "未选择知识库，无法解释权限判定。"
+        );
+      }
+
       function renderIdentityError(error) {
+        window.__identity = null;
         const message = `加载失败：${error && error.message ? error.message : "未知错误"}`;
-        opsElement("identity-role").textContent = "加载失败";
+        opsElement("identity-role").textContent = "-";
         opsElement("identity-role").classList.remove("is-real");
         opsElement("identity-body").innerHTML = emptyRow(message);
         opsElement("identity-tags").innerHTML = "";
-        opsElement("identity-kb-count").textContent = "加载失败";
+        opsElement("identity-kb-count").textContent = "-";
         opsElement("identity-kb-body").innerHTML = emptyRow(message);
       }
 
@@ -1924,7 +1986,6 @@
         const decision = opsElement("permission-decision");
         decision.textContent = "加载失败";
         decision.classList.add("is-danger");
-        opsElement("isolation-body").innerHTML = emptyRow(message);
         opsElement("permission-reason-body").innerHTML = emptyRow(message);
       }
 
@@ -1933,6 +1994,7 @@
         stopSearch();
         stopChat();
         resetOpsState();
+        window.__identity = null;
         const identityPanel = identityView();
         if (identityPanel && !identityPanel.hidden) loadIdentity();
         state.history = [];
