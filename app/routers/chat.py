@@ -35,6 +35,11 @@ from app.deps import (
     UserId,
     user_context_of,
 )
+from app.observability import (
+    TimedRetriever,
+    UsageRecordingChatClient,
+    usage_from_chat_result,
+)
 from app.schemas import ChatRequest
 from app.services import build_pipeline, ensure_kb
 from src.trace import new_trace_id
@@ -76,14 +81,42 @@ async def chat_stream(
     ensure_kb(engine, tenant_id, payload.kb_id)
     user_tags, is_admin = user_context_of(engine, tenant_id, user_id)
 
+    usage_client = UsageRecordingChatClient(chat_client)
     pipeline = build_pipeline(
-        engine, tenant_id, payload.kb_id, embed_client, chat_client, reranker
+        engine, tenant_id, payload.kb_id, embed_client, usage_client, reranker
     )
+    # 只给检索计时：包一层代理后，pipeline 其余行为不变
+    timed_retriever = None
+    retriever = getattr(pipeline, "retriever", None)
+    if retriever is not None:
+        timed_retriever = TimedRetriever(retriever)
+        pipeline.retriever = timed_retriever
 
     async def event_stream():
         started = time.perf_counter()
 
-        async def record_stage(stage: str, *, hits: int, refused: bool, mode: str) -> None:
+        async def record_stage(
+            stage: str,
+            *,
+            hits: int,
+            refused: bool,
+            mode: str,
+            usage: dict | None = None,
+            flags: dict | None = None,
+        ) -> None:
+            extra = {}
+            if usage:
+                extra.update(
+                    prompt_tokens=usage.get("prompt_tokens"),
+                    completion_tokens=usage.get("completion_tokens"),
+                    model=usage.get("model"),
+                    llm_ms=usage.get("llm_ms"),
+                )
+            if flags:
+                extra.update(
+                    rerank_degraded=flags.get("rerank_degraded"),
+                    citation_ok=flags.get("citation_ok"),
+                )
             await run_in_threadpool(
                 trace_store.record,
                 trace_id=trace_id,
@@ -95,6 +128,7 @@ async def chat_stream(
                 refused=refused,
                 mode=mode,
                 query=payload.question,
+                **extra,
             )
 
         async def record_cancelled() -> None:
@@ -127,7 +161,24 @@ async def chat_stream(
             chunks = result["chunks"]
             answer = result["answer"]
             refused = not chunks or "根据现有资料无法确定" in answer
-            await record_stage("answer", hits=len(chunks), refused=refused, mode="chat")
+            usage = usage_from_chat_result(usage_client.last)
+            timings = {
+                "retrieval_ms": (
+                    round(timed_retriever.last_ms, 3) if timed_retriever else 0.0
+                ),
+                "llm_ms": round(float(usage["llm_ms"] or 0), 3),
+            }
+            await record_stage(
+                "answer",
+                hits=len(chunks),
+                refused=refused,
+                mode="chat",
+                usage=usage,
+                flags={
+                    "rerank_degraded": result.get("rerank_degraded", False),
+                    "citation_ok": result.get("citation_ok", True),
+                },
+            )
             yield (
                 "event: hits\ndata: "
                 + json.dumps(
@@ -136,6 +187,9 @@ async def chat_stream(
                         "rewritten": result["rewritten"],
                         "rerank_degraded": result.get("rerank_degraded", False),
                         "citation_ok": result.get("citation_ok", True),
+                        "usage": usage,
+                        "timings": timings,
+                        "trace_id": trace_id,
                     },
                     ensure_ascii=False,
                 )
