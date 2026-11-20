@@ -21,3 +21,22 @@ def test_ui_serves_index_from_any_working_directory(
     assert response.headers["content-type"].startswith("text/html")
     assert "<html lang=\"zh-CN\">" in response.text
     assert "<title>知识运维工作台</title>" in response.text
+
+
+@pytest.fixture()
+def client() -> TestClient:
+    return TestClient(create_app())
+
+
+def test_ui_has_wechat_desktop_shell(client: TestClient) -> None:
+    html = client.get("/ui/").text
+    for marker in (
+        'class="wx-rail"',
+        'data-nav="workbench"',
+        'data-nav="cockpit"',
+        'data-nav="identity"',
+        'data-nav="runs"',
+        'data-view="workbench"',
+        'class="wx-content"',
+    ):
+        assert marker in html
