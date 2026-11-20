@@ -80,5 +80,5 @@ job_id=9858 doc_id=kb_smoke-e72f64ed duplicated=True；status=succeeded progress
 
 - 浏览器验收在本地 `uvicorn`（8010，`OPS_ENABLE_ACTIONS=1`）与 `scripts/run_ops.py` 下完成；`127.0.0.1:8000` 的旧容器只作对照，不参与验收。
 - 未验证项：900px 以下单列布局、键盘遍历导航/按钮；固定压测的 p50/p95/p99 来自 `scripts/loadtest.py` 直跑，未在界面内点击触发后截图。
-- `demo` 租户原库没有用户行，验收前补种了 `u_admin`（admin）与 `u_member`（member）两条 `users` 记录，仅用于本次手工验收，未随仓库提交。
+- `demo` 租户原库没有用户行，验收前补种了 `u_admin`（admin）与 `u_member`（member）两条 `users` 记录；因 `users` 主键是全局 `user_id`，保留会与测试 fixture 冲突，验收后已删除，未随仓库提交。复跑手工验收时需先按同样方式临时补种。
 - 压测与评测数字来自本机 mock 模式、已有语料与固定 query，只代表该次环境，不是容量承诺。
