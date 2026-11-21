@@ -35,6 +35,12 @@ function formatMs(value) {
   return numeric === null ? "Not recorded" : `${numeric.toFixed(1)} ms`;
 }
 
+function formatTokens(item) {
+  const prompt = finiteNonNegative(item?.prompt_tokens);
+  const completion = finiteNonNegative(item?.completion_tokens);
+  return prompt === null || completion === null ? "—" : String(prompt + completion);
+}
+
 export function buildTraceListUrl(scope = {}, filters = {}, cursor = null) {
   const query = new URLSearchParams({
     kb_id: String(scope.kb ?? ""),
@@ -94,32 +100,34 @@ export function buildTimingModel(detail = {}) {
   const explicitUnaccounted = finiteNonNegative(
     metric?.timings_unaccounted_ms ?? detail?.timings_unaccounted_ms,
   );
-  if (explicitUnaccounted !== null && explicitUnaccounted > 0) {
-    const endValues = spans
-      .filter((span) => span.startMs !== null && span.durationMs !== null)
-      .map((span) => {
-        const end = span.startMs + span.durationMs;
-        if (!Number.isFinite(end)) {
-          proportionOverflow = true;
-          return null;
-        }
-        return end;
-      });
-    const invalidEnd = endValues.some((end) => end === null);
-    const ends = endValues.filter((end) => end !== null);
-    const startMs = invalidEnd ? null : ends.length ? Math.max(...ends) : 0;
+  const endValues = spans
+    .filter((span) => span.startMs !== null && span.durationMs !== null)
+    .map((span) => span.startMs + span.durationMs);
+  const invalidEnd = endValues.some((end) => !Number.isFinite(end));
+  const ends = endValues.filter((end) => Number.isFinite(end));
+  const maxEnd = invalidEnd ? null : ends.length ? Math.max(...ends) : 0;
+  const pushUnaccounted = (startMs, durationMs, source) => {
     spans.push({
       stage: "unaccounted",
       sourceStage: "unaccounted",
       label: "unaccounted",
       status: "Not a named stage",
       startMs,
-      durationMs: explicitUnaccounted,
+      durationMs,
       left: proportion(startMs),
-      width: proportion(explicitUnaccounted),
-      percentage: proportion(explicitUnaccounted),
-      source: "timings_unaccounted_ms",
+      width: proportion(durationMs),
+      percentage: proportion(durationMs),
+      source,
     });
+  };
+  if (explicitUnaccounted !== null) {
+    if (explicitUnaccounted > 0) {
+      if (invalidEnd) proportionOverflow = true;
+      pushUnaccounted(maxEnd, explicitUnaccounted, "timings_unaccounted_ms");
+    }
+  } else if (maxEnd !== null && totalMs !== null && totalMs > 0) {
+    const gap = Math.max(totalMs - maxEnd, 0);
+    if (gap > 0) pushUnaccounted(maxEnd, gap, "derived_unaccounted");
   }
 
   if (proportionOverflow) {
@@ -302,7 +310,7 @@ export function createTraces({
         "wb-trace-empty",
         listLoaded ? "No traces match these filters." : "No traces loaded.",
       );
-      cell.setAttribute("colspan", "7");
+      cell.setAttribute("colspan", "8");
       row.appendChild(cell);
       rows.push(row);
     } else {
@@ -328,6 +336,7 @@ export function createTraces({
         row.appendChild(makeElement("td", "wb-trace-stages", stageSummary(item)));
         row.appendChild(makeElement("td", "wb-numeric", formatMs(item?.total_ms)));
         row.appendChild(makeElement("td", "wb-numeric", item?.hits ?? "Not recorded"));
+        row.appendChild(makeElement("td", "wb-numeric", formatTokens(item)));
         rows.push(row);
       }
     }

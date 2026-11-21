@@ -12,7 +12,9 @@
 
 ## 功能
 
-- [x] 三栏微信桌面版 shell，左导航 5 个入口与选中态容器存在
+> **历史归档（Task 16 之前）**：以下 5 个入口 / 三栏微信桌面版 shell 记录的是 WorkBuddy 改造前的旧 UI，相关测试名（如 `test_ui_has_wechat_desktop_shell`、`test_ui_shell_navigation_markers`、`test_ui_has_cockpit_panels`）已随旧页面删除而不存在。该界面已被 WorkBuddy 七模块入口取代，本段仅保留作为历史证据，不再代表当前实现。
+
+- [x] 三栏微信桌面版 shell，左导航 5 个入口与选中态容器存在（历史）
   - 证据：`tests/test_api_ui.py::test_ui_has_wechat_desktop_shell`、`test_ui_shell_navigation_markers`
 - [x] 驾驶舱只读面板齐全：健康、队列、任务、任务事件、AI 指标、Trace 列表与瀑布
   - 证据：`tests/test_api_ui.py::test_ui_has_cockpit_panels`
@@ -105,10 +107,10 @@ job_id=9858 doc_id=kb_smoke-e72f64ed duplicated=True；status=succeeded progress
   - RED：`py -3.13 -m pytest -q tests/test_workbench_ui.py::test_trace_id_pattern_is_valid_in_chromium`，`1 failed in 1.74s`；非法 `trace/invalid` 被 Chromium 当作有效值，见 `D:\tmp\task16-pattern-red.txt`。
   - 最小修复：仅将 `#trace-id` 改为 `pattern="[A-Za-z0-9][A-Za-z0-9_.:\-]{0,159}"`，保持允许字符不变。
   - GREEN：同一测试 `1 passed in 4.86s`，见 `D:\tmp\task16-pattern-green.txt`。
-- [x] 目标 UI Python 自动化：`44 passed in 151.78s`，见 `D:\tmp\task16-ui-final.txt`。
-- [x] JavaScript：Node TAP 执行 `tests/js` 下 core、overview、lab、traces 四个测试文件，`# tests 105`、`# pass 105`、`# fail 0`，见 `D:\tmp\task16-node-final.txt`。
+- [x] 目标 UI Python 自动化：`45 passed in 57.13s`（2026-11-21 复核：`py -3.13 -m pytest -q tests/test_api_ui.py tests/test_workbench_ui.py`）；Task 16 原始证据见 `D:\tmp\task16-ui-final.txt`。
+- [x] JavaScript：Node TAP 执行 `tests/js` 下 core、overview、lab、traces 四个测试文件，`# tests 107`、`# pass 107`、`# fail 0`（2026-11-21 复核：`node --test tests/js/*.test.mjs`）；Task 16 原始证据见 `D:\tmp\task16-node-final.txt`。
 - [x] 首次完整 Python 自动化：`py -3.13 -m pytest -q`，`661 passed, 1 skipped, 1 warning in 647.85s`，见 `D:\tmp\task16-pytest-all-final.txt`。唯一跳过为开发数据库当时不可用导致的 readiness 用例；该用例随后以 `py -3.13 -m pytest -q tests/test_api_health.py::test_ready_ok_when_db_up` 独立复跑，`1 passed in 10.64s`，见 `D:\tmp\task16-ready-skip.txt`。独立复跑不并入首次全量统计。
-- [x] 开发数据库可用后的完整 Python 清洁复跑：`py -3.13 -m pytest -q -rs`，`662 passed, 1 warning in 712.54s`，无跳过、无失败，见 `D:\tmp\task16-pytest-all-final-clean.txt`；唯一 warning 为既有 Alembic `path_separator` DeprecationWarning。
+- [x] 开发数据库可用后的完整 Python 清洁复跑（2026-11-21 复核）：`py -3.13 -m pytest -q`，`663 passed, 1 warning in 111.60s`，无跳过、无失败，见 `D:\tmp\r10-pytest-all-clean.txt`；唯一 warning 为既有 Alembic `path_separator` DeprecationWarning。复核时临时暂停了会抢占测试队列的 `rag-kb-worker` 容器，结束后已恢复。
 
 ### 实时 FastAPI / Chromium 验收矩阵
 

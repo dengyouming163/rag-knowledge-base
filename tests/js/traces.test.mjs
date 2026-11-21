@@ -311,7 +311,7 @@ test("trace list URLs omit blank filters and stop without a next cursor", () => 
   }
 });
 
-test("timing keeps every named unknown span in other and only uses explicit unaccounted time", () => {
+test("timing keeps every named unknown span in other and prefers explicit unaccounted time", () => {
   const model = buildTimingModel({
     metric: {
       total_ms: 100,
@@ -338,8 +338,68 @@ test("timing keeps every named unknown span in other and only uses explicit unac
   assert.equal(unaccounted.source, "timings_unaccounted_ms");
   assert.ok(model.spans.every((span) => Number.isFinite(span.left) && Number.isFinite(span.width)));
 
-  const withoutExplicit = buildTimingModel({ metric: { total_ms: 100, stage_spans: [] } });
-  assert.equal(withoutExplicit.spans.some((span) => span.stage === "unaccounted"), false);
+  const withGap = buildTimingModel({ metric: { total_ms: 100, stage_spans: [] } });
+  const derived = withGap.spans.at(-1);
+  assert.equal(derived.stage, "unaccounted");
+  assert.equal(derived.durationMs, 100);
+  assert.equal(derived.source, "derived_unaccounted");
+
+  const withoutGap = buildTimingModel({
+    metric: {
+      total_ms: 100,
+      stage_spans: [{ stage: "retrieve", start_ms: 0, duration_ms: 100, status: "ok" }],
+    },
+  });
+  assert.equal(withoutGap.spans.some((span) => span.stage === "unaccounted"), false);
+});
+
+test("timing derives the unaccounted gap only when no explicit field is recorded", () => {
+  const model = buildTimingModel({
+    metric: {
+      total_ms: 100,
+      stage_spans: [
+        { stage: "rewrite", start_ms: 0, duration_ms: 10, status: "ok" },
+        { stage: "answer", start_ms: 20, duration_ms: 30, status: "ok" },
+      ],
+    },
+  });
+
+  assert.deepEqual(model.spans.map((span) => span.stage), ["rewrite", "llm", "unaccounted"]);
+  const derived = model.spans.at(-1);
+  assert.equal(derived.label, "unaccounted");
+  assert.equal(derived.sourceStage, "unaccounted");
+  assert.equal(derived.source, "derived_unaccounted");
+  assert.equal(derived.startMs, 50);
+  assert.equal(derived.durationMs, 50);
+  assert.equal(derived.width, 50);
+  assert.equal(model.proportional, true);
+
+  const noGap = buildTimingModel({
+    metric: {
+      total_ms: 100,
+      stage_spans: [{ stage: "retrieve", start_ms: 0, duration_ms: 100, status: "ok" }],
+    },
+  });
+  assert.equal(noGap.spans.some((span) => span.stage === "unaccounted"), false);
+
+  const explicitZero = buildTimingModel({
+    metric: {
+      total_ms: 100,
+      timings_unaccounted_ms: 0,
+      stage_spans: [{ stage: "retrieve", start_ms: 0, duration_ms: 10, status: "ok" }],
+    },
+  });
+  assert.equal(explicitZero.spans.some((span) => span.stage === "unaccounted"), false);
+
+  const detailLevel = buildTimingModel({
+    metric: {
+      total_ms: 100,
+      stage_spans: [{ stage: "retrieve", start_ms: 0, duration_ms: 10, status: "ok" }],
+    },
+    timings_unaccounted_ms: 40,
+  });
+  assert.equal(detailLevel.spans.at(-1).source, "timings_unaccounted_ms");
+  assert.equal(detailLevel.spans.at(-1).durationMs, 40);
 });
 
 test("timing renders prototype keys and unnamed stages as literal other labels", () => {
@@ -443,6 +503,31 @@ test("extreme timing values stay finite and fall back to non-proportional bars",
       }
     });
   }
+});
+
+test("trace rows show summed tokens and a dash when either token count is missing", async (t) => {
+  const fixture = createFixture(t, {
+    api: async () => ({
+      items: [
+        traceRow("trace-full"),
+        traceRow("trace-prompt-only", { completion_tokens: null }),
+        traceRow("trace-none", { prompt_tokens: null, completion_tokens: undefined }),
+      ],
+      next_cursor: null,
+    }),
+  });
+  await fixture.view.loadTraces(fixture.context());
+
+  const rows = fixture.root.querySelector("#trace-list-rows").children;
+  assert.equal(rows.length, 3);
+  const tokenCell = (row) => row.children.at(-1);
+  assert.equal(tokenCell(rows[0]).textContent, "18");
+  assert.equal(tokenCell(rows[1]).textContent, "—");
+  assert.equal(tokenCell(rows[2]).textContent, "—");
+
+  fixture.view.clear();
+  const emptyCell = fixture.root.querySelector("#trace-list-rows").children[0].children[0];
+  assert.equal(emptyCell.getAttribute("colspan"), "8");
 });
 
 test("explicit list loading and cursor pagination retain filters, unique selection, and scroll", async (t) => {

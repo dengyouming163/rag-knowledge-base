@@ -390,7 +390,7 @@ def test_workbench_traces_contains_filters_table_inspector_and_responsive_contro
         assert html.count(f'id="{element_id}"') == 1
 
     headings = re.findall(r'<th scope="col">([^<]+)</th>', traces)
-    assert headings == ["Time", "Trace", "Operation", "Outcome", "Stages", "Total", "Hits"]
+    assert headings == ["Time", "Trace", "Operation", "Outcome", "Stages", "Total", "Hits", "Token"]
     for tab in ("summary", "timing", "raw"):
         assert f'data-trace-tab="{tab}"' in traces
         assert f'data-trace-panel="{tab}"' in traces
@@ -520,6 +520,12 @@ def test_trace_inspector_filters_cursor_refresh_tabs_raw_copy_and_missing_semant
     page.locator("#trace-limit").fill("2")
     page.locator("#trace-apply").click()
     page.locator('[data-trace-select="trace-a"]').wait_for(state="visible")
+
+    header = page.locator(".wb-trace-table thead th").all_inner_texts()
+    assert len(header) == 8
+    assert header[-1] == "Token"
+    trace_a_cells = page.locator('tr[data-trace-id="trace-a"] td')
+    assert trace_a_cells.last.inner_text() == "18"
 
     first_query = parse_qs(urlparse(list_requests[0]).query)
     assert first_query == {
