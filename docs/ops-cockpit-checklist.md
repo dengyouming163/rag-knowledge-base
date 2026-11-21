@@ -140,7 +140,7 @@ job_id=9858 doc_id=kb_smoke-e72f64ed duplicated=True；status=succeeded progress
 第 2 次规格审查指出：原 20 项中的键盘证据只覆盖品牌/导航/内部 Tab，scope、提交、Trace 选择、抽屉、复制、五类触发和 Retry 实际由 `fill()` / `.click()` 完成；missing events 也只有 API 校验。为此补做以下真实验收，原 20 项结论保持不变。
 
 - 环境：复用现有 `rag-kb-pg`（`127.0.0.1:5433`，Alembic 0011 head），在同一实例创建一次性数据库 `task16_supplement_1795264318`，使用唯一 tenant/KB `t16_supplement_1795264318` / `kb16_supplement_1795264318` 与 `u16_admin`。真实 Uvicorn/FastAPI（8000，`OPS_ENABLE_ACTIONS=1`）、真实上传、`src.worker.worker_once`、`scripts.run_ops.run_once`、系统 Chrome（Playwright Chromium 协议）；外部 LLM 仍为本机确定性桩，embedding 仍为 `EMBED_MODE=mock`。开发库、开发 worker 与 `rag-kb-pg` 的配置均未改动，补验收数据只写入一次性数据库。
-- 新增 check `keyboard_only_full_acceptance_chain`：**passed**，173 步；按 `observation.steps` 统计：Tab 78、Shift+Tab 64、Enter 20、ArrowRight 3、ArrowDown 1、Escape 2、键盘输入 5；`check.duration_ms=60195.9`（约 60.2s，取自 `final-report.json`）。所有交互只使用 Tab/Shift+Tab/Enter/ArrowDown/Escape 和键盘输入，脚本不使用 `fill()` 或 `.click()`。每一步的实际按键、焦点元素、`location.hash` 和应用状态都写入 `final-report.json` 的 `observation.steps`。
+- 新增 check `keyboard_only_full_acceptance_chain`：**passed**，173 步；按 `observation.steps` 统计：Tab 78、Shift+Tab 64、Enter 20、ArrowRight 3、ArrowDown 1、Escape 2、键盘输入 5；`check.duration_ms=60195.9`（约 60.2s，取自 `final-report.json`）。所有交互只使用 Tab/Shift+Tab/Enter/ArrowRight/ArrowDown/Escape 和键盘输入，脚本不使用 `fill()` 或 `.click()`。每一步的实际按键、焦点元素、`location.hash` 和应用状态都写入 `final-report.json` 的 `observation.steps`。
 - 实际链路与观察：
   - scope：从文档起始 Tab 到 `#scope-tenant`，键盘输入 tenant、KB、user；在 `#scope-window` 按 ArrowDown 从 24h 切到 7d；Tab 到 `#scope-refresh` 按 Enter。overview summary 与 trends 均为 `success`，scope 为 `t16_supplement_1795264318 / kb16_supplement_1795264318 / u16_admin / 7d`。
   - nav：Shift+Tab 到 `[data-nav="lab"]`，Enter 后进入 `#/lab`。
