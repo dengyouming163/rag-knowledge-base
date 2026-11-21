@@ -107,8 +107,9 @@ def test_ui_loads_every_es_module_and_professional_panel(client: TestClient) -> 
     }
     for name, markers in panels.items():
         assert f'<section id="view-{name}"' in html, name
-        view = html.split(f'<section id="view-{name}"', 1)[1]
-        view = view.split("\n        </section>", 1)[0]
+        rest = html.split(f'<section id="view-{name}"', 1)[1]
+        view = rest.split("\n        </section>", 1)[0]
+        assert view != rest, f"{name}: 8-space </section> terminator not found"
         for marker in markers:
             assert marker in view, (name, marker)
 
@@ -127,6 +128,15 @@ def test_ui_preserves_legacy_core_capability_element_ids(client: TestClient) -> 
         "citation-metadata", "run-trigger-loadtest", "audit-timeline",
     ):
         assert html.count(f'id="{element_id}"') == 1, element_id
+
+
+def test_ui_redirects_to_canonical_entry(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(create_app(), follow_redirects=False)
+
+    response = client.get("/ui")
+    assert response.status_code == 307
+    assert response.headers["location"].endswith("/ui/")
 
 
 @pytest.mark.parametrize("path", ["/ui", "/ui/"])

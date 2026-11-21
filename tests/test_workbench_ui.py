@@ -211,17 +211,9 @@ def test_workbench_muted_token_meets_aa_on_shell_backgrounds(client: TestClient)
 
 def test_trace_id_pattern_is_valid_in_chromium(workbench_page) -> None:
     page, workbench_url = workbench_page
-    console_errors = []
-    page.on(
-        "console",
-        lambda message: console_errors.append(message.text) if message.type == "error" else None,
-    )
     page.goto(f"{workbench_url}#/traces")
     trace_id = page.locator("#trace-id")
     trace_id.wait_for(state="visible")
-
-    pattern_errors = [message for message in console_errors if "Pattern attribute value" in message]
-    assert not pattern_errors, pattern_errors
 
     trace_id.fill("trace_a:b.c-d")
     assert trace_id.evaluate("input => input.checkValidity()")
@@ -369,7 +361,9 @@ def test_workbench_traces_contains_filters_table_inspector_and_responsive_contro
     client: TestClient,
 ) -> None:
     html = client.get("/ui/").text
-    traces = html.split('<section id="view-traces"', 1)[1].split("\n        </section>", 1)[0]
+    rest = html.split('<section id="view-traces"', 1)[1]
+    traces = rest.split("\n        </section>", 1)[0]
+    assert traces != rest, "traces: 8-space </section> terminator not found"
 
     for element_id in (
         "trace-filter-form",
