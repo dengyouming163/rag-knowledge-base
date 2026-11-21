@@ -383,6 +383,7 @@ test("explicit list loading and cursor pagination retain filters, unique selecti
   await view.loadTraces(context());
   await view.selectTrace("trace-a", { context: context(), updateHash: true });
   root.querySelector("#trace-table-scroll").scrollTop = 33;
+  root.querySelector("#trace-outcome").value = "error";
   await view.loadMore(context());
 
   const listCalls = calls.filter((call) => call.path.includes("/trace-list"));
@@ -399,6 +400,9 @@ test("explicit list loading and cursor pagination retain filters, unique selecti
   assert.equal(root.querySelector("#trace-load-more").hidden, true);
   assert.equal(root.querySelector("#trace-table-scroll").scrollTop, 33);
   assert.equal(fixture.window.location.hash, "#/traces/trace-a");
+
+  await view.loadMore(context());
+  assert.equal(listCalls.length, 2, "no next_cursor must not issue another request");
 
   await view.loadTraces(context());
   assert.equal(fixture.window.location.hash, "#/traces/trace-a");
@@ -453,6 +457,19 @@ test("detail requests are KB scoped and Summary, missing, Raw copy, and keyboard
   assert.equal(root.querySelector('[data-trace-tab="raw"]').getAttribute("tabindex"), "0");
   assert.equal(root.querySelector('[data-trace-panel="timing"]').hidden, true);
   assert.equal(root.querySelector('[data-trace-panel="raw"]').hidden, false);
+  assert.equal(fixture.document.activeElement, root.querySelector('[data-trace-tab="raw"]'));
+
+  const arrowLeft = root.dispatch("keydown", root.querySelector('[data-trace-tab="raw"]'), { key: "ArrowLeft" });
+  assert.equal(arrowLeft.defaultPrevented, true);
+  assert.equal(root.querySelector('[data-trace-tab="timing"]').getAttribute("aria-selected"), "true");
+  assert.equal(fixture.document.activeElement, root.querySelector('[data-trace-tab="timing"]'));
+  const home = root.dispatch("keydown", root.querySelector('[data-trace-tab="timing"]'), { key: "Home" });
+  assert.equal(home.defaultPrevented, true);
+  assert.equal(root.querySelector('[data-trace-tab="summary"]').getAttribute("aria-selected"), "true");
+  assert.equal(root.querySelector('[data-trace-panel="raw"]').hidden, true);
+  const wrappedLeft = root.dispatch("keydown", root.querySelector('[data-trace-tab="summary"]'), { key: "ArrowLeft" });
+  assert.equal(wrappedLeft.defaultPrevented, true);
+  assert.equal(root.querySelector('[data-trace-tab="raw"]').getAttribute("aria-selected"), "true");
   assert.equal(fixture.document.activeElement, root.querySelector('[data-trace-tab="raw"]'));
 
   await view.copyRaw();

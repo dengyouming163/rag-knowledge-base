@@ -147,6 +147,7 @@ export function createTraces({
   let selectedDetail = null;
   let items = new Map();
   let nextCursor = null;
+  let appliedFilters = null;
   let listLoaded = false;
   const operations = { list: null, detail: null };
   const mediaQueries = [];
@@ -427,7 +428,7 @@ export function createTraces({
     if (append && !nextCursor) return undefined;
     let filters;
     try {
-      filters = readFilters();
+      filters = append ? appliedFilters : readFilters();
       if (!context?.scope?.kb) throw new Error("Knowledge base is required.");
     } catch (error) {
       setText("#trace-list-status", errorMessage(error));
@@ -447,7 +448,10 @@ export function createTraces({
         signal: operation.controller.signal,
       });
       if (!operationIsCurrent(operation)) return undefined;
-      if (!append) items = new Map();
+      if (!append) {
+        items = new Map();
+        appliedFilters = { ...filters };
+      }
       for (const item of Array.isArray(body?.items) ? body.items : []) {
         const id = String(item?.trace_id ?? "").trim();
         if (TRACE_ID_PATTERN.test(id)) items.set(id, item);
@@ -663,7 +667,7 @@ export function createTraces({
     if (!detail) return;
     const focusable = [...detail.querySelectorAll(
       'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]',
-    )].filter((element) => element.getClientRects().length > 0);
+    )].filter((element) => element.tabIndex >= 0 && element.getClientRects().length > 0);
     if (!focusable.length) {
       event.preventDefault();
       detail.focus();
@@ -812,7 +816,7 @@ export function createTraces({
       return;
     }
     syncLayout();
-    restoreHashSelection();
+    onHashChange();
   }
 
   function clear({ preserveContext = false } = {}) {
@@ -823,6 +827,7 @@ export function createTraces({
     selectedDetail = null;
     items = new Map();
     nextCursor = null;
+    appliedFilters = null;
     listLoaded = false;
     drawerOpen = false;
     drawerTrigger = null;

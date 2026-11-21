@@ -473,6 +473,9 @@ def test_trace_inspector_filters_cursor_refresh_tabs_raw_copy_and_missing_semant
     def detail_route(route) -> None:
         detail_requests.append(route.request.url)
         trace_id = urlparse(route.request.url).path.rsplit("/", 2)[-2]
+        if trace_id == "trace-b":
+            _fulfill_json(route, {"detail": "trace not found"}, status=404)
+            return
         if trace_id == "trace-zero":
             body = _trace_detail(trace_id)
             body["metric"]["total_ms"] = 0.0
@@ -521,6 +524,7 @@ def test_trace_inspector_filters_cursor_refresh_tabs_raw_copy_and_missing_semant
     detail_query = parse_qs(urlparse(detail_requests[0]).query)
     assert detail_query == {"kb_id": ["kb_after_sale"]}
 
+    page.locator("#trace-outcome").select_option("error")
     page.locator("#trace-load-more").click()
     page.locator('[data-trace-select="trace-b"]').wait_for(state="visible")
     assert page.locator('[data-trace-select="trace-a"]').count() == 1
@@ -531,6 +535,8 @@ def test_trace_inspector_filters_cursor_refresh_tabs_raw_copy_and_missing_semant
     assert second_query["before_id"] == ["99"]
     assert second_query["trace_id"] == ["trace-a"]
     assert second_query["window"] == ["7d"]
+    assert second_query["outcome"] == ["succeeded"]
+    assert page.locator("#trace-outcome").input_value() == "error"
 
     page.add_style_tag(content=".wb-trace-row { height: 120px; }")
     page.locator("#trace-table-scroll").evaluate(
@@ -574,6 +580,20 @@ def test_trace_inspector_filters_cursor_refresh_tabs_raw_copy_and_missing_semant
     page.locator("#trace-copy").click()
     page.locator("#trace-copy-status").filter(has_text="Copied").wait_for()
     assert page.evaluate("window.__copiedRaw") == raw_text
+
+    page.evaluate("window.location.hash = '#/traces/trace-b'")
+    page.locator("#trace-detail-status").filter(has_text="unavailable").wait_for()
+    assert page.locator("#trace-raw").text_content() == ""
+    assert page.locator('[data-trace-summary="trace_id"]').text_content() == "trace-b"
+    assert page.locator('[data-trace-summary="kb_id"]').text_content() == "kb_after_sale"
+    for field in (
+        "occurred_at", "operation", "mode", "model", "outcome", "hits", "citation",
+        "rerank", "prompt_tokens", "completion_tokens", "total_tokens", "errors",
+    ):
+        assert page.locator(f'[data-trace-summary="{field}"]').text_content() == "—"
+    assert page.locator("#trace-missing").is_hidden()
+    assert page.locator("#trace-missing").text_content() == ""
+    assert parse_qs(urlparse(detail_requests[-1]).query) == {"kb_id": ["kb_after_sale"]}
 
     page.evaluate("window.location.hash = '#/traces/trace-zero'")
     page.locator('[data-trace-summary="trace_id"]').filter(has_text="trace-zero").wait_for(state="attached")
@@ -629,11 +649,17 @@ def test_trace_responsive_wide_drawer_focus_and_mobile_internal_tabs(workbench_p
         assert page.locator("#trace-detail").get_attribute("aria-modal") == "true"
         assert page.locator("#trace-drawer-backdrop").is_visible()
         assert page.evaluate("document.activeElement.id") == "trace-drawer-close"
-        page.locator("#trace-inspector-tab-raw").focus()
+        assert page.locator("#trace-inspector-tab-summary").get_attribute("aria-selected") == "true"
+        page.keyboard.press("Tab")
+        assert page.evaluate("document.activeElement.id") == "trace-inspector-tab-summary"
         page.keyboard.press("Tab")
         assert page.evaluate("document.activeElement.id") == "trace-drawer-close"
         page.keyboard.press("Shift+Tab")
-        assert page.evaluate("document.activeElement.id") == "trace-inspector-tab-raw"
+        assert page.evaluate("document.activeElement.id") == "trace-inspector-tab-summary"
+        page.keyboard.press("Shift+Tab")
+        assert page.evaluate("document.activeElement.id") == "trace-drawer-close"
+        page.keyboard.press("Tab")
+        assert page.evaluate("document.activeElement.id") == "trace-inspector-tab-summary"
         page.keyboard.press("Escape")
         assert page.locator("#trace-detail").is_hidden()
         assert page.evaluate("document.activeElement.dataset.traceSelect") == "trace-a"
@@ -659,6 +685,14 @@ def test_trace_responsive_wide_drawer_focus_and_mobile_internal_tabs(workbench_p
     page.locator("#trace-mode-detail").click()
     assert page.locator("#trace-detail").is_visible()
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
+
+    page.evaluate("window.location.hash = '#/overview'")
+    page.locator("#view-overview").wait_for(state="visible")
+    page.evaluate("window.location.hash = '#/traces'")
+    page.locator("#view-traces").wait_for(state="visible")
+    assert page.locator("#trace-mode-list").get_attribute("aria-selected") == "true"
+    assert page.locator("#trace-list-panel").is_visible()
+    assert page.locator("#trace-detail").is_hidden()
 
 
 def test_trace_slow_requests_abort_on_exit_and_scope_change_without_late_render(
