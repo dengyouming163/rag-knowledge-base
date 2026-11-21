@@ -162,7 +162,9 @@ export function createEvaluation({
       row.appendChild(makeElement("td", "wb-numeric", displayValue(run.exit_code)));
       rows.push(row);
     }
+    const focusedId = datasetRunId(document?.activeElement?.dataset?.runSelect);
     body.replaceChildren(...rows);
+    if (focusedId) body.querySelector(`[data-run-select="${focusedId}"]`)?.focus();
   }
 
   function renderDetail() {
@@ -501,7 +503,9 @@ export function createEvaluation({
     if (event.detail?.scope) currentContext = event.detail;
     if (event.detail?.view !== "evaluation" || !contextIsCurrent(currentContext)) return;
     stopPolling();
+    cancelOperation("trigger");
     cancelOperation("detail");
+    syncPermissions();
     void loadWorkspace(currentContext);
     if (selectedRunId) void loadDetail(selectedRunId, currentContext);
   }

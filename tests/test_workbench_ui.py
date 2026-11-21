@@ -1820,3 +1820,245 @@ def test_review_active_evaluation_polling_stops_on_real_scope_change(workbench_p
     page.locator("#evaluation-runs-status").filter(has_text="0 runs").wait_for()
     page.wait_for_timeout(700)
     assert detail_calls["count"] == calls_after_scope_change
+
+
+def test_review_same_scope_refresh_settles_write_controls_for_late_outcomes(workbench_page) -> None:
+    page, workbench_url = workbench_page
+    page.goto(f"{workbench_url}#/overview")
+    result = page.evaluate("""async () => {
+        const { ScopeGuard } = await import('/ui/js/core.mjs');
+        const { createEvaluation } = await import('/ui/js/views/evaluation.mjs');
+        const { createIngestion } = await import('/ui/js/views/ingestion.mjs');
+        const scope = { tenant: 'demo', kb: 'kb_after_sale', user: 'demo_user', window: '24h' };
+        const permissions = {
+            canActions: () => true,
+            canRetry: () => true,
+            actionReason: () => 'allowed',
+            retryReason: () => 'allowed',
+        };
+        const refresh = (guard, view) => {
+            guard.invalidate();
+            window.dispatchEvent(new CustomEvent('workbuddy:refresh', {
+                detail: { scope, view, ...guard.snapshot() },
+            }));
+        };
+        const fixture = (view) => {
+            const root = document.createElement('section');
+            const button = document.createElement('button');
+            if (view === 'evaluation') button.dataset.kind = 'eval_mock';
+            else button.id = 'ingestion-retry';
+            const action = document.createElement('p');
+            action.id = `${view}-action-status`;
+            const permission = document.createElement('p');
+            permission.id = `${view}-permission-status`;
+            root.append(button, action, permission);
+            document.body.appendChild(root);
+            return { root, button, action };
+        };
+        const settle = (pending, outcome, value) => {
+            if (outcome === 'resolve') pending.resolve(value);
+            else pending.reject(value);
+        };
+
+        async function evaluationCase(outcome) {
+            const guard = new ScopeGuard();
+            const context = { scope, ...guard.snapshot() };
+            const { root, button, action } = fixture('evaluation');
+            let pending;
+            const request = new Promise((resolve, reject) => { pending = { resolve, reject }; });
+            const evaluation = createEvaluation({
+                root, guard, scope, permissions,
+                api: (_path, options) => options.method === 'POST'
+                    ? request
+                    : Promise.resolve({ runs: [] }),
+            });
+            evaluation.setActive(true);
+            const writing = evaluation.triggerRun('eval_mock', context);
+            const disabledBefore = button.disabled;
+            refresh(guard, 'evaluation');
+            const enabledAfterRefresh = !button.disabled;
+            const statusAfterRefresh = action.textContent;
+            settle(pending, outcome, outcome === 'resolve'
+                ? { data: { run_id: 101 }, status: 202 }
+                : new Error('late trigger failure'));
+            await writing;
+            await Promise.resolve();
+            const result = {
+                disabledBefore,
+                enabledAfterRefresh,
+                enabledAfterLate: !button.disabled,
+                statusAfterRefresh,
+                statusAfterLate: action.textContent,
+            };
+            evaluation.destroy();
+            root.remove();
+            return result;
+        }
+
+        async function ingestionCase(outcome) {
+            const guard = new ScopeGuard();
+            const context = { scope, ...guard.snapshot() };
+            const { root, button, action } = fixture('ingestion');
+            let pending;
+            const request = new Promise((resolve, reject) => { pending = { resolve, reject }; });
+            const ingestion = createIngestion({
+                root, guard, scope, permissions,
+                api: (path, options) => {
+                    if (options.method === 'POST') return request;
+                    if (path.includes('/events')) return Promise.resolve({ job_id: 11, events: [] });
+                    return Promise.resolve({ jobs: [{ id: 11, status: 'failed', progress: 80 }], counts: {} });
+                },
+            });
+            ingestion.setActive(true);
+            await ingestion.loadJobs(context);
+            await ingestion.selectJob(11, context);
+            const writing = ingestion.retrySelectedJob(context);
+            const disabledBefore = button.disabled;
+            refresh(guard, 'ingestion');
+            const enabledAfterRefresh = !button.disabled;
+            const statusAfterRefresh = action.textContent;
+            settle(pending, outcome, outcome === 'resolve'
+                ? { status: 202 }
+                : Object.assign(new Error('late retry conflict'), { status: 409 }));
+            await writing;
+            await Promise.resolve();
+            const result = {
+                disabledBefore,
+                enabledAfterRefresh,
+                enabledAfterLate: !button.disabled,
+                statusAfterRefresh,
+                statusAfterLate: action.textContent,
+            };
+            ingestion.destroy();
+            root.remove();
+            return result;
+        }
+
+        return {
+            evaluationResolve: await evaluationCase('resolve'),
+            evaluationReject: await evaluationCase('reject'),
+            ingestionResolve: await ingestionCase('resolve'),
+            ingestionReject: await ingestionCase('reject'),
+        };
+    }""")
+    expected_evaluation = {
+        "disabledBefore": True,
+        "enabledAfterRefresh": True,
+        "enabledAfterLate": True,
+        "statusAfterRefresh": "Run trigger cancelled; no outcome is assumed.",
+        "statusAfterLate": "Run trigger cancelled; no outcome is assumed.",
+    }
+    expected_ingestion = {
+        "disabledBefore": True,
+        "enabledAfterRefresh": True,
+        "enabledAfterLate": True,
+        "statusAfterRefresh": "Retry request cancelled; reload the job to verify its actual state.",
+        "statusAfterLate": "Retry request cancelled; reload the job to verify its actual state.",
+    }
+    assert result == {
+        "evaluationResolve": expected_evaluation,
+        "evaluationReject": expected_evaluation,
+        "ingestionResolve": expected_ingestion,
+        "ingestionReject": expected_ingestion,
+    }
+
+
+def test_review_retry_stays_busy_until_jobs_and_events_reload(workbench_page) -> None:
+    page, workbench_url = workbench_page
+    page.set_default_timeout(5000)
+    _install_task14_permissions(page, {"identity": "admin", "permissions": "admin"})
+    retry_requests = []
+    job_requests = []
+    event_requests = []
+    pending_jobs = []
+    pending_events = []
+
+    def jobs_route(route) -> None:
+        job_requests.append(route.request.url)
+        if len(job_requests) == 1:
+            _fulfill_json(route, {"jobs": [_task14_job(11)], "counts": {"failed": 1}})
+        else:
+            pending_jobs.append(route)
+
+    def events_route(route) -> None:
+        event_requests.append(route.request.url)
+        if len(event_requests) == 1:
+            _fulfill_json(route, {"job_id": 11, "events": [{"stage": "parsing", "status": "failed"}]})
+        else:
+            pending_events.append(route)
+
+    def retry_route(route) -> None:
+        retry_requests.append(route.request.url)
+        _fulfill_json(route, {"job_id": 11, "status": "queued"}, status=202)
+
+    page.route("**/v1/ops/jobs?*", jobs_route)
+    page.route("**/v1/ops/jobs/11/events", events_route)
+    page.route("**/v1/ops/jobs/11/retry", retry_route)
+    page.goto(f"{workbench_url}#/ingestion")
+    page.locator("#ingestion-load").click()
+    page.locator('[data-job-select="11"]').click()
+    page.locator("#ingestion-retry").wait_for(state="visible")
+    page.locator("#ingestion-retry").click()
+    page.locator("#ingestion-action-status").filter(has_text="reloading actual state").wait_for()
+
+    disabled_during_reload = page.locator("#ingestion-retry").is_disabled()
+    page.locator("#ingestion-retry").evaluate("button => { button.click(); button.click(); }")
+    page.wait_for_timeout(200)
+    assert disabled_during_reload is True
+    assert page.locator("#ingestion-retry").is_disabled()
+    assert len(retry_requests) == 1
+    assert len(job_requests) == 2
+    assert len(event_requests) == 2
+
+    _fulfill_json(pending_jobs.pop(0), {"jobs": [_task14_job(11, "queued")], "counts": {"queued": 1}})
+    _fulfill_json(pending_events.pop(0), {"job_id": 11, "events": [{"stage": "queued", "status": "queued"}]})
+    page.locator("#ingestion-action-status").filter(has_text="reloaded job #11").wait_for()
+    assert page.locator("#ingestion-retry").is_hidden()
+    assert "could not be fully reloaded" not in page.locator("#ingestion-action-status").inner_text()
+
+
+@pytest.mark.parametrize("view", ["evaluation", "ingestion"])
+def test_review_repeated_arrow_navigation_retains_selection_and_focus(workbench_page, view: str) -> None:
+    page, workbench_url = workbench_page
+    page.set_default_timeout(4000)
+    _install_task14_permissions(page, {"identity": "admin", "permissions": "admin"})
+    if view == "evaluation":
+        _install_task14_runs(page, {"history": "ok", "detail_errors": {}}, {})
+        selector = "data-run-select"
+        dataset_key = "runSelect"
+        steps = [("ArrowDown", "29"), ("ArrowDown", "28"), ("ArrowUp", "29"), ("ArrowUp", "30")]
+        first = "30"
+    else:
+        page.route(
+            "**/v1/ops/jobs?*",
+            lambda route: _fulfill_json(route, {
+                "jobs": [_task14_job(13), _task14_job(12), _task14_job(11)], "counts": {"failed": 3},
+            }),
+        )
+        page.route("**/v1/ops/jobs/*/events", lambda route: _fulfill_json(route, {"events": []}))
+        selector = "data-job-select"
+        dataset_key = "jobSelect"
+        steps = [("ArrowDown", "12"), ("ArrowDown", "11"), ("ArrowUp", "12"), ("ArrowUp", "13")]
+        first = "13"
+
+    page.goto(f"{workbench_url}#/{view}")
+    page.locator(f"#{view}-load").click()
+    page.locator(f'[{selector}="{first}"]').wait_for()
+    page.locator(f'[{selector}="{first}"]').focus()
+
+    def wait_for_selection(run_or_job_id: str) -> None:
+        page.wait_for_function(
+            """({ view, selector, datasetKey, id }) => {
+                const root = document.querySelector(`#view-${view}`);
+                const selected = root?.querySelector(`[${selector}][aria-current="true"]`);
+                return document.activeElement?.dataset?.[datasetKey] === id
+                    && selected?.dataset?.[datasetKey] === id;
+            }""",
+            arg={"view": view, "selector": selector, "datasetKey": dataset_key, "id": run_or_job_id},
+        )
+
+    for key, expected_id in steps:
+        page.keyboard.press(key)
+        wait_for_selection(expected_id)
+    page.wait_for_timeout(150)
+    wait_for_selection(steps[-1][1])

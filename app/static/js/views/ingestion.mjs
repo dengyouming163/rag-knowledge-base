@@ -139,7 +139,9 @@ export function createIngestion({
       }
       rows.push(row);
     }
+    const focusedId = datasetJobId(document?.activeElement?.dataset?.jobSelect);
     body.replaceChildren(...rows);
+    if (focusedId) body.querySelector(`[data-job-select="${focusedId}"]`)?.focus();
   }
 
   function renderJobDetail() {
@@ -311,6 +313,7 @@ export function createIngestion({
   }
 
   async function retrySelectedJob(context = currentContext) {
+    if (operations.retry) return false;
     const job = selectedJob();
     if (!job || (permissions ? !permissions.canRetry(job) : job.status !== "failed")) {
       syncPermissions();
@@ -333,9 +336,7 @@ export function createIngestion({
         setText("#ingestion-action-status", `Retry failed: Expected HTTP 202, received HTTP ${status}.`);
         return false;
       }
-      finishOperation(operation);
       setText("#ingestion-action-status", `Retry accepted for job #${id}; reloading actual state…`);
-      syncPermissions();
       const results = await Promise.all([loadJobs(context), loadEvents(id, context)]);
       if (!contextIsCurrent(context) || selectedJobId !== id) return results.every(Boolean);
       setText(
@@ -409,6 +410,8 @@ export function createIngestion({
     if (destroyed) return;
     if (event.detail?.scope) currentContext = event.detail;
     if (event.detail?.view !== "ingestion" || !contextIsCurrent(currentContext)) return;
+    cancelOperation("retry");
+    syncPermissions();
     void loadWorkspace(currentContext);
     if (selectedJobId) void loadEvents(selectedJobId, currentContext);
   }
