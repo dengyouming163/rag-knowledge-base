@@ -2062,3 +2062,577 @@ def test_review_repeated_arrow_navigation_retains_selection_and_focus(workbench_
         wait_for_selection(expected_id)
     page.wait_for_timeout(150)
     wait_for_selection(steps[-1][1])
+
+
+def test_workbench_access_audit_modules_and_unified_action_reason_markers(client: TestClient) -> None:
+    html = client.get("/ui/workbench.html").text
+    access = html.split('<section id="view-access"', 1)[1].split("</section>", 1)[0]
+    audit = html.split('<section id="view-audit"', 1)[1].split("</section>", 1)[0]
+
+    for element_id in (
+        "access-load", "access-permission-status", "access-identity-status",
+        "access-kb-permission-status", "access-permission-reason",
+        "access-compare-form", "access-compare-query", "access-compare-user-ids",
+        "access-compare-top-k", "access-compare-submit", "access-compare-error",
+        "access-compare-status", "access-compare-results",
+    ):
+        assert f'id="{element_id}"' in access
+        assert html.count(f'id="{element_id}"') == 1
+    for layer in ("tenant", "kb", "user"):
+        assert f'data-access-layer="{layer}"' in access
+    for field in ("tenant", "user", "role", "tags", "kbs"):
+        assert f'data-access-field="{field}"' in access
+    assert 'for="access-compare-query"' in access
+    assert 'for="access-compare-user-ids"' in access
+    assert 'for="access-compare-top-k"' in access
+    assert 'minlength="1"' in access
+    assert 'maxlength="500"' in access
+    assert 'min="1"' in access
+    assert 'max="10"' in access
+
+    for element_id in ("audit-load", "audit-status", "audit-timeline"):
+        assert f'id="{element_id}"' in audit
+        assert html.count(f'id="{element_id}"') == 1
+    assert "<ol" in audit
+
+    for status_id in (
+        "ingestion-permission-status", "evaluation-permission-status", "access-permission-status",
+    ):
+        status = html.split(f'id="{status_id}"', 1)[1].split(">", 1)[0]
+        assert "data-action-disabled-reason" in status
+
+    app_module = client.get("/ui/js/app.mjs").text
+    assert 'from "./views/access.mjs"' in app_module
+    assert 'from "./views/audit.mjs"' in app_module
+    access_module = client.get("/ui/js/views/access.mjs")
+    audit_module = client.get("/ui/js/views/audit.mjs")
+    assert access_module.status_code == 200
+    assert audit_module.status_code == 200
+    assert "canCompare" in access_module.text
+    assert "compareReason" in access_module.text
+    assert "/v1/ops/audit" in audit_module.text
+
+
+def test_access_identity_isolation_compare_xss_mobile_and_keyboard(workbench_page) -> None:
+    page, workbench_url = workbench_page
+    page.set_default_timeout(7000)
+    identity_calls: list[str] = []
+    permission_calls: list[str] = []
+    compare_calls: list[dict] = []
+    xss = '<img src=x onerror="window.__task15Xss=1">'
+
+    def identity_route(route) -> None:
+        identity_calls.append(route.request.url)
+        payload = _task14_identity()
+        payload.update({
+            "tags": ["dept:cs", xss],
+            "kbs": ["kb_after_sale", "kb_internal"],
+        })
+        _fulfill_json(route, payload)
+
+    def permissions_route(route) -> None:
+        permission_calls.append(route.request.url)
+        payload = _task14_permissions()
+        payload["reason"] = f"tenant, ACL and RLS explanation {xss}"
+        payload["rls"].update({"scoped_count": 7, "bare_count": 0, "enabled": True})
+        payload["acl"]["user_tags"] = ["dept:cs", xss]
+        _fulfill_json(route, payload)
+
+    def compare_route(route) -> None:
+        compare_calls.append({
+            "body": route.request.post_data_json,
+            "headers": route.request.headers,
+            "url": route.request.url,
+        })
+        _fulfill_json(route, {
+            "query": route.request.post_data_json["query"],
+            "users": [
+                {
+                    "user": "guest", "role": "guest", "tags": [], "hits": 2,
+                    "top_score": 0.75, "latency_ms": 4.2,
+                    "visible_chunk_ids": ["chunk-public", xss],
+                },
+                {
+                    "user": "member", "role": "member", "tags": ["dept:cs"], "hits": 0,
+                    "top_score": None, "latency_ms": 3.1, "visible_chunk_ids": [],
+                },
+            ],
+        })
+
+    page.route("**/v1/identity", identity_route)
+    page.route("**/v1/ops/permissions?*", permissions_route)
+    page.route("**/v1/ops/kbs/*/identity-compare", compare_route)
+    page.set_viewport_size({"width": 1440, "height": 1000})
+    page.goto(f"{workbench_url}#/access")
+    assert identity_calls == []
+    assert permission_calls == []
+    assert compare_calls == []
+
+    page.locator("#access-load").click()
+    page.locator('[data-access-field="tenant"]').filter(has_text="demo").wait_for()
+    assert len(identity_calls) == 1
+    assert len(permission_calls) == 1
+    assert parse_qs(urlparse(permission_calls[0]).query) == {"kb_id": ["kb_after_sale"]}
+    assert page.locator('[data-access-field="user"]').inner_text() == "demo_user"
+    assert page.locator('[data-access-field="role"]').inner_text() == "admin"
+    assert "dept:cs" in page.locator('[data-access-field="tags"]').inner_text()
+    assert "kb_internal" in page.locator('[data-access-field="kbs"]').inner_text()
+    assert "7" in page.locator('[data-access-kb-field="scoped_count"]').inner_text()
+    assert "0" in page.locator('[data-access-kb-field="bare_count"]').inner_text()
+    assert "tenant, ACL and RLS explanation" in page.locator("#access-permission-reason").inner_text()
+
+    tenant_layer = page.locator('[data-access-layer="tenant"]').inner_text()
+    kb_layer = page.locator('[data-access-layer="kb"]').inner_text()
+    user_layer = page.locator('[data-access-layer="user"]').inner_text()
+    assert "Tenant" in tenant_layer and "demo" in tenant_layer
+    assert "KB" in kb_layer and "kb_after_sale" in kb_layer and "7" in kb_layer
+    assert "User" in user_layer and "demo_user" in user_layer and "admin_bypass" in user_layer
+
+    page.locator("#access-compare-query").fill("refund")
+    page.locator("#access-compare-user-ids").fill("guest, member")
+    page.locator("#access-compare-top-k").fill("1")
+    page.locator("#access-compare-top-k").press("Enter")
+    page.locator('[data-compare-user="guest"]').wait_for(state="visible")
+    assert compare_calls == [{
+        "body": {"query": "refund", "user_ids": ["guest", "member"], "top_k": 1},
+        "headers": compare_calls[0]["headers"],
+        "url": compare_calls[0]["url"],
+    }]
+    assert compare_calls[0]["headers"]["x-tenant-id"] == "demo"
+    assert compare_calls[0]["headers"]["x-user-id"] == "demo_user"
+    assert compare_calls[0]["url"].endswith("/v1/ops/kbs/kb_after_sale/identity-compare")
+    guest = page.locator('[data-compare-user="guest"]')
+    assert guest.locator("[data-compare-hits]").inner_text() == "2"
+    assert guest.locator("[data-compare-chunk-id]").count() == 2
+    assert "chunk-public" in guest.inner_text()
+    assert "No visible chunks" in page.locator('[data-compare-user="member"]').inner_text()
+    assert page.locator("#view-access img").count() == 0
+    assert page.evaluate("window.__task15Xss") is None
+    assert xss in page.locator("#view-access").inner_text()
+
+    page.locator("#access-compare-query").focus()
+    page.keyboard.press("Tab")
+    assert page.evaluate("document.activeElement.id") == "access-compare-user-ids"
+    page.keyboard.press("Tab")
+    assert page.evaluate("document.activeElement.id") == "access-compare-top-k"
+    page.keyboard.press("Tab")
+    assert page.evaluate("document.activeElement.id") == "access-compare-submit"
+
+    page.set_viewport_size({"width": 390, "height": 1000})
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
+    columns = page.locator("#access-compare-form").evaluate(
+        "form => getComputedStyle(form).gridTemplateColumns"
+    )
+    assert len(columns.split()) == 1
+    geometry = page.locator("#access-compare-form").evaluate(
+        """form => {
+            const outer = form.getBoundingClientRect();
+            return [...form.querySelectorAll('textarea, input, button')].map(element => {
+                const rect = element.getBoundingClientRect();
+                return { id: element.id, left: rect.left, right: rect.right,
+                    outerLeft: outer.left, outerRight: outer.right };
+            });
+        }"""
+    )
+    assert all(
+        item["left"] >= item["outerLeft"] - 1 and item["right"] <= item["outerRight"] + 1
+        for item in geometry
+    )
+
+    calls_before_scope_change = len(identity_calls) + len(permission_calls)
+    page.locator("#scope-kb").fill("kb_changed")
+    page.locator("#scope-kb").press("Tab")
+    assert len(identity_calls) + len(permission_calls) == calls_before_scope_change
+    assert page.locator("#access-compare-results").inner_text() == ""
+    assert "Refresh" in page.locator("#access-identity-status").inner_text()
+
+
+def test_access_compare_boundaries_empty_error_and_dual_permission_reasons(workbench_page) -> None:
+    page, workbench_url = workbench_page
+    page.set_default_timeout(7000)
+    permission_state = {"identity": "admin", "permissions": "admin"}
+    compare_state = {"mode": "ok"}
+    posted: list[dict] = []
+    _install_task14_permissions(page, permission_state)
+
+    def compare_route(route) -> None:
+        posted.append(route.request.post_data_json)
+        if compare_state["mode"] == "error":
+            _fulfill_json(route, {"detail": "compare exploded"}, status=500)
+        elif compare_state["mode"] == "empty":
+            _fulfill_json(route, {"query": route.request.post_data_json["query"], "users": []})
+        else:
+            _fulfill_json(route, {"query": route.request.post_data_json["query"], "users": [
+                {"user": "guest", "role": "guest", "tags": [], "hits": 0, "visible_chunk_ids": []},
+            ]})
+
+    page.route("**/v1/ops/kbs/*/identity-compare", compare_route)
+    page.goto(f"{workbench_url}#/access")
+    page.locator("#access-load").click()
+    page.locator("#access-compare-submit").wait_for(state="visible")
+    page.wait_for_function("!document.querySelector('#access-compare-submit').disabled")
+
+    invalid_cases = (
+        ("", "guest", "5", "access-compare-query"),
+        ("x" * 501, "guest", "5", "access-compare-query"),
+        ("valid", "", "5", "access-compare-user-ids"),
+        ("valid", "a,b,c,d", "5", "access-compare-user-ids"),
+        ("valid", "guest", "0", "access-compare-top-k"),
+        ("valid", "guest", "11", "access-compare-top-k"),
+        ("valid", "guest", "1.5", "access-compare-top-k"),
+    )
+    for query, user_ids, top_k, invalid_id in invalid_cases:
+        page.locator("#access-compare-query").evaluate(
+            "(element, value) => { element.value = value; }", query
+        )
+        page.locator("#access-compare-user-ids").fill(user_ids)
+        page.locator("#access-compare-top-k").fill(top_k)
+        page.locator("#access-compare-submit").click()
+        page.locator("#access-compare-error").wait_for(state="visible")
+        assert posted == []
+        assert page.locator(f"#{invalid_id}").get_attribute("aria-invalid") == "true"
+        assert page.evaluate("document.activeElement.id") == invalid_id
+
+    page.locator("#access-compare-query").evaluate(
+        "(element) => { element.value = 'x'.repeat(500); }"
+    )
+    page.locator("#access-compare-user-ids").fill("guest,member,admin")
+    page.locator("#access-compare-top-k").fill("10")
+    page.locator("#access-compare-submit").click()
+    page.wait_for_function("document.querySelectorAll('[data-compare-user]').length === 1")
+    assert posted == [{"query": "x" * 500, "user_ids": ["guest", "member", "admin"], "top_k": 10}]
+    assert page.locator("#access-compare-error").is_hidden()
+
+    compare_state["mode"] = "empty"
+    page.locator("#access-compare-submit").click()
+    page.locator("#access-compare-status").filter(has_text="No comparison rows returned").wait_for()
+    assert page.locator("#access-compare-results").inner_text() == ""
+    compare_state["mode"] = "error"
+    page.locator("#access-compare-submit").click()
+    page.locator("#access-compare-status").filter(has_text="Comparison unavailable").wait_for()
+    assert "compare exploded" in page.locator("#access-compare-status").inner_text()
+    assert "No comparison rows returned" not in page.locator("#access-compare-status").inner_text()
+
+    permission_state.update(identity="member", permissions="member")
+    page.locator("#scope-user").fill("member_user")
+    page.locator("#scope-user").press("Tab")
+    page.locator("#scope-refresh").click()
+    page.locator("#access-permission-status").filter(has_text="Administrator role required").wait_for()
+    member_reason = page.locator("#access-permission-status").inner_text()
+    assert "OPS_ENABLE_ACTIONS" not in member_reason
+    assert page.locator("#access-compare-submit").is_disabled()
+    assert page.locator("#access-compare-submit").get_attribute("aria-describedby") == "access-permission-status"
+
+    permission_state.update(identity="disabled", permissions="admin")
+    page.locator("#scope-user").fill("demo_user")
+    page.locator("#scope-user").press("Tab")
+    page.locator("#scope-refresh").click()
+    page.locator("#access-permission-status").filter(has_text="OPS_ENABLE_ACTIONS").wait_for()
+    disabled_reason = page.locator("#access-permission-status").inner_text()
+    assert "Administrator role required" not in disabled_reason
+    assert page.locator("#access-compare-submit").is_disabled()
+
+
+def test_access_identity_failure_preserves_kb_and_permission_request(workbench_page) -> None:
+    page, workbench_url = workbench_page
+    page.set_default_timeout(7000)
+    page.add_init_script("""
+        window.__task15PermissionSignals = [];
+        const originalFetch = window.fetch.bind(window);
+        window.fetch = (input, init = {}) => {
+            const path = String(input);
+            if (path.includes('/v1/identity') || path.includes('/v1/ops/permissions')) {
+                window.__task15PermissionSignals.push({ path, signal: init.signal });
+            }
+            return originalFetch(input, init);
+        };
+    """)
+    pending_permissions = []
+    page.route("**/v1/identity", lambda route: _fulfill_json(
+        route, {"detail": "identity exploded"}, status=500
+    ))
+    page.route("**/v1/ops/permissions?*", lambda route: pending_permissions.append(route))
+    page.goto(f"{workbench_url}#/access")
+    page.locator("#access-load").click()
+    page.locator("#access-identity-status").filter(has_text="Identity unavailable").wait_for()
+    assert "identity exploded" in page.locator("#access-identity-status").inner_text()
+    assert page.locator("#scope-kb").input_value() == "kb_after_sale"
+    page.wait_for_function("window.__task15PermissionSignals.length === 2")
+    assert page.evaluate(
+        "window.__task15PermissionSignals.every(entry => !entry.signal.aborted)"
+    )
+    assert "identity exploded" not in page.locator("#access-kb-permission-status").inner_text()
+
+    payload = _task14_permissions()
+    payload["reason"] = "independent KB decision"
+    payload["rls"]["scoped_count"] = 9
+    _fulfill_json(pending_permissions.pop(0), payload)
+    page.locator("#access-permission-reason").filter(has_text="independent KB decision").wait_for()
+    assert page.locator('[data-access-kb-field="scoped_count"]').inner_text() == "9"
+    assert "Identity unavailable" in page.locator("#access-identity-status").inner_text()
+    assert "identity exploded" not in page.locator("#access-kb-permission-status").inner_text()
+    assert page.locator("#scope-kb").input_value() == "kb_after_sale"
+
+
+def test_audit_timeline_order_fields_states_xss_mobile_and_keyboard(workbench_page) -> None:
+    page, workbench_url = workbench_page
+    page.set_default_timeout(7000)
+    audit_state = {"mode": "delayed"}
+    audit_calls: list[str] = []
+    pending = []
+    xss = '<img src=x onerror="window.__task15AuditXss=1">'
+    records = [
+        {
+            "id": 2, "created_at": "2026-11-20T10:00:00Z", "actor": "new_actor",
+            "action": "identity_compare", "target": "kb_after_sale", "result": "allowed",
+            "reason": f"new reason {xss}",
+        },
+        {
+            "id": 1, "created_at": "2026-11-20T09:00:00Z", "actor": "old_actor",
+            "action": "job_retry", "target": "job:11", "result": "denied", "reason": "admin required",
+        },
+    ]
+
+    def audit_route(route) -> None:
+        audit_calls.append(route.request.url)
+        if audit_state["mode"] == "delayed":
+            pending.append(route)
+        elif audit_state["mode"] == "error":
+            _fulfill_json(route, {"detail": "audit exploded"}, status=500)
+        elif audit_state["mode"] == "empty":
+            _fulfill_json(route, {"audit": []})
+        else:
+            _fulfill_json(route, {"audit": records})
+
+    page.route("**/v1/ops/audit?*", audit_route)
+    page.set_viewport_size({"width": 1440, "height": 1000})
+    page.goto(f"{workbench_url}#/audit")
+    assert audit_calls == []
+    page.locator("#audit-load").click()
+    page.locator("#audit-status").filter(has_text="Loading audit records").wait_for()
+    assert parse_qs(urlparse(audit_calls[0]).query) == {"limit": ["50"]}
+    _fulfill_json(pending.pop(0), {"audit": records})
+
+    items = page.locator("[data-audit-item]")
+    items.first.wait_for(state="visible")
+    assert items.count() == 2
+    assert items.nth(0).locator('[data-audit-field="actor"]').inner_text() == "old_actor"
+    assert items.nth(1).locator('[data-audit-field="actor"]').inner_text() == "new_actor"
+    assert items.nth(0).locator("time").get_attribute("datetime") == "2026-11-20T09:00:00Z"
+    for index, record in enumerate(reversed(records)):
+        item = items.nth(index)
+        for field in ("actor", "action", "target", "result", "reason"):
+            assert str(record[field]) in item.locator(f'[data-audit-field="{field}"]').inner_text()
+    assert "oldest first" in page.locator("#audit-status").inner_text().lower()
+    assert page.locator("#view-audit img").count() == 0
+    assert page.evaluate("window.__task15AuditXss") is None
+    assert xss in items.nth(1).inner_text()
+
+    items.nth(0).focus()
+    page.keyboard.press("ArrowDown")
+    assert page.evaluate("document.activeElement?.dataset?.auditItem") == "2"
+    page.keyboard.press("ArrowUp")
+    assert page.evaluate("document.activeElement?.dataset?.auditItem") == "1"
+
+    audit_state["mode"] = "empty"
+    page.locator("#audit-load").click()
+    page.locator("#audit-status").filter(has_text="No audit records").wait_for()
+    assert items.count() == 0
+    audit_state["mode"] = "error"
+    page.locator("#audit-load").click()
+    page.locator("#audit-status").filter(has_text="Audit unavailable").wait_for()
+    assert "audit exploded" in page.locator("#audit-status").inner_text()
+    assert "No audit records" not in page.locator("#audit-status").inner_text()
+
+    page.set_viewport_size({"width": 390, "height": 1000})
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
+
+
+def test_access_audit_and_permission_stale_responses_and_destroy_are_isolated(workbench_page) -> None:
+    page, workbench_url = workbench_page
+    page.goto(f"{workbench_url}#/overview")
+    result = page.evaluate("""async () => {
+        const { ScopeGuard } = await import('/ui/js/core.mjs');
+        const { createPermissions } = await import('/ui/js/permissions.mjs');
+        const { createAccess } = await import('/ui/js/views/access.mjs');
+        const { createAudit } = await import('/ui/js/views/audit.mjs');
+        const deferred = () => {
+            let resolve;
+            const promise = new Promise(next => { resolve = next; });
+            return { promise, resolve };
+        };
+        const scope = kb => ({ tenant: 'demo', kb, user: kb === 'kb_a' ? 'old_user' : 'new_user', window: '24h' });
+        const ignoreWindow = { addEventListener() {}, removeEventListener() {} };
+        const tick = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); };
+
+        const permissionGuard = new ScopeGuard();
+        const permissionRequests = [];
+        const permissions = createPermissions({
+            guard: permissionGuard,
+            scope: scope('kb_a'),
+            api: (path, options) => {
+                const pending = deferred();
+                permissionRequests.push({ path, options, pending });
+                return pending.promise;
+            },
+        });
+        const contextA = { scope: scope('kb_a'), ...permissionGuard.snapshot() };
+        const loadingA = permissions.load(contextA);
+        await tick();
+        permissionGuard.invalidate();
+        permissions.clear();
+        const contextB = { scope: scope('kb_b'), ...permissionGuard.snapshot() };
+        const loadingB = permissions.load(contextB);
+        await tick();
+        for (const request of permissionRequests.filter(item => item.options.scope.kb === 'kb_b')) {
+            request.pending.resolve(request.path.includes('/identity')
+                ? { tenant: 'demo', user: 'new_user', role: 'admin', is_admin: true,
+                    ops: { actions_enabled: true, can_trigger: true } }
+                : { user: 'new_user', is_admin: true, reason: 'new permission', rls: {} });
+        }
+        await loadingB;
+        for (const request of permissionRequests.filter(item => item.options.scope.kb === 'kb_a')) {
+            request.pending.resolve(request.path.includes('/identity')
+                ? { tenant: 'demo', user: 'old_user', role: 'admin', is_admin: true,
+                    ops: { actions_enabled: true, can_trigger: true } }
+                : { user: 'old_user', is_admin: true, reason: 'stale permission', rls: {} });
+        }
+        await loadingA;
+        await tick();
+        const permissionState = permissions.getState();
+        const permissionSafe = permissionState.identity?.user === 'new_user'
+            && permissionState.permissions?.user === 'new_user'
+            && permissionState.permissions?.reason === 'new permission'
+            && permissionRequests.filter(item => item.options.scope.kb === 'kb_a')
+                .every(item => item.options.signal.aborted);
+        permissions.destroy();
+
+        const accessGuard = new ScopeGuard();
+        const accessRoot = document.getElementById('view-access').cloneNode(true);
+        accessRoot.removeAttribute('id');
+        const accessRequests = [];
+        const accessState = {
+            identity: { user: 'new_user', role: 'admin', is_admin: true, tags: [], kbs: [],
+                ops: { actions_enabled: true, can_trigger: true } },
+            permissions: { user: 'new_user', is_admin: true, rls: {}, kb: {}, acl: {} },
+            identityError: '', permissionError: '', identityLoading: false, permissionLoading: false,
+            loading: false, canCompare: true, reason: 'allowed',
+        };
+        const accessPermissions = {
+            load: async () => accessState,
+            getState: () => accessState,
+            subscribe: () => () => {},
+            canCompare: () => true,
+            compareReason: () => 'allowed',
+            actionReason: () => 'allowed',
+            retain() {}, release() {},
+        };
+        const access = createAccess({
+            root: accessRoot, guard: accessGuard, scope: scope('kb_a'),
+            permissions: accessPermissions, window: ignoreWindow,
+            api: (_path, options) => {
+                const pending = deferred();
+                accessRequests.push({ options, pending });
+                return pending.promise;
+            },
+        });
+        access.setActive(true);
+        const accessA = { scope: scope('kb_a'), ...accessGuard.snapshot() };
+        accessRoot.querySelector('#access-compare-query').value = 'old query';
+        accessRoot.querySelector('#access-compare-user-ids').value = 'old_user';
+        accessRoot.querySelector('#access-compare-top-k').value = '5';
+        const oldCompare = access.compareIdentities(accessA);
+        await tick();
+        accessGuard.invalidate();
+        access.clear();
+        const accessB = { scope: scope('kb_b'), ...accessGuard.snapshot() };
+        await access.loadWorkspace(accessB);
+        accessRoot.querySelector('#access-compare-query').value = 'new query';
+        accessRoot.querySelector('#access-compare-user-ids').value = 'new_user';
+        accessRoot.querySelector('#access-compare-top-k').value = '5';
+        const newCompare = access.compareIdentities(accessB);
+        await tick();
+        accessRequests.find(item => item.options.scope.kb === 'kb_b').pending.resolve({
+            users: [{ user: 'new_user', hits: 1, visible_chunk_ids: ['new_chunk'] }],
+        });
+        await newCompare;
+        accessRequests.find(item => item.options.scope.kb === 'kb_a').pending.resolve({
+            users: [{ user: 'old_user', hits: 1, visible_chunk_ids: ['stale_chunk'] }],
+        });
+        await oldCompare;
+        await tick();
+        const accessSafe = accessRoot.querySelector('#access-compare-results').textContent.includes('new_chunk')
+            && !accessRoot.querySelector('#access-compare-results').textContent.includes('stale_chunk')
+            && accessRequests.find(item => item.options.scope.kb === 'kb_a').options.signal.aborted;
+
+        const destroyingCompare = access.compareIdentities(accessB);
+        await tick();
+        const destroyingRequest = accessRequests.at(-1);
+        const beforeDestroy = accessRoot.querySelector('#access-compare-status').textContent;
+        access.destroy();
+        const destroyAborted = destroyingRequest.options.signal.aborted;
+        destroyingRequest.pending.resolve({ users: [{ user: 'late', hits: 1, visible_chunk_ids: ['late_chunk'] }] });
+        await destroyingCompare;
+        await tick();
+        const accessDestroySafe = destroyAborted
+            && accessRoot.querySelector('#access-compare-status').textContent === beforeDestroy
+            && !accessRoot.querySelector('#access-compare-results').textContent.includes('late_chunk');
+
+        const auditGuard = new ScopeGuard();
+        const auditRoot = document.getElementById('view-audit').cloneNode(true);
+        auditRoot.removeAttribute('id');
+        const auditRequests = [];
+        const audit = createAudit({
+            root: auditRoot, guard: auditGuard, scope: scope('kb_a'), window: ignoreWindow,
+            api: (_path, options) => {
+                const pending = deferred();
+                auditRequests.push({ options, pending });
+                return pending.promise;
+            },
+        });
+        audit.setActive(true);
+        const auditA = { scope: scope('kb_a'), ...auditGuard.snapshot() };
+        const oldAudit = audit.loadAudit(auditA);
+        await tick();
+        auditGuard.invalidate();
+        audit.clear();
+        const auditB = { scope: scope('kb_b'), ...auditGuard.snapshot() };
+        const newAudit = audit.loadAudit(auditB);
+        await tick();
+        auditRequests.find(item => item.options.scope.kb === 'kb_b').pending.resolve({
+            audit: [{ id: 2, created_at: '2026-11-20T10:00:00Z', actor: 'new_actor',
+                action: 'new', target: 'new', result: 'allowed', reason: 'new' }],
+        });
+        await newAudit;
+        auditRequests.find(item => item.options.scope.kb === 'kb_a').pending.resolve({
+            audit: [{ id: 1, created_at: '2026-11-20T09:00:00Z', actor: 'stale_actor',
+                action: 'stale', target: 'stale', result: 'denied', reason: 'stale' }],
+        });
+        await oldAudit;
+        await tick();
+        const auditSafe = auditRoot.querySelector('#audit-timeline').textContent.includes('new_actor')
+            && !auditRoot.querySelector('#audit-timeline').textContent.includes('stale_actor')
+            && auditRequests.find(item => item.options.scope.kb === 'kb_a').options.signal.aborted;
+
+        const destroyingAudit = audit.loadAudit(auditB);
+        await tick();
+        const destroyingAuditRequest = auditRequests.at(-1);
+        const auditBeforeDestroy = auditRoot.querySelector('#audit-status').textContent;
+        audit.destroy();
+        const auditDestroyAborted = destroyingAuditRequest.options.signal.aborted;
+        destroyingAuditRequest.pending.resolve({ audit: [{ id: 3, actor: 'late_actor' }] });
+        await destroyingAudit;
+        await tick();
+        const auditDestroySafe = auditDestroyAborted
+            && auditRoot.querySelector('#audit-status').textContent === auditBeforeDestroy
+            && !auditRoot.querySelector('#audit-timeline').textContent.includes('late_actor');
+
+        return { permissionSafe, accessSafe, accessDestroySafe, auditSafe, auditDestroySafe };
+    }""")
+    assert result == {
+        "permissionSafe": True,
+        "accessSafe": True,
+        "accessDestroySafe": True,
+        "auditSafe": True,
+        "auditDestroySafe": True,
+    }

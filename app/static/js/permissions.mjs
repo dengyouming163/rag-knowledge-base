@@ -39,6 +39,13 @@ export function createPermissions({
   let cache = null;
   let operation = null;
   const activeLeases = new Set();
+  const listeners = new Set();
+
+  function notify() {
+    if (destroyed) return;
+    const snapshot = state();
+    for (const listener of listeners) listener(snapshot);
+  }
 
   function emptyCache(context) {
     return {
@@ -79,6 +86,8 @@ export function createPermissions({
       permissions: snapshot?.permissions ?? null,
       identityError: snapshot?.identityError ?? "",
       permissionError: snapshot?.permissionError ?? "",
+      identityLoading: Boolean(operation && snapshot && !snapshot.identitySettled),
+      permissionLoading: Boolean(operation && snapshot && !snapshot.permissionSettled),
       loading,
       canActions: actions,
       canCompare: actions,
@@ -123,6 +132,7 @@ export function createPermissions({
     cancel();
     cache = null;
     currentContext = null;
+    notify();
   }
 
   async function load(context = currentContext) {
@@ -156,6 +166,7 @@ export function createPermissions({
       unlink() { parent?.removeEventListener("abort", abort); },
     };
     operation = operationSnapshot;
+    notify();
     const cacheSnapshot = cache;
     const options = { scope: context.scope, signal: controller.signal };
     const query = new URLSearchParams({ kb_id: context.scope.kb });
@@ -171,7 +182,10 @@ export function createPermissions({
         cacheSnapshot.identityError = errorMessage(error);
       })
       .finally(() => {
-        if (current(operationSnapshot) && cache === cacheSnapshot) cacheSnapshot.identitySettled = true;
+        if (current(operationSnapshot) && cache === cacheSnapshot) {
+          cacheSnapshot.identitySettled = true;
+          notify();
+        }
       });
     const permissionRequest = Promise.resolve()
       .then(() => api(`/v1/ops/permissions?${query.toString()}`, options))
@@ -184,13 +198,17 @@ export function createPermissions({
         cacheSnapshot.permissionError = errorMessage(error);
       })
       .finally(() => {
-        if (current(operationSnapshot) && cache === cacheSnapshot) cacheSnapshot.permissionSettled = true;
+        if (current(operationSnapshot) && cache === cacheSnapshot) {
+          cacheSnapshot.permissionSettled = true;
+          notify();
+        }
       });
 
     operationSnapshot.promise = Promise.all([identityRequest, permissionRequest]).then(() => {
       if (current(operationSnapshot)) {
         operationSnapshot.unlink();
         operation = null;
+        notify();
       }
       return state();
     });
@@ -203,6 +221,11 @@ export function createPermissions({
     release,
     clear,
     getState: state,
+    subscribe(listener) {
+      if (destroyed || typeof listener !== "function") return () => {};
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
     canActions() { return state().canActions; },
     canRetry(job) { return state().canActions && job?.status === "failed"; },
     canCompare() { return state().canCompare; },
@@ -217,6 +240,7 @@ export function createPermissions({
       clear();
       destroyed = true;
       activeLeases.clear();
+      listeners.clear();
     },
   };
 }

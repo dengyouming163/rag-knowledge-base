@@ -5,6 +5,8 @@ import { createTraces } from "./views/traces.mjs";
 import { createPermissions } from "./permissions.mjs";
 import { createIngestion } from "./views/ingestion.mjs";
 import { createEvaluation } from "./views/evaluation.mjs";
+import { createAccess } from "./views/access.mjs";
+import { createAudit } from "./views/audit.mjs";
 
 const VIEW_NAMES = ["overview", "lab", "traces", "ingestion", "evaluation", "access", "audit"];
 const scopeGuard = new ScopeGuard();
@@ -15,6 +17,8 @@ let tracesController = null;
 let permissionsController = null;
 let ingestionController = null;
 let evaluationController = null;
+let accessController = null;
+let auditController = null;
 
 function normalizeView(name) {
   return VIEW_NAMES.includes(name) ? name : "overview";
@@ -62,6 +66,8 @@ export function showView(name, root = globalThis.document) {
   tracesController?.setActive(activeView === "traces");
   ingestionController?.setActive(activeView === "ingestion");
   evaluationController?.setActive(activeView === "evaluation");
+  accessController?.setActive(activeView === "access");
+  auditController?.setActive(activeView === "audit");
   return activeView;
 }
 
@@ -77,7 +83,7 @@ function readScope() {
 
 function clearViewState() {
   document.querySelectorAll("[data-view]").forEach((view) => {
-    if (["overview", "lab", "traces", "ingestion", "evaluation"].includes(view.dataset.view)) return;
+    if (["overview", "lab", "traces", "ingestion", "evaluation", "access", "audit"].includes(view.dataset.view)) return;
     view.querySelectorAll("[data-view-body]").forEach((body) => body.replaceChildren());
     view.querySelectorAll(".is-selected").forEach((item) => item.classList.remove("is-selected"));
     view.querySelectorAll("[aria-selected]").forEach((item) => item.setAttribute("aria-selected", "false"));
@@ -88,6 +94,8 @@ function clearViewState() {
   tracesController?.clear();
   ingestionController?.clear();
   evaluationController?.clear();
+  accessController?.clear();
+  auditController?.clear();
   permissionsController?.clear();
 }
 
@@ -126,6 +134,18 @@ function restoreRoute() {
   return view;
 }
 
+function destroyWorkbench() {
+  scopeGuard.invalidate();
+  overviewController?.destroy?.();
+  labController?.destroy?.();
+  tracesController?.destroy?.();
+  ingestionController?.destroy?.();
+  evaluationController?.destroy?.();
+  accessController?.destroy();
+  auditController?.destroy();
+  permissionsController?.destroy();
+}
+
 function initializeWorkbench() {
   activeScope = readScope();
   overviewController = createOverview({
@@ -158,6 +178,17 @@ function initializeWorkbench() {
     scope: activeScope,
     permissions: permissionsController,
   });
+  accessController = createAccess({
+    root: document.getElementById("view-access"),
+    guard: scopeGuard,
+    scope: activeScope,
+    permissions: permissionsController,
+  });
+  auditController = createAudit({
+    root: document.getElementById("view-audit"),
+    guard: scopeGuard,
+    scope: activeScope,
+  });
   restoreRoute();
 
   document.querySelectorAll("[data-nav]").forEach((button) => {
@@ -172,6 +203,7 @@ function initializeWorkbench() {
   });
 
   window.addEventListener("hashchange", restoreRoute);
+  window.addEventListener("pagehide", destroyWorkbench, { once: true });
 
   for (const id of ["scope-tenant", "scope-kb", "scope-user", "scope-window"]) {
     document.getElementById(id)?.addEventListener("change", applyScope);
