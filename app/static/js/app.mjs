@@ -2,6 +2,9 @@ import { ScopeGuard } from "./core.mjs";
 import { createOverview } from "./views/overview.mjs";
 import { createLab } from "./views/lab.mjs";
 import { createTraces } from "./views/traces.mjs";
+import { createPermissions } from "./permissions.mjs";
+import { createIngestion } from "./views/ingestion.mjs";
+import { createEvaluation } from "./views/evaluation.mjs";
 
 const VIEW_NAMES = ["overview", "lab", "traces", "ingestion", "evaluation", "access", "audit"];
 const scopeGuard = new ScopeGuard();
@@ -9,6 +12,9 @@ let activeScope = null;
 let overviewController = null;
 let labController = null;
 let tracesController = null;
+let permissionsController = null;
+let ingestionController = null;
+let evaluationController = null;
 
 function normalizeView(name) {
   return VIEW_NAMES.includes(name) ? name : "overview";
@@ -54,6 +60,8 @@ export function showView(name, root = globalThis.document) {
   overviewController?.setActive(activeView === "overview");
   labController?.setActive(activeView === "lab");
   tracesController?.setActive(activeView === "traces");
+  ingestionController?.setActive(activeView === "ingestion");
+  evaluationController?.setActive(activeView === "evaluation");
   return activeView;
 }
 
@@ -69,7 +77,7 @@ function readScope() {
 
 function clearViewState() {
   document.querySelectorAll("[data-view]").forEach((view) => {
-    if (["overview", "lab", "traces"].includes(view.dataset.view)) return;
+    if (["overview", "lab", "traces", "ingestion", "evaluation"].includes(view.dataset.view)) return;
     view.querySelectorAll("[data-view-body]").forEach((body) => body.replaceChildren());
     view.querySelectorAll(".is-selected").forEach((item) => item.classList.remove("is-selected"));
     view.querySelectorAll("[aria-selected]").forEach((item) => item.setAttribute("aria-selected", "false"));
@@ -78,6 +86,9 @@ function clearViewState() {
   overviewController?.clear();
   labController?.clear();
   tracesController?.clear();
+  ingestionController?.clear();
+  evaluationController?.clear();
+  permissionsController?.clear();
 }
 
 function setStatus(message) {
@@ -130,6 +141,22 @@ function initializeWorkbench() {
     root: document.getElementById("view-traces"),
     guard: scopeGuard,
     scope: activeScope,
+  });
+  permissionsController = createPermissions({
+    guard: scopeGuard,
+    scope: activeScope,
+  });
+  ingestionController = createIngestion({
+    root: document.getElementById("view-ingestion"),
+    guard: scopeGuard,
+    scope: activeScope,
+    permissions: permissionsController,
+  });
+  evaluationController = createEvaluation({
+    root: document.getElementById("view-evaluation"),
+    guard: scopeGuard,
+    scope: activeScope,
+    permissions: permissionsController,
   });
   restoreRoute();
 

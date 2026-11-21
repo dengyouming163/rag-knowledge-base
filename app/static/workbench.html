@@ -353,7 +353,53 @@
             <div><span class="wb-view-kicker">MODULE / 04</span><h1 id="view-ingestion-title">Ingestion</h1></div>
             <p>Monitor document intake and processing jobs.</p>
           </header>
-          <div class="wb-view-body" data-view-body></div>
+          <div class="wb-view-body wb-ops-workspace" data-view-body>
+            <div class="wb-ops-toolbar">
+              <div class="wb-ops-toolbar-main">
+                <button id="ingestion-load" class="wb-ops-action" type="button">Load jobs</button>
+                <div class="wb-ops-window">
+                  <label for="ingestion-window">Time window</label>
+                  <select id="ingestion-window" disabled aria-describedby="ingestion-window-note"><option>Global window</option></select>
+                </div>
+                <p id="ingestion-window-note" class="wb-ops-note">Time-window filtering is not supported by the jobs API; the latest 50 jobs are shown.</p>
+              </div>
+              <p id="ingestion-permission-status" class="wb-ops-permission" role="status" aria-live="polite">Permissions are checked when jobs load.</p>
+            </div>
+
+            <div class="wb-ops-grid wb-ingestion-grid">
+              <article class="wb-ops-panel wb-ops-history" aria-labelledby="ingestion-jobs-title">
+                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">01 / JOBS</span><h2 id="ingestion-jobs-title">Ingestion jobs</h2></div><span>Independent job state</span></div>
+                <p id="ingestion-jobs-status" class="wb-ops-status-line" role="status" aria-live="polite">Load jobs or refresh to inspect ingestion.</p>
+                <div class="wb-ops-table-scroll">
+                  <table class="wb-ops-table">
+                    <caption class="wb-sr-only">Scoped ingestion jobs</caption>
+                    <thead><tr><th scope="col">Job</th><th scope="col">Document</th><th scope="col">Status</th><th scope="col">Wait</th><th scope="col">Duration</th><th scope="col">Progress</th><th scope="col">Error</th></tr></thead>
+                    <tbody id="ingestion-job-rows"><tr><td colspan="7" class="wb-ops-empty">No ingestion jobs loaded.</td></tr></tbody>
+                  </table>
+                </div>
+              </article>
+
+              <aside id="ingestion-job-detail" class="wb-ops-panel" aria-labelledby="ingestion-detail-title">
+                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">02 / DETAIL</span><h2 id="ingestion-detail-title">Job detail</h2></div></div>
+                <dl class="wb-ops-detail-list">
+                  <div><dt>Job</dt><dd data-job-detail="id">—</dd></div>
+                  <div><dt>Status</dt><dd data-job-detail="status">—</dd></div>
+                  <div><dt>Wait</dt><dd data-job-detail="wait">—</dd></div>
+                  <div><dt>Duration</dt><dd data-job-detail="duration">—</dd></div>
+                  <div><dt>Progress</dt><dd data-job-detail="progress">—</dd></div>
+                  <div><dt>Error</dt><dd data-job-detail="error">—</dd></div>
+                </dl>
+                <button id="ingestion-retry" class="wb-ops-action wb-ops-action-secondary" type="button" hidden disabled>Retry failed job</button>
+                <p id="ingestion-action-status" class="wb-ops-status-line" role="status" aria-live="polite"></p>
+              </aside>
+
+              <article class="wb-ops-panel" aria-labelledby="ingestion-events-title">
+                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">03 / EVENTS</span><h2 id="ingestion-events-title">Job events</h2></div><span>Loaded separately</span></div>
+                <p id="ingestion-job-events-status" class="wb-ops-status-line" role="status" aria-live="polite">Select a job to load its events independently.</p>
+                <ul id="ingestion-job-events" class="wb-ops-events" aria-label="Selected ingestion job events"></ul>
+              </article>
+            </div>
+          </div>
         </section>
 
         <section id="view-evaluation" data-view="evaluation" hidden aria-labelledby="view-evaluation-title">
@@ -361,7 +407,72 @@
             <div><span class="wb-view-kicker">MODULE / 05</span><h1 id="view-evaluation-title">Evaluation</h1></div>
             <p>Review quality runs and comparable evaluation results.</p>
           </header>
-          <div class="wb-view-body" data-view-body></div>
+          <div class="wb-view-body wb-ops-workspace" data-view-body>
+            <div class="wb-ops-toolbar">
+              <div class="wb-ops-toolbar-main">
+                <button id="evaluation-load" class="wb-ops-action" type="button">Load runs</button>
+                <div class="wb-ops-window">
+                  <label for="evaluation-window">Time window</label>
+                  <select id="evaluation-window" disabled aria-describedby="evaluation-window-note"><option>Global window</option></select>
+                </div>
+                <p id="evaluation-window-note" class="wb-ops-note">Time-window filtering is not supported by run history; the latest 20 runs are shown.</p>
+              </div>
+              <p id="evaluation-permission-status" class="wb-ops-permission" role="status" aria-live="polite">Permissions are checked when runs load.</p>
+            </div>
+
+            <div class="wb-run-triggers" aria-label="Start an evaluation or operations drill">
+              <div><span class="wb-ops-index">ACTIONS</span><h2>Start a run</h2><p>Each action creates a real queued run; status follows its server detail.</p></div>
+              <div class="wb-run-trigger-buttons">
+                <button id="run-trigger-eval-mock" class="wb-ops-action" type="button" data-kind="eval_mock" disabled>Evaluation</button>
+                <button id="run-trigger-loadtest" class="wb-ops-action wb-ops-action-secondary" type="button" data-kind="loadtest" disabled>Load test</button>
+                <button id="run-trigger-drill-parser" class="wb-ops-action wb-ops-action-secondary" type="button" data-kind="drill_parser" disabled>Parser drill</button>
+                <button id="run-trigger-drill-llm" class="wb-ops-action wb-ops-action-secondary" type="button" data-kind="drill_llm" disabled>LLM drill</button>
+                <button id="run-trigger-drill-queue" class="wb-ops-action wb-ops-action-secondary" type="button" data-kind="drill_queue" disabled>Queue drill</button>
+              </div>
+            </div>
+            <p id="evaluation-action-status" class="wb-ops-status-line wb-ops-action-status" role="status" aria-live="polite"></p>
+
+            <div class="wb-ops-grid wb-evaluation-grid">
+              <article class="wb-ops-panel wb-ops-history" aria-labelledby="evaluation-runs-title">
+                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">01 / HISTORY</span><h2 id="evaluation-runs-title">Run history</h2></div><span>Independent history state</span></div>
+                <p id="evaluation-runs-status" class="wb-ops-status-line" role="status" aria-live="polite">Load runs or refresh to inspect evaluation history.</p>
+                <div class="wb-ops-table-scroll">
+                  <table class="wb-ops-table wb-evaluation-table">
+                    <caption class="wb-sr-only">Scoped evaluation and drill runs</caption>
+                    <thead><tr><th scope="col">Run</th><th scope="col">Kind</th><th scope="col">Status</th><th scope="col">Requested</th><th scope="col">Started</th><th scope="col">Finished</th><th scope="col">Exit</th></tr></thead>
+                    <tbody id="evaluation-run-rows"><tr><td colspan="7" class="wb-ops-empty">No evaluation runs loaded.</td></tr></tbody>
+                  </table>
+                </div>
+              </article>
+
+              <article id="evaluation-run-detail" class="wb-ops-panel wb-evaluation-detail" aria-labelledby="evaluation-detail-title">
+                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">02 / DETAIL</span><h2 id="evaluation-detail-title">Run detail</h2></div><span>Independent detail state</span></div>
+                <p id="evaluation-detail-status" class="wb-ops-status-line" role="status" aria-live="polite">Select a run to inspect its detail independently.</p>
+                <dl class="wb-ops-detail-list wb-run-fields">
+                  <div><dt>Kind</dt><dd data-run-field="kind">—</dd></div>
+                  <div><dt>Status</dt><dd data-run-field="status">—</dd></div>
+                  <div><dt>Requested</dt><dd data-run-field="requested_at">—</dd></div>
+                  <div><dt>Started</dt><dd data-run-field="started_at">—</dd></div>
+                  <div><dt>Finished</dt><dd data-run-field="finished_at">—</dd></div>
+                  <div><dt>Exit code</dt><dd data-run-field="exit_code">—</dd></div>
+                  <div><dt>Artifact path</dt><dd data-run-field="artifact_path">—</dd></div>
+                  <div><dt>Error</dt><dd data-run-field="error">—</dd></div>
+                </dl>
+
+                <div class="wb-run-metrics-heading"><h3>Quality metrics</h3><p id="evaluation-delta-context">No comparison loaded.</p></div>
+                <div class="wb-run-metric-grid">
+                  <div class="wb-run-metric"><span>Recall@K</span><strong data-run-metric="recall_at_k">—</strong><small>Delta <output data-run-delta="recall_at_k">—</output></small></div>
+                  <div class="wb-run-metric"><span>MRR</span><strong data-run-metric="mrr">—</strong><small>Delta <output data-run-delta="mrr">—</output></small></div>
+                  <div class="wb-run-metric"><span>Hit rate</span><strong data-run-metric="hit_rate">—</strong><small>Delta <output data-run-delta="hit_rate">—</output></small></div>
+                  <div class="wb-run-metric"><span>Refusal accuracy</span><strong data-run-metric="refusal_accuracy">—</strong><small>Delta <output data-run-delta="refusal_accuracy">—</output></small></div>
+                  <div class="wb-run-metric"><span>Answer coverage</span><strong data-run-metric="answer_coverage">—</strong><small>Delta <output data-run-delta="answer_coverage">—</output></small></div>
+                  <div class="wb-run-metric"><span>Citation accuracy</span><strong data-run-metric="citation_accuracy">—</strong><small>Delta <output data-run-delta="citation_accuracy">—</output></small></div>
+                </div>
+                <h3 class="wb-run-output-title">Output tail</h3>
+                <pre id="evaluation-run-output" class="wb-run-output" tabindex="0" aria-label="Run output tail">—</pre>
+              </article>
+            </div>
+          </div>
         </section>
 
         <section id="view-access" data-view="access" hidden aria-labelledby="view-access-title">

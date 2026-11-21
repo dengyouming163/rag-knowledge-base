@@ -942,3 +942,541 @@ def test_trace_delayed_clipboard_cannot_overwrite_trace_or_scope_changes(
     page.wait_for_function("window.__clipboardWrites[1].settled")
     assert page.locator("#trace-copy-status").inner_text() == cleared_status
     assert "Copy failed" not in cleared_status
+
+
+def test_workbench_ingestion_evaluation_and_permission_markers(client: TestClient) -> None:
+    html = client.get("/ui/workbench.html").text
+    ingestion = html.split('<section id="view-ingestion"', 1)[1].split("</section>", 1)[0]
+    evaluation = html.split('<section id="view-evaluation"', 1)[1].split("</section>", 1)[0]
+
+    for element_id in (
+        "ingestion-load", "ingestion-window", "ingestion-jobs-status",
+        "ingestion-job-rows", "ingestion-job-detail", "ingestion-job-events-status",
+        "ingestion-job-events", "ingestion-retry", "ingestion-permission-status",
+    ):
+        assert f'id="{element_id}"' in ingestion
+        assert html.count(f'id="{element_id}"') == 1
+    for heading in ("Job", "Document", "Status", "Wait", "Duration", "Progress", "Error"):
+        assert heading in ingestion
+    assert "disabled" in ingestion.split('id="ingestion-window"', 1)[1].split(">", 1)[0]
+    assert "not supported" in ingestion
+
+    for element_id in (
+        "evaluation-load", "evaluation-window", "evaluation-runs-status",
+        "evaluation-run-rows", "evaluation-run-detail", "evaluation-run-output",
+        "evaluation-action-status", "evaluation-permission-status",
+    ):
+        assert f'id="{element_id}"' in evaluation
+        assert html.count(f'id="{element_id}"') == 1
+    triggers = {
+        "run-trigger-eval-mock": "eval_mock",
+        "run-trigger-loadtest": "loadtest",
+        "run-trigger-drill-parser": "drill_parser",
+        "run-trigger-drill-llm": "drill_llm",
+        "run-trigger-drill-queue": "drill_queue",
+    }
+    for element_id, kind in triggers.items():
+        assert f'id="{element_id}"' in evaluation
+        assert f'data-kind="{kind}"' in evaluation
+    for key in (
+        "recall_at_k", "mrr", "hit_rate", "refusal_accuracy",
+        "answer_coverage", "citation_accuracy",
+    ):
+        assert f'data-run-metric="{key}"' in evaluation
+        assert f'data-run-delta="{key}"' in evaluation
+    for field in (
+        "kind", "status", "requested_at", "started_at", "finished_at",
+        "exit_code", "artifact_path", "error",
+    ):
+        assert f'data-run-field="{field}"' in evaluation
+    assert "disabled" in evaluation.split('id="evaluation-window"', 1)[1].split(">", 1)[0]
+    assert "not supported" in evaluation
+
+    app_module = client.get("/ui/js/app.mjs").text
+    assert 'from "./permissions.mjs"' in app_module
+    assert 'from "./views/ingestion.mjs"' in app_module
+    assert 'from "./views/evaluation.mjs"' in app_module
+    permissions = client.get("/ui/js/permissions.mjs")
+    ingestion_module = client.get("/ui/js/views/ingestion.mjs")
+    evaluation_module = client.get("/ui/js/views/evaluation.mjs")
+    assert permissions.status_code == 200
+    assert ingestion_module.status_code == 200
+    assert evaluation_module.status_code == 200
+    for marker in ("canActions", "canRetry", "canCompare", "/v1/identity", "/v1/ops/permissions"):
+        assert marker in permissions.text
+    for kind in triggers.values():
+        assert f'triggerRun("{kind}")' in evaluation_module.text
+
+
+def _task14_identity(*, admin: bool = True, actions: bool = True) -> dict:
+    role = "admin" if admin else "member"
+    return {
+        "tenant": "demo", "user": "demo_user", "role": role,
+        "tags": [], "is_admin": admin, "kbs": ["kb_after_sale"],
+        "isolation": {"tenant_scope": True, "acl": "admin_bypass", "rls": {}},
+        "ops": {"actions_enabled": actions, "can_trigger": admin and actions},
+    }
+
+
+def _task14_permissions(*, admin: bool = True) -> dict:
+    return {
+        "tenant": "demo", "user": "demo_user", "role": "admin" if admin else "member",
+        "tags": [], "is_admin": admin,
+        "kb": {"id": "kb_after_sale", "exists": True, "tenant_match": True},
+        "acl": {"mode": "admin_bypass", "user_tags": []},
+        "rls": {"enabled": True, "scoped_count": 1, "bare_count": 0},
+        "decision": "allow", "reason": "allowed",
+    }
+
+
+def _install_task14_permissions(page, state: dict) -> None:
+    def identity_route(route) -> None:
+        mode = state.get("identity", "admin")
+        if mode == "error":
+            _fulfill_json(route, {"detail": "identity exploded"}, status=500)
+        else:
+            _fulfill_json(route, _task14_identity(admin=mode != "member", actions=mode != "disabled"))
+
+    def permissions_route(route) -> None:
+        mode = state.get("permissions", "admin")
+        if mode == "error":
+            _fulfill_json(route, {"detail": "permission exploded"}, status=500)
+        else:
+            _fulfill_json(route, _task14_permissions(admin=mode != "member"))
+
+    page.route("**/v1/identity", identity_route)
+    page.route("**/v1/ops/permissions**", permissions_route)
+
+
+def _task14_job(job_id: int, status: str = "failed") -> dict:
+    return {
+        "id": job_id, "tenant_id": "demo", "kb_id": "kb_after_sale",
+        "doc_id": f"doc_{job_id}", "status": status,
+        "error": "parser failed" if status == "failed" else "",
+        "source": "upload", "attempts": 2, "progress": 80 if status == "failed" else 25,
+        "created_at": "2026-11-20T08:00:00Z", "started_at": "2026-11-20T08:00:01Z",
+        "finished_at": "2026-11-20T08:00:03Z" if status == "failed" else None,
+        "wait_seconds": 1.25, "duration_seconds": 2.5 if status == "failed" else None,
+    }
+
+
+def test_ingestion_jobs_events_retry_permissions_and_partial_failures(workbench_page) -> None:
+    page, workbench_url = workbench_page
+    page.set_default_timeout(7000)
+    permission_state = {"identity": "admin", "permissions": "admin"}
+    job_state = {"jobs": "ok", "events": "ok", "retry": 202}
+    job_requests: list[str] = []
+    event_requests: list[str] = []
+    retry_requests: list[str] = []
+    _install_task14_permissions(page, permission_state)
+
+    def jobs_route(route) -> None:
+        job_requests.append(route.request.url)
+        if job_state["jobs"] == "error":
+            _fulfill_json(route, {"detail": "jobs exploded"}, status=500)
+            return
+        malformed = _task14_job(13, "running")
+        malformed.update({"wait_seconds": -4, "duration_seconds": "bad", "progress": None})
+        _fulfill_json(route, {
+            "jobs": [_task14_job(11), _task14_job(12, "running"), malformed],
+            "counts": {"queued": 0, "running": 2, "succeeded": 0, "failed": 1},
+        })
+
+    def events_route(route) -> None:
+        event_requests.append(route.request.url)
+        if job_state["events"] == "error":
+            _fulfill_json(route, {"detail": "events exploded"}, status=500)
+            return
+        if job_state["events"] == "empty":
+            _fulfill_json(route, {"job_id": 11, "events": []})
+            return
+        _fulfill_json(route, {"job_id": 11, "events": [{
+            "id": 1, "job_id": 11, "stage": "parsing", "status": "failed",
+            "progress": 80, "message": '<img src=x onerror="window.__task14Xss=1">',
+            "created_at": "2026-11-20T08:00:03Z",
+        }]})
+
+    def retry_route(route) -> None:
+        retry_requests.append(route.request.url)
+        status = job_state["retry"]
+        detail = {409: "job is not failed", 403: "admin required", 404: "job not found"}.get(status, "")
+        _fulfill_json(route, {"job_id": 11, "status": "queued"} if status == 202 else {"detail": detail}, status=status)
+
+    page.route("**/v1/ops/jobs?*", jobs_route)
+    page.route("**/v1/ops/jobs/*/events", events_route)
+    page.route("**/v1/ops/jobs/*/retry", retry_route)
+    page.set_viewport_size({"width": 1440, "height": 1000})
+    page.goto(f"{workbench_url}#/ingestion")
+    assert job_requests == []
+    page.locator("#ingestion-load").click()
+    page.locator('[data-job-select="11"]').wait_for(state="visible")
+    assert parse_qs(urlparse(job_requests[0]).query) == {"kb_id": ["kb_after_sale"], "limit": ["50"]}
+    assert "window" not in job_requests[0]
+    assert page.locator("#ingestion-window").is_disabled()
+    assert "not supported" in page.locator("#ingestion-window-note").inner_text()
+    assert page.locator('[data-job-field="wait"][data-job-id="11"]').inner_text() == "1.25 s"
+    assert page.locator('[data-job-field="duration"][data-job-id="11"]').inner_text() == "2.50 s"
+    assert page.locator('[data-job-field="progress"][data-job-id="13"]').inner_text() == "—"
+    assert "NaN" not in page.locator("#view-ingestion").inner_text()
+    assert "Infinity" not in page.locator("#view-ingestion").inner_text()
+
+    page.locator('[data-job-select="11"]').focus()
+    page.keyboard.press("Enter")
+    page.locator("#ingestion-job-events").filter(has_text="parsing").wait_for()
+    assert event_requests[-1].endswith("/v1/ops/jobs/11/events")
+    assert page.locator("#ingestion-job-events img").count() == 0
+    assert page.evaluate("window.__task14Xss") is None
+    assert page.locator("#ingestion-retry").is_enabled()
+    assert page.locator("#ingestion-retry").get_attribute("title") == "Retry failed job #11"
+    page.locator("#ingestion-retry").click()
+    page.locator("#ingestion-action-status").filter(has_text="reloaded").wait_for()
+    assert len(retry_requests) == 1
+    assert len(job_requests) == 2
+    assert len(event_requests) == 2
+
+    job_state["retry"] = 409
+    page.locator("#ingestion-retry").click()
+    page.locator("#ingestion-action-status").filter(has_text="已有运行中的任务").wait_for()
+    assert page.locator("#ingestion-retry").is_enabled()
+    job_state["retry"] = 403
+    page.locator("#ingestion-retry").click()
+    page.locator("#ingestion-action-status").filter(has_text="admin required").wait_for()
+    assert page.locator("#ingestion-retry").is_enabled()
+
+    job_state["events"] = "error"
+    page.locator('[data-job-select="12"]').click()
+    page.locator("#ingestion-job-events-status").filter(has_text="events exploded").wait_for()
+    assert page.locator('[data-job-select="11"]').is_visible()
+    job_state["events"] = "ok"
+    job_state["jobs"] = "error"
+    page.locator("#ingestion-load").click()
+    page.locator("#ingestion-jobs-status").filter(has_text="jobs exploded").wait_for()
+    assert "Select a job" in page.locator("#ingestion-job-events-status").inner_text() or "events" in page.locator("#ingestion-job-events-status").inner_text()
+    assert "succeeded" not in page.locator("#ingestion-jobs-status").inner_text()
+
+    job_state["jobs"] = "ok"
+    job_state["retry"] = 404
+    page.locator("#ingestion-load").click()
+    page.locator('[data-job-select="11"]').click()
+    page.locator("#ingestion-job-events").filter(has_text="parsing").wait_for()
+    page.locator("#ingestion-retry").click()
+    page.locator("#ingestion-action-status").filter(has_text="no longer visible").wait_for()
+    assert page.locator('[data-job-select="11"]').count() == 0
+    assert page.locator("#ingestion-retry").is_hidden()
+
+    permission_state.update(identity="member", permissions="member")
+    page.locator("#scope-user").fill("member_user")
+    page.locator("#scope-user").press("Tab")
+    page.locator("#scope-refresh").click()
+    page.locator('[data-job-select="11"]').click()
+    assert page.locator("#ingestion-retry").is_disabled()
+    assert "Administrator role required" in page.locator("#ingestion-permission-status").inner_text()
+    permission_state.update(identity="disabled", permissions="admin")
+    page.locator("#scope-user").fill("demo_user")
+    page.locator("#scope-user").press("Tab")
+    page.locator("#scope-refresh").click()
+    page.locator('[data-job-select="11"]').click()
+    assert "OPS_ENABLE_ACTIONS" in page.locator("#ingestion-permission-status").inner_text()
+
+
+def _task14_metrics(base: float) -> dict:
+    return {
+        "recall_at_k": base,
+        "mrr": base - 0.1,
+        "hit_rate": base + 0.1,
+        "refusal_accuracy": base - 0.2,
+        "answer_coverage": base + 0.05,
+        "citation_accuracy": base - 0.05,
+    }
+
+
+def _task14_run(run_id: int, kind: str = "eval_mock", status: str = "succeeded", base: float = 0.8) -> dict:
+    return {
+        "id": run_id, "tenant_id": "demo", "kb_id": "kb_after_sale",
+        "kind": kind, "status": status, "params": {}, "requested_by": "demo_user",
+        "requested_at": "2026-11-20T08:00:00Z", "started_at": "2026-11-20T08:00:01Z",
+        "finished_at": "2026-11-20T08:00:03Z" if status in ("succeeded", "completed") else None,
+        "exit_code": 0 if status in ("succeeded", "completed") else None,
+        "summary": {"metrics": _task14_metrics(base), "counts": {"cases": 10}},
+        "artifact_path": f"data/ops/eval/{run_id}.json", "attempts": 1,
+        "output_tail": '<img src=x onerror="window.__task14Xss=1">',
+        "error": "",
+    }
+
+
+def _install_task14_runs(page, state: dict, requests: dict) -> None:
+    def runs_route(route) -> None:
+        requests.setdefault("history", []).append(route.request.url)
+        if state.get("history") == "error":
+            _fulfill_json(route, {"detail": "runs exploded"}, status=500)
+            return
+        _fulfill_json(route, {"runs": [
+            _task14_run(30, base=0.8),
+            _task14_run(29, status="failed", base=0.99),
+            _task14_run(28, kind="loadtest", base=0.7),
+            _task14_run(27, base=0.6),
+            _task14_run(26, status="completed", base=0.4),
+        ]})
+
+    def detail_route(route) -> None:
+        run_id = int(urlparse(route.request.url).path.rsplit("/", 1)[-1])
+        requests.setdefault("details", []).append(run_id)
+        if run_id in state.get("detail_errors", {}):
+            _fulfill_json(route, {"detail": "detail exploded"}, status=state["detail_errors"][run_id])
+            return
+        base = {30: 0.8, 29: 0.99, 28: 0.7, 27: 0.6, 26: 0.4}.get(run_id, 0.5)
+        kind = "loadtest" if run_id == 28 else "eval_mock"
+        status = "failed" if run_id == 29 else "succeeded"
+        _fulfill_json(route, _task14_run(run_id, kind=kind, status=status, base=base))
+
+    page.route("**/v1/ops/runs?*", runs_route)
+    page.route("**/v1/ops/runs/*", detail_route)
+
+
+def test_evaluation_history_detail_metrics_same_kind_delta_and_local_errors(workbench_page) -> None:
+    page, workbench_url = workbench_page
+    page.set_default_timeout(7000)
+    permission_state = {"identity": "admin", "permissions": "admin"}
+    run_state = {"history": "ok", "detail_errors": {}}
+    requests: dict = {}
+    _install_task14_permissions(page, permission_state)
+    _install_task14_runs(page, run_state, requests)
+    page.set_viewport_size({"width": 1440, "height": 1000})
+    page.goto(f"{workbench_url}#/evaluation")
+    assert requests == {}
+    page.locator("#evaluation-load").click()
+    page.locator('[data-run-select="30"]').wait_for(state="visible")
+    assert parse_qs(urlparse(requests["history"][0]).query) == {"kb_id": ["kb_after_sale"], "limit": ["20"]}
+    page.locator('[data-run-select="30"]').focus()
+    page.keyboard.press("Enter")
+    page.locator('[data-run-field="kind"]').filter(has_text="eval_mock").wait_for()
+    assert requests["details"] == [30]
+    for field in ("status", "requested_at", "started_at", "finished_at", "exit_code", "artifact_path", "error"):
+        assert page.locator(f'[data-run-field="{field}"]').inner_text() != ""
+    expected_deltas = {
+        "recall_at_k": "+0.2000", "mrr": "+0.2000", "hit_rate": "+0.2000",
+        "refusal_accuracy": "+0.2000", "answer_coverage": "+0.2000", "citation_accuracy": "+0.2000",
+    }
+    for key, delta in expected_deltas.items():
+        assert page.locator(f'[data-run-metric="{key}"]').inner_text() != "—"
+        assert page.locator(f'[data-run-delta="{key}"]').inner_text() == delta
+    assert "29" not in page.locator("#evaluation-delta-context").inner_text()
+    assert "27" in page.locator("#evaluation-delta-context").inner_text()
+    assert page.locator("#evaluation-run-output img").count() == 0
+    assert page.evaluate("window.__task14Xss") is None
+
+    run_state["history"] = "error"
+    page.locator("#evaluation-load").click()
+    page.locator("#evaluation-runs-status").filter(has_text="runs exploded").wait_for()
+    assert page.locator('[data-run-field="kind"]').inner_text() == "eval_mock"
+    assert "NaN" not in page.locator("#view-evaluation").inner_text()
+    run_state["history"] = "ok"
+    page.locator("#evaluation-load").click()
+    run_state["detail_errors"] = {27: 500}
+    page.locator('[data-run-select="27"]').click()
+    page.locator("#evaluation-detail-status").filter(has_text="detail exploded").wait_for()
+    assert page.locator('[data-run-select="30"]').is_visible()
+    run_state["detail_errors"] = {27: 404}
+    page.locator('[data-run-select="27"]').click()
+    page.locator("#evaluation-detail-status").filter(has_text="no longer visible").wait_for()
+    assert page.locator('[data-run-select="27"]').count() == 0
+
+    permission_state["identity"] = "error"
+    page.locator("#scope-user").fill("unknown_user")
+    page.locator("#scope-user").press("Tab")
+    page.locator("#scope-refresh").click()
+    page.locator("#evaluation-permission-status").filter(has_text="identity exploded").wait_for()
+    status = page.locator("#evaluation-permission-status").inner_text()
+    assert "identity exploded" in status
+    assert "Identity unavailable" in status
+    assert "Administrator role required" not in status
+    assert page.locator("#scope-kb").input_value() == "kb_after_sale"
+    permission_state.update(identity="admin", permissions="error")
+    page.locator("#scope-user").fill("demo_user")
+    page.locator("#scope-user").press("Tab")
+    page.locator("#scope-refresh").click()
+    page.locator("#evaluation-permission-status").filter(has_text="permission exploded").wait_for()
+    status = page.locator("#evaluation-permission-status").inner_text()
+    assert "permission exploded" in status
+    assert "Knowledge-base permissions unavailable" in status
+
+
+def test_evaluation_explicit_triggers_202_409_and_mobile_desktop_geometry(workbench_page) -> None:
+    page, workbench_url = workbench_page
+    page.set_default_timeout(7000)
+    permission_state = {"identity": "admin", "permissions": "admin"}
+    trigger_state = {"mode": "accepted"}
+    posted: list[dict] = []
+    requested_details: list[int] = []
+    _install_task14_permissions(page, permission_state)
+    page.route("**/v1/ops/runs?*", lambda route: _fulfill_json(route, {"runs": []}))
+    kind_ids = {"eval_mock": 101, "loadtest": 102, "drill_parser": 103, "drill_llm": 104, "drill_queue": 105}
+
+    def trigger_route(route) -> None:
+        body = route.request.post_data_json
+        posted.append({"body": body, "headers": route.request.headers, "url": route.request.url})
+        if trigger_state["mode"] == "conflict":
+            _fulfill_json(route, {"detail": {"message": "run already active", "run_id": 88}}, status=409)
+        elif trigger_state["mode"] == "missing":
+            _fulfill_json(route, {"status": "queued"}, status=202)
+        else:
+            _fulfill_json(route, {"run_id": kind_ids[body["kind"]], "status": "queued"}, status=202)
+
+    def detail_route(route) -> None:
+        run_id = int(urlparse(route.request.url).path.rsplit("/", 1)[-1])
+        requested_details.append(run_id)
+        kind = next(key for key, value in kind_ids.items() if value == run_id)
+        _fulfill_json(route, _task14_run(run_id, kind=kind, base=0.5))
+
+    page.route("**/v1/ops/kbs/*/runs", trigger_route)
+    page.route("**/v1/ops/runs/*", detail_route)
+    triggers = {
+        "run-trigger-eval-mock": "eval_mock", "run-trigger-loadtest": "loadtest",
+        "run-trigger-drill-parser": "drill_parser", "run-trigger-drill-llm": "drill_llm",
+        "run-trigger-drill-queue": "drill_queue",
+    }
+    for width in (1440, 390):
+        posted.clear()
+        requested_details.clear()
+        page.set_viewport_size({"width": width, "height": 1000})
+        page.goto(f"{workbench_url}#/evaluation")
+        page.locator("#evaluation-load").click()
+        for button_id, kind in triggers.items():
+            button = page.locator(f"#{button_id}")
+            assert button.get_attribute("data-kind") == kind
+            button.scroll_into_view_if_needed()
+            button.click()
+            page.locator("#evaluation-action-status").filter(has_text="terminal").wait_for()
+            assert posted[-1]["body"] == {"kind": kind, "params": {}}
+            assert "tenant" not in posted[-1]["body"]
+            assert posted[-1]["headers"]["x-tenant-id"] == "demo"
+            assert posted[-1]["url"].endswith("/v1/ops/kbs/kb_after_sale/runs")
+            assert requested_details[-1] == kind_ids[kind]
+            assert page.locator('[data-run-field="kind"]').inner_text() == kind
+            assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
+
+        trigger_state["mode"] = "conflict"
+        page.locator("#run-trigger-eval-mock").click()
+        page.locator("#evaluation-action-status").filter(has_text="already active").wait_for()
+        for button_id in triggers:
+            assert page.locator(f"#{button_id}").is_enabled()
+        trigger_state["mode"] = "missing"
+        page.locator("#run-trigger-loadtest").click()
+        page.locator("#evaluation-action-status").filter(has_text="valid run id").wait_for()
+        assert all(run_id is not None for run_id in requested_details)
+        assert not page.evaluate("window.location.href.includes('undefined')")
+        trigger_state["mode"] = "accepted"
+
+
+def test_evaluation_poll_stops_on_exit_scope_hidden_and_destroy_ignores_late_responses(workbench_page) -> None:
+    page, workbench_url = workbench_page
+    page.set_default_timeout(7000)
+    _install_task14_permissions(page, {"identity": "admin", "permissions": "admin"})
+    page.route("**/v1/ops/runs?*", lambda route: _fulfill_json(route, {"runs": []}))
+    page.route("**/v1/ops/kbs/*/runs", lambda route: _fulfill_json(route, {"run_id": 101, "status": "queued"}, status=202))
+    detail_calls = {"count": 0}
+    page.add_init_script("""
+        window.__task14Signals = [];
+        window.__task14Aborts = 0;
+        const originalFetch = window.fetch.bind(window);
+        window.fetch = (input, init = {}) => {
+            if (String(input).includes('/v1/ops/')) {
+                window.__task14Signals.push(init.signal);
+                init.signal?.addEventListener('abort', () => { window.__task14Aborts += 1; }, { once: true });
+            }
+            return originalFetch(input, init);
+        };
+    """)
+
+    def detail_route(route) -> None:
+        detail_calls["count"] += 1
+        status = "succeeded" if detail_calls["count"] >= 3 else "running"
+        _fulfill_json(route, _task14_run(101, status=status))
+
+    page.route("**/v1/ops/runs/*", detail_route)
+    page.goto(f"{workbench_url}#/evaluation")
+    page.locator("#evaluation-load").click()
+    page.locator("#run-trigger-eval-mock").click()
+    page.locator("#evaluation-action-status").filter(has_text="terminal").wait_for(timeout=10000)
+    assert detail_calls["count"] == 3
+    polls_after_terminal = detail_calls["count"]
+    page.wait_for_timeout(1200)
+    assert detail_calls["count"] == polls_after_terminal
+
+    detail_calls["count"] = 0
+    page.locator("#run-trigger-eval-mock").click()
+    page.locator('[data-run-field="status"]').filter(has_text="running").wait_for()
+    page.evaluate("window.location.hash = '#/overview'")
+    page.locator("#view-overview").wait_for(state="visible")
+    page.wait_for_function("window.__task14Aborts >= 1")
+    calls_after_exit = detail_calls["count"]
+    page.wait_for_timeout(1200)
+    assert detail_calls["count"] == calls_after_exit
+
+    page.evaluate("window.location.hash = '#/evaluation'")
+    page.locator("#scope-refresh").click()
+    detail_calls["count"] = 0
+    page.locator("#run-trigger-eval-mock").click()
+    page.locator('[data-run-field="status"]').filter(has_text="running").wait_for()
+    page.evaluate("""
+        Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+        document.dispatchEvent(new Event('visibilitychange'));
+    """)
+    calls_after_hide = detail_calls["count"]
+    page.wait_for_timeout(1200)
+    assert detail_calls["count"] == calls_after_hide
+    page.evaluate("""
+        Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+        document.dispatchEvent(new Event('visibilitychange'));
+        window.location.hash = '#/overview';
+    """)
+
+    # Public destroy must abort even an abort-insensitive API and ignore its late 202.
+    result = page.evaluate("""async () => {
+        const { ScopeGuard } = await import('/ui/js/core.mjs');
+        const { createEvaluation } = await import('/ui/js/views/evaluation.mjs');
+        const guard = new ScopeGuard();
+        const calls = [];
+        let resolveTrigger;
+        const pending = new Promise(resolve => { resolveTrigger = resolve; });
+        const controller = createEvaluation({
+            root: document.createElement('section'), guard,
+            scope: { tenant: 'demo', kb: 'kb_after_sale', user: 'demo_user', window: '24h' },
+            api: (path, options) => {
+                calls.push({ path, signal: options.signal });
+                if (options.method === 'POST') return pending;
+                return Promise.resolve({ id: 101, kind: 'eval_mock', status: 'succeeded', summary: {} });
+            },
+        });
+        controller.setActive(true);
+        const triggering = controller.triggerRun('eval_mock');
+        controller.destroy();
+        const aborted = calls.every(call => call.signal?.aborted);
+        resolveTrigger({ run_id: 101, status: 'queued' });
+        await triggering;
+        await Promise.resolve();
+        return { calls: calls.map(call => call.path), aborted };
+    }""")
+    assert result["aborted"] is True
+    assert result["calls"] == ["/v1/ops/kbs/kb_after_sale/runs"]
+
+
+def test_ingestion_late_jobs_response_cannot_cross_scope(workbench_page) -> None:
+    page, workbench_url = workbench_page
+    page.set_default_timeout(7000)
+    _install_task14_permissions(page, {"identity": "admin", "permissions": "admin"})
+    pending = []
+    page.route("**/v1/ops/jobs?*", lambda route: pending.append(route))
+    page.goto(f"{workbench_url}#/ingestion")
+    page.locator("#ingestion-load").click()
+    page.wait_for_function("document.querySelector('#ingestion-jobs-status').textContent.includes('Loading')")
+    page.locator("#scope-kb").fill("kb_changed")
+    page.locator("#scope-kb").press("Tab")
+    assert page.locator("#ingestion-jobs-status").inner_text() == "Load jobs or refresh to inspect ingestion."
+    assert len(pending) == 1
+    try:
+        _fulfill_json(pending.pop(0), {"jobs": [_task14_job(999)], "counts": {}})
+    except Exception:
+        pass
+    assert page.locator('[data-job-select="999"]').count() == 0
+    assert page.locator("#ingestion-job-events li").count() == 0
