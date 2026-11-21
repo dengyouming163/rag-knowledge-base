@@ -112,7 +112,7 @@ job_id=9858 doc_id=kb_smoke-e72f64ed duplicated=True；status=succeeded progress
 
 ### 实时 FastAPI / Chromium 验收矩阵
 
-最终汇总：`20 passed / 0 failed / 0 running`。每项均由 `final-report.json` 的同名 check 记录动作与观察值。
+原 20 项实时矩阵：`20 passed / 0 failed / 0 running`。第 2 次规格审查后补充 2 项：`2 passed`；合并后 `22 passed / 0 failed / 0 running`。每项均由 `final-report.json` 的同名 check 记录动作与观察值。
 
 - [x] 01 `live_fastapi_static_arbitrary_cwd`：任意 cwd 下 `/live`、`/ready`、`/ui/`、CSS、`app.mjs`、`overview.mjs` 均 200；`/ui` 为 307 且 Location 指向 `/ui/`；已删除的 `/ui/workbench.html` 为 404。
 - [x] 02 `live_upload_worker_and_acl_seed`：真实 API 上传 job #1，真实 worker 后 `succeeded / progress=100 / attempts=1`，生成 4 chunks；内部章节设置 finance ACL，供后续身份比较。
@@ -130,10 +130,31 @@ job_id=9858 doc_id=kb_smoke-e72f64ed duplicated=True；status=succeeded progress
 - [x] 14 `trace_drawer_and_mobile_interaction`：1280 drawer 有 `aria-modal`、初始关闭按钮焦点、Shift+Tab 焦点圈、Escape 关闭及触发点焦点恢复；390 选择 trace 后隐藏列表，List/Detail 的 ArrowRight 切换可用。
 - [x] 15 `overview_pricing_partial_failure_stale`：完整和部分定价分别显示 Complete estimate / Partial estimate；真实 summary 500 时页面保留同 scope 缓存，显示 `stale-at` 与 Last success，trends 仍独立更新。
 - [x] 16 `non_admin_cross_tenant_scope_invalidation`：member 的五个动作按钮全部 disabled，直接 API 返回 403；跨租户 API 返回 404；慢 SSE 期间切换 KB 后，迟到回答为空且旧 trace 隐藏。
-- [x] 17 `metric_write_failure_and_missing_evidence`：RAG 指标写故障时真实 Search 仍 200；浏览器直开 trace `9e69be04584a` 显示 Missing metric 警告；`task16metricnoevents` 的详情明确返回 `missing: ["events"]`。
+- [x] 17 `metric_write_failure_and_missing_evidence`：RAG 指标写故障时真实 Search 仍 200；浏览器直开 trace `9e69be04584a` 显示 Missing metric 警告；`task16metricnoevents` 的详情明确返回 `missing: ["events"]`。该项当时只用 API 校验 missing events；Chromium 观察已在补充验收 `chromium_missing_events_observation` 中补齐（见下节）。
 - [x] 18 `ingestion_failure_ui_retry_success`：暂时移走已上传文件，job #3 经真实 worker 三次尝试后 terminal failed，错误为 `FileNotFoundError`；Chromium 点击 Retry 被接受，恢复文件后真实 worker 成功，UI 为 `succeeded / 100%`。
 - [x] 19 `browser_trigger_eval_loadtest_three_drills`：浏览器逐一点击评测、固定压测和三类演练，真实 `run_once` 执行 run #1–#5；全部 `succeeded / exit_code=0`，UI 回读终态，评测与压测 artifact 已保存并另行读取核对。
 - [x] 20 `identity_comparison_and_audit`：guest/tagged/admin 命中数为 3/4/4；Audit 实际七行包括 member `run_eval_mock/denied`、admin `job_retry/allowed`、allowed eval/loadtest 和三项 drill，不是只做页面子串匹配。
+
+### 补充验收：纯键盘链路与 Trace missing events（第 2 次规格审查）
+
+第 2 次规格审查指出：原 20 项中的键盘证据只覆盖品牌/导航/内部 Tab，scope、提交、Trace 选择、抽屉、复制、五类触发和 Retry 实际由 `fill()` / `.click()` 完成；missing events 也只有 API 校验。为此补做以下真实验收，原 20 项结论保持不变。
+
+- 环境：复用现有 `rag-kb-pg`（`127.0.0.1:5433`，Alembic 0011 head），在同一实例创建一次性数据库 `task16_supplement_1795264318`，使用唯一 tenant/KB `t16_supplement_1795264318` / `kb16_supplement_1795264318` 与 `u16_admin`。真实 Uvicorn/FastAPI（8000，`OPS_ENABLE_ACTIONS=1`）、真实上传、`src.worker.worker_once`、`scripts.run_ops.run_once`、系统 Chrome（Playwright Chromium 协议）；外部 LLM 仍为本机确定性桩，embedding 仍为 `EMBED_MODE=mock`。开发库、开发 worker 与 `rag-kb-pg` 的配置均未改动，补验收数据只写入一次性数据库。
+- 新增 check `keyboard_only_full_acceptance_chain`：**passed**，173 步，60.2s。所有交互只使用 Tab/Shift+Tab/Enter/ArrowDown/Escape 和键盘输入，脚本不使用 `fill()` 或 `.click()`。每一步的实际按键、焦点元素、`location.hash` 和应用状态都写入 `final-report.json` 的 `observation.steps`。
+- 实际链路与观察：
+  - scope：从文档起始 Tab 到 `#scope-tenant`，键盘输入 tenant、KB、user；在 `#scope-window` 按 ArrowDown 从 24h 切到 7d；Tab 到 `#scope-refresh` 按 Enter。overview summary 与 trends 均为 `success`，scope 为 `t16_supplement_1795264318 / kb16_supplement_1795264318 / u16_admin / 7d`。
+  - nav：Shift+Tab 到 `[data-nav="lab"]`，Enter 后进入 `#/lab`。
+  - 检索：Tab 到 `#search-query` 输入“退款多久到账”，Tab 到 `#search-button` 按 Enter；状态 `Search complete · 2 hits · hybrid`，trace `c4f2082a7fdf`。
+  - SSE：Shift+Tab 到 `[data-lab-tab="search"]`，ArrowRight 选中 Chat（`aria-selected=true`）；Tab 到 `#chat-question` 输入问题，Tab 到 `#chat-button` 按 Enter；状态 `Answer complete · [DONE] received · 2 citations`，回答“退款将在 3 个工作日内到账”，trace `b620c0f4b9cd`。
+  - Trace 选择与抽屉：Shift+Tab 到 Traces nav，Enter；Tab 到 `#trace-apply` 按 Enter 加载列表；Tab 到第一行 `[data-trace-select]`，Enter 打开抽屉；`role=dialog`、`aria-modal=true`、初始焦点 `trace-drawer-close`；Shift+Tab 后焦点仍在 `#trace-detail` 内；Escape 关闭并把焦点还给所选 trace 行（`b620c0f4b9cd`）。
+  - Raw 复制：再次 Enter 重开抽屉，Tab 到 Summary，ArrowRight→Timing→Raw（`aria-selected=true`）；Tab 到 `#trace-copy` 按 Enter，状态包含 Copied；Raw 1816 字节，剪贴板 `json.loads` 与 Raw 完全相等。
+  - 五类触发：Shift+Tab 到 Evaluation nav，Enter；Tab 到 `#evaluation-load` 按 Enter；逐个 Tab 到五个触发按钮并 Enter。真实 `run_once` 执行 run #1–#5，全部 `succeeded / exit_code=0`，UI 分别显示 “Run #N reached terminal status: succeeded.”。
+  - Retry：Shift+Tab 到 Ingestion nav，Enter；Tab 到 `#ingestion-load` 按 Enter；Tab 到失败 job #2 行（`data-job-select=2`）按 Enter；Tab 到 `#ingestion-retry` 按 Enter，状态 “Retry accepted for job #2; reloading actual state…”。真实 worker 后 job #2 `succeeded / attempts=1 / progress=100`，失败原因仍为真实 `FileNotFoundError`（上传文件在首次 worker 前被移走）。
+  - 观察到的限制：Retry 激活后视图重渲染，焦点回到 `body`（步骤记录如实保留）。按钮本身键盘可达且动作成功，不属于不可达缺陷，但这是一处焦点保持缺口。
+- 新增 check `chromium_missing_events_observation`：**passed**。在一次性库插入一条只有 metric、无 JSONL events 的 trace `task16metricnoevents`；Chromium 打开 `http://127.0.0.1:8000/ui/#/traces/task16metricnoevents`（1440×1000）。`#trace-detail-status` 为 “Trace task16metricnoevents loaded with missing evidence.”，`#trace-missing` 明确显示 “Missing events: no scoped JSONL events were recorded; Raw contains only available evidence.”；API 同时返回 `missing: ["events"]`、`events: []`。截图：`D:\tmp\task16-live-evidence\traces-missing-events.png`。
+- 合并结果：原 20 项 + 补充 2 项 = `22 passed / 0 failed / 0 running`；`final-report.json` 保留原 20 项结论并追加两个新 check，未把任何未执行项标为 passed。
+- 控制台：补充运行只有两次 `/favicon.ico` 404，console location 已记录为 `http://127.0.0.1:8000/favicon.ico`；无 API、静态模块或脚本错误，`http_errors` 为空。
+- 失败与恢复：补验收期间 Docker Desktop 曾多次重启，导致数据库进入 recovery；失败尝试日志保留为 `task16-supplement-3.log`、`task16-supplement-4.log`，最终取证运行在引擎稳定窗口内完整通过，失败尝试未计入 22 项。
 
 ### 受控运行实际数值
 
@@ -150,15 +171,15 @@ job_id=9858 doc_id=kb_smoke-e72f64ed duplicated=True；status=succeeded progress
 - 指标故障通过在隔离库临时创建触发器真实拒绝 INSERT 注入；summary 故障通过临时改名 `ops_runs` 注入，观察后立即恢复；入库故障通过暂时移动上传文件注入，重试前恢复。没有修改业务代码来伪造故障或成功。
 - cancelled 使用真实原始 socket 断开；scope 失效使用慢 LLM 响应；这三类异常和重试堆栈均保留在 `final.log`，并与数据库/UI 终态交叉核对。
 - 最终控制台只有三类资源消息：一个 404 和两次 intentional summary 500。独立诊断 `D:\tmp\task16-console-diagnostic.json` 证明 404 URL 为 `/favicon.ico`；`http_errors` 仅含两条 `/v1/ops/summary?...window=24h` 500。没有最终 invalid-pattern、ES module 或其他静态资源错误。
-- 13 张最终截图位于 `D:\tmp\task16-live-evidence\`：空/低样本 Overview、stale/partial、1440/1280/900/390 响应式、Search/Chat、Raw、移动 List、入库重试、五类 runs、Audit；已逐张检查界面状态与报告观察值一致。
-- 中间失败报告和日志以 `fourth-run-*`、`fifth-run-*`、`sixth-run-*` 保留，未将早期 17/20 或 18/20 当作最终验收结果；最终结论只取 run 7 的 `final-report.json` / `final.log`。
+- 13 张 run 7 截图位于 `D:\tmp\task16-live-evidence\`：空/低样本 Overview、stale/partial、1440/1280/900/390 响应式、Search/Chat、Raw、移动 List、入库重试、五类 runs、Audit；已逐张检查界面状态与报告观察值一致。补充验收新增 `traces-missing-events.png`，同样已目视核对。
+- 中间失败报告和日志以 `fourth-run-*`、`fifth-run-*`、`sixth-run-*` 保留，未将早期 17/20 或 18/20 当作最终验收结果；最终结论只取 run 7 与补充验收的 `final-report.json` / `final.log`。
 - 临时 harness、日志、截图和 artifact 均在 `D:\tmp`；未覆盖仓库 eval baseline，也未把静态 route mock 当作实时 API 验收。
 
 ### 未覆盖边界
 
-- 本次要求的实时矩阵 20 项均已实际执行，无未执行项；以下是环境边界，不伪装成生产验证。
+- 原 20 项与补充 2 项均已实际执行。第 2 次规格审查指出原“仅键盘”表述过宽，已由 `keyboard_only_full_acceptance_chain` 用真实按键链补齐；missing events 已由 Chromium 观察补齐。以下是仍未覆盖的环境边界，不伪装成生产验证。
 - 未调用真实外部 LLM，未验证真实 embedding 的检索质量、费用和延迟；确定性桩与 mock 分数不能代表外部服务质量。
 - 浏览器仅覆盖本机 Chromium；未覆盖 Firefox、WebKit/Safari、物理移动设备、屏幕阅读器实机。
-- 未覆盖生产多实例并发、容器编排、TLS、备份恢复和持久性；一次性 PostgreSQL 的非生产 fsync 设置尤其不能用于证明耐久性。
+- 未覆盖生产多实例并发、容器编排、TLS、备份恢复和持久性；run 7 的一次性 PostgreSQL 非生产 fsync 设置尤其不能用于证明耐久性。补充验收复用现有 `rag-kb-pg`，未使用该一次性配置，但其结果同样只代表本机开发环境。
 - 未配置的外部解析服务集成未覆盖；parser drill 仅证明本次环境下真实 runner 与本地解析路径。
 - 固定压测只覆盖单进程、本机、固定 query 的短时段运行，不构成生产容量或 SLA 结论。
