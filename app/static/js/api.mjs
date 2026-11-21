@@ -26,7 +26,7 @@ function responseMessage(body, statusText) {
   return statusText || "Request failed";
 }
 
-export async function apiJson(path, { scope = {}, signal, ...options } = {}) {
+export async function apiJson(path, { scope = {}, signal, withMeta = false, ...options } = {}) {
   const { body, headers: suppliedHeaders = {}, ...rest } = options;
   const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
   const hasJsonBody = body !== undefined && body !== null && !isFormData;
@@ -66,5 +66,5 @@ export async function apiJson(path, { scope = {}, signal, ...options } = {}) {
     );
   }
 
-  return data;
+  return withMeta ? { data, status: response.status } : data;
 }

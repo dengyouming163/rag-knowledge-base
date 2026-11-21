@@ -1480,3 +1480,343 @@ def test_ingestion_late_jobs_response_cannot_cross_scope(workbench_page) -> None
         pass
     assert page.locator('[data-job-select="999"]').count() == 0
     assert page.locator("#ingestion-job-events li").count() == 0
+
+
+def test_review_evaluation_trigger_accepts_only_http_202(workbench_page) -> None:
+    page, workbench_url = workbench_page
+    page.set_default_timeout(5000)
+    _install_task14_permissions(page, {"identity": "admin", "permissions": "admin"})
+    page.route("**/v1/ops/runs?*", lambda route: _fulfill_json(route, {"runs": []}))
+    page.route(
+        "**/v1/ops/kbs/*/runs",
+        lambda route: _fulfill_json(route, {"run_id": 88, "status": "queued"}, status=200),
+    )
+    detail_calls = []
+    page.route("**/v1/ops/runs/*", lambda route: detail_calls.append(route.request.url))
+    page.goto(f"{workbench_url}#/evaluation")
+    page.locator("#evaluation-load").click()
+    page.locator("#run-trigger-eval-mock").click()
+
+    page.locator("#evaluation-action-status").filter(has_text="Expected HTTP 202").wait_for()
+    assert "HTTP 200" in page.locator("#evaluation-action-status").inner_text()
+    assert page.locator("#run-trigger-eval-mock").is_enabled()
+    page.wait_for_timeout(700)
+    assert detail_calls == []
+
+
+def test_review_ingestion_retry_accepts_only_http_202_without_reloading(workbench_page) -> None:
+    page, workbench_url = workbench_page
+    page.set_default_timeout(5000)
+    _install_task14_permissions(page, {"identity": "admin", "permissions": "admin"})
+    calls = {"jobs": 0, "events": 0}
+
+    def jobs_route(route) -> None:
+        calls["jobs"] += 1
+        _fulfill_json(route, {"jobs": [_task14_job(11)], "counts": {"failed": 1}})
+
+    def events_route(route) -> None:
+        calls["events"] += 1
+        _fulfill_json(route, {"job_id": 11, "events": [{"message": "failed"}], "counts": {}})
+
+    page.route("**/v1/ops/jobs?*", jobs_route)
+    page.route("**/v1/ops/jobs/11/events", events_route)
+    page.route(
+        "**/v1/ops/jobs/11/retry",
+        lambda route: _fulfill_json(route, {"job_id": 11, "status": "queued"}, status=200),
+    )
+    page.goto(f"{workbench_url}#/ingestion")
+    page.locator("#ingestion-load").click()
+    page.locator('[data-job-select="11"]').click()
+    page.locator("#ingestion-job-events li").wait_for()
+    page.locator("#ingestion-retry").click()
+
+    page.locator("#ingestion-action-status").filter(has_text="Expected HTTP 202").wait_for()
+    assert "HTTP 200" in page.locator("#ingestion-action-status").inner_text()
+    assert page.locator("#ingestion-retry").is_enabled()
+    page.wait_for_timeout(700)
+    assert calls == {"jobs": 1, "events": 1}
+
+
+def test_review_evaluation_rejects_non_scalar_ids_and_metric_values(workbench_page) -> None:
+    page, workbench_url = workbench_page
+    page.set_default_timeout(5000)
+    _install_task14_permissions(page, {"identity": "admin", "permissions": "admin"})
+    invalid_metrics = {
+        "recall_at_k": True,
+        "mrr": [],
+        "hit_rate": [0.8],
+        "refusal_accuracy": {"value": 0.8},
+        "answer_coverage": "Infinity",
+        "citation_accuracy": "0.8",
+    }
+    current_run = _task14_run(30)
+    current_run["summary"]["metrics"] = invalid_metrics
+    history = [
+        {**_task14_run(31), "id": True},
+        {**_task14_run(32), "id": [32]},
+        {**_task14_run(33), "id": {"value": 33}},
+        {**_task14_run(34), "id": None},
+        current_run,
+        _task14_run(27, base=0.6),
+    ]
+    page.route("**/v1/ops/runs?*", lambda route: _fulfill_json(route, {"runs": history}))
+    detail_calls = []
+    trigger_ids = iter([True, [], {"value": 46}, None, "45"])
+
+    def trigger_route(route) -> None:
+        _fulfill_json(route, {"run_id": next(trigger_ids), "status": "queued"}, status=202)
+
+    def detail_route(route) -> None:
+        detail_calls.append(route.request.url)
+        run_id = int(route.request.url.rsplit("/", 1)[-1])
+        detail = _task14_run(run_id)
+        detail["summary"]["metrics"] = invalid_metrics
+        _fulfill_json(route, detail)
+
+    page.route("**/v1/ops/kbs/*/runs", trigger_route)
+    page.route("**/v1/ops/runs/*", detail_route)
+    page.goto(f"{workbench_url}#/evaluation")
+    page.locator("#evaluation-load").click()
+    page.locator('[data-run-select="30"]').wait_for()
+    assert page.locator("[data-run-select]").count() == 2
+    page.locator('[data-run-select="30"]').click()
+    page.locator('[data-run-field="status"]').filter(has_text="succeeded").wait_for()
+
+    for metric in ["recall_at_k", "mrr", "hit_rate", "refusal_accuracy", "answer_coverage"]:
+        assert page.locator(f'[data-run-metric="{metric}"]').inner_text() == "—"
+        assert page.locator(f'[data-run-delta="{metric}"]').inner_text() == "—"
+    assert page.locator('[data-run-metric="citation_accuracy"]').inner_text() == "0.8000"
+    assert page.locator('[data-run-delta="citation_accuracy"]').inner_text() == "+0.2500"
+    detail_text = page.locator("#evaluation-run-detail").inner_text()
+    assert "NaN" not in detail_text
+    assert "Infinity" not in detail_text
+    detail_count_before_triggers = len(detail_calls)
+
+    for invalid_id in [True, [], {}, None]:
+        page.locator("#run-trigger-eval-mock").click()
+        page.locator("#evaluation-action-status").filter(has_text="valid run id").wait_for()
+        assert page.locator("#run-trigger-eval-mock").is_enabled()
+        assert len(detail_calls) == detail_count_before_triggers, invalid_id
+    page.locator("#run-trigger-eval-mock").click()
+    page.locator("#evaluation-action-status").filter(has_text="terminal").wait_for()
+    assert len(detail_calls) == detail_count_before_triggers + 1
+    assert detail_calls[-1].endswith("/v1/ops/runs/45")
+
+
+def test_review_ingestion_rejects_non_scalar_job_ids(workbench_page) -> None:
+    page, workbench_url = workbench_page
+    page.set_default_timeout(5000)
+    _install_task14_permissions(page, {"identity": "admin", "permissions": "admin"})
+    jobs = [
+        {**_task14_job(12), "id": True},
+        {**_task14_job(13), "id": [13]},
+        {**_task14_job(14), "id": {"value": 14}},
+        {**_task14_job(15), "id": None},
+        _task14_job(11),
+    ]
+    page.route("**/v1/ops/jobs?*", lambda route: _fulfill_json(route, {"jobs": jobs, "counts": {}}))
+    page.route("**/v1/ops/jobs/*/events", lambda route: _fulfill_json(route, {"events": []}))
+    page.goto(f"{workbench_url}#/ingestion")
+    page.locator("#ingestion-load").click()
+    page.locator('[data-job-select="11"]').wait_for()
+
+    assert page.locator("[data-job-select]").count() == 1
+    assert page.locator("[data-job-select='1']").count() == 0
+    assert page.locator("#ingestion-job-rows").inner_text().find("NaN") == -1
+
+
+def test_review_late_trigger_and_retry_finalizers_cannot_overwrite_new_scope(workbench_page) -> None:
+    page, workbench_url = workbench_page
+    page.goto(f"{workbench_url}#/overview")
+    result = page.evaluate("""async () => {
+        const { ScopeGuard } = await import('/ui/js/core.mjs');
+        const { createEvaluation } = await import('/ui/js/views/evaluation.mjs');
+        const { createIngestion } = await import('/ui/js/views/ingestion.mjs');
+        const permissions = {
+            canActions: () => true,
+            canRetry: () => true,
+            actionReason: () => 'STALE FINALIZER OVERWRITE',
+            retryReason: () => 'STALE FINALIZER OVERWRITE',
+        };
+        const permissionRoot = () => {
+            const root = document.createElement('section');
+            const status = document.createElement('p');
+            status.id = 'evaluation-permission-status';
+            root.appendChild(status);
+            return { root, status };
+        };
+        const changeScope = (guard, kb) => {
+            guard.invalidate();
+            const scope = { tenant: 'tenant_a', kb, user: 'new_scope_user', window: '24h' };
+            window.dispatchEvent(new CustomEvent('workbuddy:scopechange', {
+                detail: { scope, ...guard.snapshot() },
+            }));
+        };
+
+        const evaluationFixture = permissionRoot();
+        const evaluationGuard = new ScopeGuard();
+        let resolveTrigger;
+        const triggerPending = new Promise(resolve => { resolveTrigger = resolve; });
+        const evaluation = createEvaluation({
+            root: evaluationFixture.root,
+            guard: evaluationGuard,
+            scope: { tenant: 'tenant_a', kb: 'kb_after_sale', user: 'demo_user', window: '24h' },
+            permissions,
+            api: () => triggerPending,
+        });
+        evaluation.setActive(true);
+        const triggering = evaluation.triggerRun('eval_mock');
+        changeScope(evaluationGuard, 'kb_new_evaluation');
+        const evaluationExpected = evaluationFixture.status.textContent;
+        resolveTrigger({ run_id: 101, status: 'queued' });
+        await triggering;
+        await Promise.resolve();
+        const evaluationSafe = evaluationExpected === 'Permissions are checked when runs load.'
+            && evaluationFixture.status.textContent === evaluationExpected;
+        evaluation.destroy();
+
+        const ingestionRoot = document.createElement('section');
+        const ingestionStatus = document.createElement('p');
+        ingestionStatus.id = 'ingestion-permission-status';
+        ingestionRoot.appendChild(ingestionStatus);
+        const ingestionGuard = new ScopeGuard();
+        const ingestionScope = { tenant: 'tenant_a', kb: 'kb_after_sale', user: 'demo_user', window: '24h' };
+        const ingestionContext = { scope: ingestionScope, ...ingestionGuard.snapshot() };
+        let resolveRetry;
+        const retryPending = new Promise(resolve => { resolveRetry = resolve; });
+        const ingestion = createIngestion({
+            root: ingestionRoot,
+            guard: ingestionGuard,
+            scope: ingestionScope,
+            permissions,
+            api: path => {
+                if (path.includes('/retry')) return retryPending;
+                if (path.includes('/events')) return Promise.resolve({ job_id: 11, events: [] });
+                return Promise.resolve({ jobs: [{ id: 11, status: 'failed', progress: 1 }], counts: {} });
+            },
+        });
+        ingestion.setActive(true);
+        await ingestion.loadJobs(ingestionContext);
+        await ingestion.selectJob(11, ingestionContext);
+        const retrying = ingestion.retrySelectedJob(ingestionContext);
+        changeScope(ingestionGuard, 'kb_new_ingestion');
+        const ingestionExpected = ingestionStatus.textContent;
+        resolveRetry({ job_id: 11, status: 'queued' });
+        await retrying;
+        await Promise.resolve();
+        const ingestionSafe = ingestionExpected === 'Permissions are checked when jobs load.'
+            && ingestionStatus.textContent === ingestionExpected;
+        ingestion.destroy();
+        return { evaluationSafe, ingestionSafe };
+    }""")
+    assert result == {"evaluationSafe": True, "ingestionSafe": True}
+
+
+def test_review_evaluation_exit_aborts_pending_identity_and_permissions(workbench_page) -> None:
+    page, workbench_url = workbench_page
+    page.set_default_timeout(5000)
+    page.add_init_script("""
+        window.__reviewPermissionSignals = [];
+        const originalFetch = window.fetch.bind(window);
+        window.fetch = (input, init = {}) => {
+            const path = String(input);
+            if (path.includes('/v1/identity') || path.includes('/v1/ops/permissions')) {
+                window.__reviewPermissionSignals.push(init.signal);
+            }
+            return originalFetch(input, init);
+        };
+    """)
+    pending = []
+    page.route("**/v1/identity", lambda route: pending.append(route))
+    page.route("**/v1/ops/permissions?*", lambda route: pending.append(route))
+    page.route("**/v1/ops/runs?*", lambda route: _fulfill_json(route, {"runs": []}))
+    page.goto(f"{workbench_url}#/evaluation")
+    page.locator("#evaluation-load").click()
+    page.wait_for_function("window.__reviewPermissionSignals.length === 2")
+
+    page.evaluate("window.location.hash = '#/overview'")
+    page.locator("#view-overview").wait_for(state="visible")
+    page.wait_for_function(
+        "window.__reviewPermissionSignals.length === 2 && "
+        "window.__reviewPermissionSignals.every(signal => signal?.aborted)"
+    )
+
+
+def test_review_shared_permission_lease_is_not_cancelled_while_another_view_is_active(workbench_page) -> None:
+    page, workbench_url = workbench_page
+    page.goto(f"{workbench_url}#/overview")
+    result = page.evaluate("""async () => {
+        const { ScopeGuard } = await import('/ui/js/core.mjs');
+        const { createPermissions } = await import('/ui/js/permissions.mjs');
+        const { createEvaluation } = await import('/ui/js/views/evaluation.mjs');
+        const { createIngestion } = await import('/ui/js/views/ingestion.mjs');
+        const guard = new ScopeGuard();
+        const scope = { tenant: 'tenant_a', kb: 'kb_after_sale', user: 'demo_user', window: '24h' };
+        const context = { scope, ...guard.snapshot() };
+        const signals = [];
+        let resolveRequests;
+        const pending = new Promise(resolve => { resolveRequests = resolve; });
+        const permissions = createPermissions({
+            guard,
+            scope,
+            api: (_path, options) => {
+                signals.push(options.signal);
+                return pending;
+            },
+        });
+        const evaluation = createEvaluation({
+            root: document.createElement('section'), guard, scope, permissions,
+        });
+        const ingestion = createIngestion({
+            root: document.createElement('section'), guard, scope, permissions,
+        });
+        evaluation.setActive(true);
+        ingestion.setActive(true);
+        const loading = permissions.load(context);
+        await Promise.resolve();
+        await Promise.resolve();
+        evaluation.setActive(false);
+        const afterFirstExit = signals.length === 2 && signals.every(signal => !signal.aborted);
+        ingestion.destroy();
+        const afterLastDestroy = signals.length === 2 && signals.every(signal => signal.aborted);
+        resolveRequests({ role: 'admin', is_admin: true, ops: { actions_enabled: true, can_trigger: true } });
+        await loading;
+        evaluation.destroy();
+        permissions.destroy();
+        return { afterFirstExit, afterLastDestroy };
+    }""")
+    assert result == {"afterFirstExit": True, "afterLastDestroy": True}
+
+
+def test_review_active_evaluation_polling_stops_on_real_scope_change(workbench_page) -> None:
+    page, workbench_url = workbench_page
+    page.set_default_timeout(7000)
+    _install_task14_permissions(page, {"identity": "admin", "permissions": "admin"})
+    page.route("**/v1/ops/runs?*", lambda route: _fulfill_json(route, {"runs": []}))
+    page.route("**/v1/ops/kbs/*/runs", lambda route: _fulfill_json(route, {"run_id": 101, "status": "queued"}, status=202))
+    detail_calls = {"count": 0}
+
+    def detail_route(route) -> None:
+        detail_calls["count"] += 1
+        _fulfill_json(route, _task14_run(101, status="running"))
+
+    page.route("**/v1/ops/runs/*", detail_route)
+    page.goto(f"{workbench_url}#/evaluation")
+    page.locator("#evaluation-load").click()
+    page.locator("#run-trigger-eval-mock").click()
+    page.locator('[data-run-field="status"]').filter(has_text="running").wait_for()
+    page.wait_for_timeout(550)
+    assert detail_calls["count"] >= 2
+
+    page.locator("#scope-kb").fill("kb_scope_changed")
+    page.locator("#scope-kb").press("Tab")
+    assert page.locator("#evaluation-runs-status").inner_text() == "Load runs or refresh to inspect evaluation history."
+    assert page.locator("#evaluation-action-status").inner_text() == ""
+    calls_after_scope_change = detail_calls["count"]
+    page.wait_for_timeout(1200)
+    assert detail_calls["count"] == calls_after_scope_change
+
+    page.locator("#scope-refresh").click()
+    page.locator("#evaluation-runs-status").filter(has_text="0 runs").wait_for()
+    page.wait_for_timeout(700)
+    assert detail_calls["count"] == calls_after_scope_change

@@ -22,12 +22,19 @@ function errorMessage(error) {
 }
 
 function validRunId(value) {
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  if (typeof value === "string" && !/^[1-9]\d*$/.test(value)) return null;
   const numeric = Number(value);
   return Number.isSafeInteger(numeric) && numeric > 0 ? String(numeric) : null;
 }
 
+function datasetRunId(value) {
+  return typeof value === "string" ? validRunId(value) : null;
+}
+
 function finiteNumber(value) {
-  if (typeof value === "boolean" || value === null || value === undefined || value === "") return null;
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  if (typeof value === "string" && !value.trim()) return null;
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
 }
@@ -75,6 +82,7 @@ export function createEvaluation({
   let poll = null;
   let pollTimer = null;
   const operations = { history: null, detail: null, trigger: null };
+  const permissionLease = {};
 
   const byId = (id) => root.querySelector(`#${id}`);
   const setText = (selector, value) => {
@@ -289,7 +297,7 @@ export function createEvaluation({
       setText("#evaluation-runs-status", `Run history unavailable: ${errorMessage(error)}`);
       return false;
     } finally {
-      if (finishOperation(operation)) syncPermissions();
+      if (finishOperation(operation) && contextIsCurrent(operation.context)) syncPermissions();
     }
   }
 
@@ -317,7 +325,7 @@ export function createEvaluation({
         signal: operation.controller.signal,
       });
       if (!operationIsCurrent(operation) || selectedRunId !== id) return false;
-      selectedRun = { ...data, id: data?.id ?? id };
+      selectedRun = { ...data, id };
       upsertRun(selectedRun);
       renderRuns();
       renderDetail();
@@ -345,7 +353,7 @@ export function createEvaluation({
       }
       return false;
     } finally {
-      if (finishOperation(operation)) {
+      if (finishOperation(operation) && contextIsCurrent(operation.context)) {
         syncPermissions();
         if (triggered && poll?.runId === id) {
           poll.lastController = operation.controller;
@@ -382,13 +390,18 @@ export function createEvaluation({
     syncPermissions();
     setText("#evaluation-action-status", `Starting ${kind} run…`);
     try {
-      const data = await api(`/v1/ops/kbs/${encodeURIComponent(context.scope.kb)}/runs`, {
+      const { data, status } = await api(`/v1/ops/kbs/${encodeURIComponent(context.scope.kb)}/runs`, {
         method: "POST",
         body: { kind, params: {} },
         scope: context.scope,
         signal: operation.controller.signal,
+        withMeta: true,
       });
       if (!operationIsCurrent(operation)) return false;
+      if (status !== 202) {
+        setText("#evaluation-action-status", `Run trigger failed: Expected HTTP 202, received HTTP ${status}.`);
+        return false;
+      }
       const id = validRunId(data?.run_id);
       if (!id) {
         setText("#evaluation-action-status", "The trigger response did not include a valid run id; no run detail was requested.");
@@ -412,8 +425,7 @@ export function createEvaluation({
       }
       return false;
     } finally {
-      if (finishOperation(operation)) syncPermissions();
-      if (!destroyed) syncPermissions();
+      if (finishOperation(operation) && contextIsCurrent(operation.context)) syncPermissions();
     }
   }
 
@@ -431,8 +443,9 @@ export function createEvaluation({
   function onRootClick(event) {
     if (destroyed) return;
     const select = event.target?.closest?.("[data-run-select]");
-    if (select?.dataset.runSelect) {
-      void selectRun(select.dataset.runSelect);
+    const id = datasetRunId(select?.dataset.runSelect);
+    if (id) {
+      void selectRun(id);
       return;
     }
     if (event.target?.closest?.("#evaluation-load")) void loadWorkspace();
@@ -473,7 +486,8 @@ export function createEvaluation({
     if (!next) return;
     event.preventDefault();
     next.focus();
-    void selectRun(next.dataset.runSelect);
+    const id = datasetRunId(next.dataset.runSelect);
+    if (id) void selectRun(id);
   }
 
   function onScopeChange(event) {
@@ -499,7 +513,11 @@ export function createEvaluation({
   function setActive(value) {
     if (destroyed) return;
     active = Boolean(value);
-    if (!active) cancelAll();
+    if (active) permissions?.retain?.(permissionLease);
+    else {
+      cancelAll();
+      permissions?.release?.(permissionLease);
+    }
     syncPermissions();
   }
 
@@ -552,6 +570,7 @@ export function createEvaluation({
         operation.unlink();
         operation.controller.abort();
       }
+      permissions?.release?.(permissionLease);
       root.removeEventListener("click", onRootClick);
       root.removeEventListener("keydown", onRootKeydown);
       for (const [id, listener] of triggerListeners) byId(id)?.removeEventListener("click", listener);

@@ -38,6 +38,7 @@ export function createPermissions({
   let currentContext = scope ? { scope, ...guard?.snapshot() } : null;
   let cache = null;
   let operation = null;
+  const activeLeases = new Set();
 
   function emptyCache(context) {
     return {
@@ -100,6 +101,23 @@ export function createPermissions({
     previous.controller.abort();
   }
 
+  function retain(lease) {
+    if (destroyed || !lease) return;
+    activeLeases.add(lease);
+    if (operation) {
+      operation.managed = true;
+      operation.leases.add(lease);
+    }
+  }
+
+  function release(lease) {
+    if (destroyed || !lease) return;
+    activeLeases.delete(lease);
+    if (!operation) return;
+    operation.leases.delete(lease);
+    if (operation.managed && operation.leases.size === 0) cancel();
+  }
+
   function clear() {
     if (destroyed) return;
     cancel();
@@ -133,6 +151,8 @@ export function createPermissions({
       context,
       controller,
       promise: null,
+      leases: new Set(activeLeases),
+      managed: activeLeases.size > 0,
       unlink() { parent?.removeEventListener("abort", abort); },
     };
     operation = operationSnapshot;
@@ -179,6 +199,8 @@ export function createPermissions({
 
   return {
     load,
+    retain,
+    release,
     clear,
     getState: state,
     canActions() { return state().canActions; },
@@ -194,6 +216,7 @@ export function createPermissions({
       if (destroyed) return;
       clear();
       destroyed = true;
+      activeLeases.clear();
     },
   };
 }

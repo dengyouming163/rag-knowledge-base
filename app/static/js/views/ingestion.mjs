@@ -12,7 +12,8 @@ function errorMessage(error) {
 }
 
 function finiteNonNegative(value) {
-  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  if (typeof value === "string" && !value.trim()) return null;
   const numeric = Number(value);
   return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
 }
@@ -28,8 +29,14 @@ function progress(value) {
 }
 
 function validJobId(value) {
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  if (typeof value === "string" && !/^[1-9]\d*$/.test(value)) return null;
   const numeric = Number(value);
   return Number.isSafeInteger(numeric) && numeric > 0 ? String(numeric) : null;
+}
+
+function datasetJobId(value) {
+  return typeof value === "string" ? validJobId(value) : null;
 }
 
 export function createIngestion({
@@ -57,6 +64,7 @@ export function createIngestion({
   let jobs = [];
   let selectedJobId = null;
   const operations = { jobs: null, events: null, retry: null };
+  const permissionLease = {};
 
   const byId = (id) => root.querySelector(`#${id}`);
   const setText = (selector, value) => {
@@ -235,7 +243,7 @@ export function createIngestion({
       setText("#ingestion-jobs-status", `Jobs unavailable: ${errorMessage(error)}`);
       return false;
     } finally {
-      if (finishOperation(operation)) syncPermissions();
+      if (finishOperation(operation) && contextIsCurrent(operation.context)) syncPermissions();
     }
   }
 
@@ -286,7 +294,7 @@ export function createIngestion({
       }
       return false;
     } finally {
-      if (finishOperation(operation)) syncPermissions();
+      if (finishOperation(operation) && contextIsCurrent(operation.context)) syncPermissions();
     }
   }
 
@@ -314,12 +322,17 @@ export function createIngestion({
     syncPermissions();
     setText("#ingestion-action-status", `Retrying job #${id}…`);
     try {
-      await api(`/v1/ops/jobs/${encodeURIComponent(id)}/retry`, {
+      const { status } = await api(`/v1/ops/jobs/${encodeURIComponent(id)}/retry`, {
         method: "POST",
         scope: context.scope,
         signal: operation.controller.signal,
+        withMeta: true,
       });
       if (!operationIsCurrent(operation)) return false;
+      if (status !== 202) {
+        setText("#ingestion-action-status", `Retry failed: Expected HTTP 202, received HTTP ${status}.`);
+        return false;
+      }
       finishOperation(operation);
       setText("#ingestion-action-status", `Retry accepted for job #${id}; reloading actual state…`);
       syncPermissions();
@@ -345,8 +358,7 @@ export function createIngestion({
       }
       return false;
     } finally {
-      if (finishOperation(operation)) syncPermissions();
-      if (!destroyed) syncPermissions();
+      if (finishOperation(operation) && contextIsCurrent(operation.context)) syncPermissions();
     }
   }
 
@@ -364,8 +376,9 @@ export function createIngestion({
   function onRootClick(event) {
     if (destroyed) return;
     const select = event.target?.closest?.("[data-job-select]");
-    if (select?.dataset.jobSelect) {
-      void selectJob(select.dataset.jobSelect);
+    const id = datasetJobId(select?.dataset.jobSelect);
+    if (id) {
+      void selectJob(id);
       return;
     }
     if (event.target?.closest?.("#ingestion-load")) void loadWorkspace();
@@ -382,7 +395,8 @@ export function createIngestion({
     if (!next) return;
     event.preventDefault();
     next.focus();
-    void selectJob(next.dataset.jobSelect);
+    const id = datasetJobId(next.dataset.jobSelect);
+    if (id) void selectJob(id);
   }
 
   function onScopeChange(event) {
@@ -406,7 +420,11 @@ export function createIngestion({
   function setActive(value) {
     if (destroyed) return;
     active = Boolean(value);
-    if (!active) cancelAll();
+    if (active) permissions?.retain?.(permissionLease);
+    else {
+      cancelAll();
+      permissions?.release?.(permissionLease);
+    }
     syncPermissions();
   }
 
@@ -449,6 +467,7 @@ export function createIngestion({
         operation.unlink();
         operation.controller.abort();
       }
+      permissions?.release?.(permissionLease);
       root.removeEventListener("click", onRootClick);
       root.removeEventListener("keydown", onRootKeydown);
       window?.removeEventListener("workbuddy:scopechange", onScopeChange);
