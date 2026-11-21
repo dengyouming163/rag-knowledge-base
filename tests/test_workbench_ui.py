@@ -53,7 +53,7 @@ def workbench_page():
         thread.start()
         try:
             page = browser.new_page()
-            yield page, f"http://127.0.0.1:{server.server_port}/ui/workbench.html"
+            yield page, f"http://127.0.0.1:{server.server_port}/ui/"
         finally:
             browser.close()
             server.shutdown()
@@ -67,7 +67,7 @@ def client() -> TestClient:
 
 
 def test_workbench_shell(client: TestClient) -> None:
-    response = client.get("/ui/workbench.html")
+    response = client.get("/ui/")
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
@@ -99,7 +99,7 @@ def test_workbench_shell(client: TestClient) -> None:
 def test_workbench_overview_contains_operational_metrics_and_trends(
     client: TestClient,
 ) -> None:
-    html = client.get("/ui/workbench.html").text
+    html = client.get("/ui/").text
     overview = html.split('<section id="view-overview"', 1)[1].split("</section>", 1)[0]
 
     for label in (
@@ -143,7 +143,7 @@ def test_workbench_overview_contains_operational_metrics_and_trends(
 def test_workbench_lab_contains_retrieval_chat_and_ingestion_controls(
     client: TestClient,
 ) -> None:
-    html = client.get("/ui/workbench.html").text
+    html = client.get("/ui/").text
     lab = html.split('<section id="view-lab"', 1)[1].split("</section>", 1)[0]
 
     for tab in ("search", "chat", "ingest"):
@@ -207,6 +207,26 @@ def test_workbench_muted_token_meets_aa_on_shell_backgrounds(client: TestClient)
     for background_token in ("--wb-surface", "--wb-bg"):
         ratio = _contrast_ratio(tokens["--wb-muted"], tokens[background_token])
         assert ratio >= 4.5, f"--wb-muted on {background_token} has contrast {ratio:.2f}:1"
+
+
+def test_trace_id_pattern_is_valid_in_chromium(workbench_page) -> None:
+    page, workbench_url = workbench_page
+    console_errors = []
+    page.on(
+        "console",
+        lambda message: console_errors.append(message.text) if message.type == "error" else None,
+    )
+    page.goto(f"{workbench_url}#/traces")
+    trace_id = page.locator("#trace-id")
+    trace_id.wait_for(state="visible")
+
+    pattern_errors = [message for message in console_errors if "Pattern attribute value" in message]
+    assert not pattern_errors, pattern_errors
+
+    trace_id.fill("trace_a:b.c-d")
+    assert trace_id.evaluate("input => input.checkValidity()")
+    trace_id.fill("trace/invalid")
+    assert not trace_id.evaluate("input => input.checkValidity()")
 
 
 def test_trace_deep_links_survive_lab_clicks_and_direct_loads(workbench_page) -> None:
@@ -348,7 +368,7 @@ def test_lab_form_geometry_fits_medium_and_mobile_widths(workbench_page) -> None
 def test_workbench_traces_contains_filters_table_inspector_and_responsive_controls(
     client: TestClient,
 ) -> None:
-    html = client.get("/ui/workbench.html").text
+    html = client.get("/ui/").text
     traces = html.split('<section id="view-traces"', 1)[1].split("\n        </section>", 1)[0]
 
     for element_id in (
@@ -945,7 +965,7 @@ def test_trace_delayed_clipboard_cannot_overwrite_trace_or_scope_changes(
 
 
 def test_workbench_ingestion_evaluation_and_permission_markers(client: TestClient) -> None:
-    html = client.get("/ui/workbench.html").text
+    html = client.get("/ui/").text
     ingestion = html.split('<section id="view-ingestion"', 1)[1].split("</section>", 1)[0]
     evaluation = html.split('<section id="view-evaluation"', 1)[1].split("</section>", 1)[0]
 
@@ -2065,7 +2085,7 @@ def test_review_repeated_arrow_navigation_retains_selection_and_focus(workbench_
 
 
 def test_workbench_access_audit_modules_and_unified_action_reason_markers(client: TestClient) -> None:
-    html = client.get("/ui/workbench.html").text
+    html = client.get("/ui/").text
     access = html.split('<section id="view-access"', 1)[1].split("</section>", 1)[0]
     audit = html.split('<section id="view-audit"', 1)[1].split("</section>", 1)[0]
 

@@ -82,3 +82,83 @@ job_id=9858 doc_id=kb_smoke-e72f64ed duplicated=True；status=succeeded progress
 - 未验证项：900px 以下单列布局、键盘遍历导航/按钮；固定压测的 p50/p95/p99 来自 `scripts/loadtest.py` 直跑，未在界面内点击触发后截图。
 - `demo` 租户原库没有用户行，验收前补种了 `u_admin`（admin）与 `u_member`（member）两条 `users` 记录；因 `users` 主键是全局 `user_id`，保留会与测试 fixture 冲突，验收后已删除，未随仓库提交。复跑手工验收时需先按同样方式临时补种。
 - 压测与评测数字来自本机 mock 模式、已有语料与固定 query，只代表该次环境，不是容量承诺。
+
+---
+
+## Task 16：WorkBuddy 唯一入口与实时验收
+
+### 环境与真实性边界
+
+- 基线：`fb1e0a1c6e2f015c7921cf3a2f02b79708a73e6b`。证据时间（UTC）：2026-11-21 10:33:44–10:37:21；最终报告为 `D:\tmp\task16-live-evidence\final-report.json`，最终日志为 `D:\tmp\task16-live-evidence\final.log`。
+- API：真实 Uvicorn/FastAPI，`OPS_ENABLE_ACTIONS=1`，`http://127.0.0.1:58999`；进程 cwd 故意设为 `D:\tmp\task16-live-cwd`，不是仓库目录，用于验证静态资源路径不依赖 cwd。
+- 数据库：独立 PostgreSQL/pgvector 数据库 `task16_accept_1795257224`，真实执行 Alembic 0001–0011。一次性容器 `task16-pg-accept-2` 使用 `docker.m.daocloud.io/pgvector/pgvector:pg16`，主机端口 50074；证据收集后已 stop/rm，原有 `rag-kb-pg` 未触碰且保持 healthy。
+- 一次性容器为缩短本地验收时间使用 `--no-sync`、`fsync=off`、`synchronous_commit=off`、`full_page_writes=off`，这些设置仅用于可丢弃环境，不是生产持久性配置或验证结论。
+- 入库执行真实 `src.worker.worker_once`；受控运行由真实 `scripts/run_ops.py::run_once` 领取和执行。浏览器为本机系统 Chrome，经 Playwright Chromium 协议驱动，不是静态 route mock。
+- tenant / KB / admin：`t16_accept` / `kb16_accept` / `u16_admin`；另使用空 KB、member、guest、tagged 和跨租户身份验证隔离。
+- 仅外部 OpenAI 兼容 LLM 由本机 `ThreadingHTTPServer` 确定性桩替代；embedding 使用项目自带 `EMBED_MODE=mock`。FastAPI、静态文件、PostgreSQL、迁移、上传、worker、ops-runner 和 Chromium 均运行当前工作区真实实现。
+
+### TDD 与自动化证据
+
+- [x] 旧 wx 页面仍在时先写 WorkBuddy 入口测试并观察真实 RED
+  - `py -3.13 -m pytest -q tests/test_api_ui.py tests/test_workbench_ui.py`：`6 failed in 18.08s`。失败直接显示旧 HTML 缺少 `RAG Operations Console`、`/ui/js/app.mjs` 和 WorkBuddy 元素，不是测试语法或环境错误；原文：`D:\tmp\task16-red.txt`。
+- [x] Chromium `/v` 语义下的 Trace ID pattern 单独完成 RED/GREEN
+  - RED：`py -3.13 -m pytest -q tests/test_workbench_ui.py::test_trace_id_pattern_is_valid_in_chromium`，`1 failed in 1.74s`；非法 `trace/invalid` 被 Chromium 当作有效值，见 `D:\tmp\task16-pattern-red.txt`。
+  - 最小修复：仅将 `#trace-id` 改为 `pattern="[A-Za-z0-9][A-Za-z0-9_.:\-]{0,159}"`，保持允许字符不变。
+  - GREEN：同一测试 `1 passed in 4.86s`，见 `D:\tmp\task16-pattern-green.txt`。
+- [x] 目标 UI Python 自动化：`44 passed in 151.78s`，见 `D:\tmp\task16-ui-final.txt`。
+- [x] JavaScript：Node TAP 执行 `tests/js` 下 core、overview、lab、traces 四个测试文件，`# tests 105`、`# pass 105`、`# fail 0`，见 `D:\tmp\task16-node-final.txt`。
+- [x] 首次完整 Python 自动化：`py -3.13 -m pytest -q`，`661 passed, 1 skipped, 1 warning in 647.85s`，见 `D:\tmp\task16-pytest-all-final.txt`。唯一跳过为开发数据库当时不可用导致的 readiness 用例；该用例随后以 `py -3.13 -m pytest -q tests/test_api_health.py::test_ready_ok_when_db_up` 独立复跑，`1 passed in 10.64s`，见 `D:\tmp\task16-ready-skip.txt`。独立复跑不并入首次全量统计。
+- [x] 开发数据库可用后的完整 Python 清洁复跑：`py -3.13 -m pytest -q -rs`，`662 passed, 1 warning in 712.54s`，无跳过、无失败，见 `D:\tmp\task16-pytest-all-final-clean.txt`；唯一 warning 为既有 Alembic `path_separator` DeprecationWarning。
+
+### 实时 FastAPI / Chromium 验收矩阵
+
+最终汇总：`20 passed / 0 failed / 0 running`。每项均由 `final-report.json` 的同名 check 记录动作与观察值。
+
+- [x] 01 `live_fastapi_static_arbitrary_cwd`：任意 cwd 下 `/live`、`/ready`、`/ui/`、CSS、`app.mjs`、`overview.mjs` 均 200；`/ui` 为 307 且 Location 指向 `/ui/`；已删除的 `/ui/workbench.html` 为 404。
+- [x] 02 `live_upload_worker_and_acl_seed`：真实 API 上传 job #1，真实 worker 后 `succeeded / progress=100 / attempts=1`，生成 4 chunks；内部章节设置 finance ACL，供后续身份比较。
+- [x] 03 `live_search_chat_refusal_error_cancelled_sse`：Search 200；Chat 依次收到 `hits`、`delta`、`[DONE]`；拒答收到 `[DONE]`，LLM 故障返回 `event:error` JSON message；原始 socket 断开落库为 `cancelled`。指标各有一条 chat `succeeded/refused/error/cancelled` 和一条 search `succeeded`。
+- [x] 04 `live_trace_cursor_contract`：缺少成对 cursor 参数返回 422；第一页 trace id=5、第二页 id=4，两页不重复且第二页继续使用返回的 opaque cursor。
+- [x] 05 `search_chat_success_during_metric_outage`：数据库触发器同时拒绝 HTTP/RAG 指标写入时，Search 仍 200，Chat 仍完成 hits/delta/`[DONE]`；对应两个 trace 的指标行均为 0，证明指标故障没有改成业务失败。
+- [x] 06 `chromium_static_entry`：真实 `/ui/` 标题为 `RAG Operations Console`，七个模块导航齐全，CSS/ES modules 实际加载，最终 URL 为 `/ui/#/overview`。
+- [x] 07 `overview_four_windows_empty_low_sample_unconfigured`：空 KB 在 1h/24h/7d/30d 均显示 Requests=0、三个空趋势及低样本提示，成本为 Not configured；有数据 KB 显示 Requests=6 和低样本提示。
+- [x] 08 `responsive_1440_1280_900_390`：四种 viewport 的 `scrollWidth` 分别严格等于 1440/1280/900/390，无横向溢出；布局依次为 wide/drawer/drawer/mobile，1280/900 详情为 `dialog`，390 为单列 `tabpanel`。
+- [x] 09 `keyboard_only_navigation_and_tabs`：只用 Tab/Enter 从品牌、Overview 到 Query Lab 并进入 `#/lab`；只用 ArrowRight/Home/End 操作内部 tabs，顺序和选中态符合预期。
+- [x] 10 `live_browser_search_and_trace_link`：Query Lab 实际搜索得到 2 hits，状态为 hybrid；`X-Trace-Id=7393550d44cb`，页面深链指向 `#/traces/7393550d44cb`。
+- [x] 11 `live_browser_chat_sse_and_citation`：浏览器实际消费 SSE，完成时显示 2 citations；回答包含“退款将在 3 个工作日内到账”和真实 chunk 引用，trace 为 `ea743b0f2ea3`，usage/timings 与服务端指标同时展示。
+- [x] 12 `live_browser_upload_ingestion_poll`：Chromium 选择 Markdown 上传，真实 worker 异步入库，UI 轮询 job #2 到 `succeeded / 100%`。
+- [x] 13 `trace_cursor_filters_deep_link_raw_copy`：limit=1 后点击 Load more 得到 2 行；operation/outcome/mode/min_ms/exact trace 组合过滤、深链和键盘 tabs 均正确。Raw 长度 1461；Windows 剪贴板把 63 个 LF 转为 CRLF，规范化后文本逐字相等，且 `json.loads` 后 JSON 完全相等。
+- [x] 14 `trace_drawer_and_mobile_interaction`：1280 drawer 有 `aria-modal`、初始关闭按钮焦点、Shift+Tab 焦点圈、Escape 关闭及触发点焦点恢复；390 选择 trace 后隐藏列表，List/Detail 的 ArrowRight 切换可用。
+- [x] 15 `overview_pricing_partial_failure_stale`：完整和部分定价分别显示 Complete estimate / Partial estimate；真实 summary 500 时页面保留同 scope 缓存，显示 `stale-at` 与 Last success，trends 仍独立更新。
+- [x] 16 `non_admin_cross_tenant_scope_invalidation`：member 的五个动作按钮全部 disabled，直接 API 返回 403；跨租户 API 返回 404；慢 SSE 期间切换 KB 后，迟到回答为空且旧 trace 隐藏。
+- [x] 17 `metric_write_failure_and_missing_evidence`：RAG 指标写故障时真实 Search 仍 200；浏览器直开 trace `9e69be04584a` 显示 Missing metric 警告；`task16metricnoevents` 的详情明确返回 `missing: ["events"]`。
+- [x] 18 `ingestion_failure_ui_retry_success`：暂时移走已上传文件，job #3 经真实 worker 三次尝试后 terminal failed，错误为 `FileNotFoundError`；Chromium 点击 Retry 被接受，恢复文件后真实 worker 成功，UI 为 `succeeded / 100%`。
+- [x] 19 `browser_trigger_eval_loadtest_three_drills`：浏览器逐一点击评测、固定压测和三类演练，真实 `run_once` 执行 run #1–#5；全部 `succeeded / exit_code=0`，UI 回读终态，评测与压测 artifact 已保存并另行读取核对。
+- [x] 20 `identity_comparison_and_audit`：guest/tagged/admin 命中数为 3/4/4；Audit 实际七行包括 member `run_eval_mock/denied`、admin `job_retry/allowed`、allowed eval/loadtest 和三项 drill，不是只做页面子串匹配。
+
+### 受控运行实际数值
+
+| 运行 | 实际观察 |
+|---|---|
+| eval_mock #1 | 50 cases（38 answerable / 12 unanswerable）；Recall@k=0.9342、MRR=0.8575、Hit Rate=0.9474；exit 0。Artifact：`D:\tmp\task16-live-evidence\runs\data\ops\eval\1.json`。 |
+| loadtest #2 | 并发 20，每端点 200；Search 200/200、Chat 200/200，失败均 0。Search p50/p95/p99=176.75/1464.78/1467.05 ms；Chat=348.88/758.32/996.85 ms；rerank degradation=0/200。Artifact：`D:\tmp\task16-live-evidence\runs\data\ops\loadtest\2.json`。 |
+| drill_parser / drill_llm / drill_queue #3/#4/#5 | 均 `succeeded`、exit 0，`summary.passed=true`；Audit 分别留下 allowed 记录。 |
+
+这些数值来自本机隔离环境、确定性 LLM 桩、mock embedding、固定语料和固定 query，只描述本次运行，不是外部模型质量结论或生产容量承诺。
+
+### 故障注入、控制台与证据
+
+- 指标故障通过在隔离库临时创建触发器真实拒绝 INSERT 注入；summary 故障通过临时改名 `ops_runs` 注入，观察后立即恢复；入库故障通过暂时移动上传文件注入，重试前恢复。没有修改业务代码来伪造故障或成功。
+- cancelled 使用真实原始 socket 断开；scope 失效使用慢 LLM 响应；这三类异常和重试堆栈均保留在 `final.log`，并与数据库/UI 终态交叉核对。
+- 最终控制台只有三类资源消息：一个 404 和两次 intentional summary 500。独立诊断 `D:\tmp\task16-console-diagnostic.json` 证明 404 URL 为 `/favicon.ico`；`http_errors` 仅含两条 `/v1/ops/summary?...window=24h` 500。没有最终 invalid-pattern、ES module 或其他静态资源错误。
+- 13 张最终截图位于 `D:\tmp\task16-live-evidence\`：空/低样本 Overview、stale/partial、1440/1280/900/390 响应式、Search/Chat、Raw、移动 List、入库重试、五类 runs、Audit；已逐张检查界面状态与报告观察值一致。
+- 中间失败报告和日志以 `fourth-run-*`、`fifth-run-*`、`sixth-run-*` 保留，未将早期 17/20 或 18/20 当作最终验收结果；最终结论只取 run 7 的 `final-report.json` / `final.log`。
+- 临时 harness、日志、截图和 artifact 均在 `D:\tmp`；未覆盖仓库 eval baseline，也未把静态 route mock 当作实时 API 验收。
+
+### 未覆盖边界
+
+- 本次要求的实时矩阵 20 项均已实际执行，无未执行项；以下是环境边界，不伪装成生产验证。
+- 未调用真实外部 LLM，未验证真实 embedding 的检索质量、费用和延迟；确定性桩与 mock 分数不能代表外部服务质量。
+- 浏览器仅覆盖本机 Chromium；未覆盖 Firefox、WebKit/Safari、物理移动设备、屏幕阅读器实机。
+- 未覆盖生产多实例并发、容器编排、TLS、备份恢复和持久性；一次性 PostgreSQL 的非生产 fsync 设置尤其不能用于证明耐久性。
+- 未配置的外部解析服务集成未覆盖；parser drill 仅证明本次环境下真实 runner 与本地解析路径。
+- 固定压测只覆盖单进程、本机、固定 query 的短时段运行，不构成生产容量或 SLA 结论。

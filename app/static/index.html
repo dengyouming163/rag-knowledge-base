@@ -1,3116 +1,578 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="面向知识库运营的选库、异步入库、检索、流式问答与引用核验工作台。">
-  <title>知识运维工作台</title>
-  <style>
-    :root {
-      color-scheme: light;
-      --paper: #f2eee3;
-      --paper-deep: #e8e2d4;
-      --surface: #fbf8f0;
-      --ink: #172a25;
-      --muted: #64716a;
-      --green: #173f35;
-      --green-soft: #dce7df;
-      --line: #c6c3b5;
-      --line-strong: #87978d;
-      --rust: #9b4b32;
-      --error: #9b352d;
-      --success: #286247;
-      --warning: #8a5a18;
-      --mono: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-      --sans: "Noto Sans CJK SC", "Source Han Sans SC", "Microsoft YaHei", sans-serif;
-      --serif: "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", SimSun, serif;
-      --wx-bg: #ededed;
-      --wx-surface: #ffffff;
-      --wx-rail: #2e2e2e;
-      --wx-rail-active: #3a3a3a;
-      --wx-list: #f7f7f7;
-      --wx-primary: #07c160;
-      --wx-primary-hover: #06ad56;
-      --wx-link: #576b95;
-      --wx-text: #191919;
-      --wx-text-secondary: #7f7f7f;
-      --wx-text-tertiary: #b2b2b2;
-      --wx-divider: #e5e5e5;
-      --wx-warning: #fa9d3b;
-      --wx-danger: #fa5151;
-      --wx-neutral: #888888;
-      --wx-radius: 8px;
-      --wx-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-    }
-
-    * { box-sizing: border-box; }
-
-    body {
-      margin: 0;
-      min-width: 320px;
-      background: var(--paper);
-      color: var(--ink);
-      font-family: var(--sans);
-      font-size: 15px;
-      line-height: 1.65;
-    }
-
-    button, input, select, textarea { font: inherit; }
-    button, input, select, textarea { color: inherit; }
-    button { cursor: pointer; }
-    button:disabled { cursor: wait; opacity: .58; }
-    [hidden] { display: none !important; }
-
-    :focus-visible {
-      outline: 3px solid var(--rust);
-      outline-offset: 3px;
-    }
-
-    .skip-link {
-      position: fixed;
-      top: 8px;
-      left: 8px;
-      z-index: 10;
-      padding: 8px 12px;
-      background: var(--green);
-      color: #fff;
-      transform: translateY(-160%);
-    }
-    .skip-link:focus { transform: translateY(0); }
-
-    .wx-app {
-      display: grid;
-      grid-template-columns: 64px 320px minmax(0, 1fr);
-      grid-template-rows: minmax(0, 1fr);
-      height: 100vh;
-      overflow: hidden;
-      background: var(--wx-bg);
-    }
-    .wx-rail {
-      background: var(--wx-rail);
-      color: #fff;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 4px;
-      padding: 12px 0;
-    }
-    .wx-brand {
-      width: 36px;
-      height: 36px;
-      border-radius: 8px;
-      background: var(--wx-primary);
-      display: grid;
-      place-items: center;
-      font-weight: 600;
-      margin-bottom: 12px;
-    }
-    .wx-nav {
-      width: 56px;
-      padding: 8px 0;
-      border: 0;
-      background: transparent;
-      color: #d9d9d9;
-      border-radius: 6px;
-      cursor: pointer;
-      display: grid;
-      gap: 2px;
-      justify-items: center;
-      font-size: 11px;
-      position: relative;
-    }
-    .wx-nav:hover { background: #383838; }
-    .wx-nav.is-active { background: var(--wx-rail-active); color: #fff; }
-    .wx-rail :focus-visible { outline: 3px solid var(--wx-primary); outline-offset: 3px; }
-    .wx-nav.is-active::before {
-      content: "";
-      position: absolute;
-      left: 0;
-      top: 8px;
-      bottom: 8px;
-      width: 3px;
-      border-radius: 0 2px 2px 0;
-      background: var(--wx-primary);
-    }
-    .wx-nav-icon { font-size: 18px; line-height: 1; }
-    .wx-list {
-      background: var(--wx-list);
-      border-right: 1px solid var(--wx-divider);
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-    .wx-list-head {
-      height: 56px;
-      display: flex;
-      align-items: center;
-      padding: 0 16px;
-      font-weight: 600;
-      border-bottom: 1px solid var(--wx-divider);
-    }
-    .wx-list-body { flex: 1; min-height: 0; overflow: auto; }
-    .wx-list-empty {
-      margin: 0;
-      padding: 20px 16px;
-      color: var(--wx-text-tertiary);
-      font-size: 12px;
-    }
-    .wx-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-    .wx-topbar {
-      height: 56px;
-      background: var(--wx-surface);
-      border-bottom: 1px solid var(--wx-divider);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 24px;
-      gap: 16px;
-    }
-    .wx-title {
-      margin: 0;
-      font-family: var(--sans);
-      font-size: 20px;
-      line-height: 1.2;
-      font-weight: 600;
-      color: var(--wx-text);
-    }
-    .wx-subtitle {
-      font-size: 12px;
-      line-height: 1.2;
-      color: var(--wx-text-secondary);
-      margin-top: 2px;
-    }
-    .wx-badges { display: flex; gap: 8px; flex-wrap: wrap; }
-    .wx-content { flex: 1; min-height: 0; overflow: auto; padding: 24px; }
-    .wx-content > [data-view] { max-width: 1440px; margin: 0 auto; }
-    .wx-card {
-      background: var(--wx-surface);
-      border: 1px solid var(--wx-divider);
-      border-radius: var(--wx-radius);
-      box-shadow: var(--wx-shadow);
-      padding: 16px 20px;
-    }
-    .wx-badge {
-      display: inline-flex;
-      align-items: center;
-      height: 22px;
-      padding: 0 8px;
-      border-radius: 4px;
-      font-size: 12px;
-      border: 1px solid var(--wx-divider);
-      color: var(--wx-text-secondary);
-      background: #fafafa;
-    }
-    .wx-badge.is-real {
-      color: var(--wx-primary);
-      border-color: rgba(7, 193, 96, 0.45);
-      background: #f2fbf6;
-    }
-    .wx-badge.is-danger {
-      color: var(--wx-danger);
-      border-color: rgba(250, 81, 81, 0.4);
-      background: #fff5f5;
-    }
-
-    h1, h2, h3, p { margin-top: 0; }
-    h2 {
-      margin-bottom: 0;
-      font-family: var(--serif);
-      font-size: 21px;
-      line-height: 1.35;
-    }
-    h3 { font-size: 15px; }
-
-    .context-grid {
-      display: grid;
-      grid-template-columns: 1fr 1.35fr;
-      gap: 16px;
-      margin: 0 0 16px;
-    }
-
-    .workbench-grid {
-      display: grid;
-      grid-template-columns: minmax(340px, .88fr) minmax(440px, 1.12fr);
-      gap: 16px;
-      align-items: start;
-    }
-
-    .column {
-      display: grid;
-      gap: 16px;
-      min-width: 0;
-    }
-
-    .panel {
-      min-width: 0;
-      padding: 22px;
-      border: 1px solid var(--line);
-      border-top: 3px solid var(--green);
-      background: var(--surface);
-      box-shadow: 4px 4px 0 rgba(23, 63, 53, .07);
-    }
-
-    .panel-heading {
-      display: flex;
-      gap: 14px;
-      align-items: baseline;
-      margin-bottom: 18px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid var(--line);
-    }
-
-    .index {
-      color: var(--rust);
-      font-family: var(--mono);
-      font-size: 12px;
-      font-weight: 700;
-    }
-
-    .fields {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 14px;
-    }
-    .field { min-width: 0; }
-    .field.wide { grid-column: 1 / -1; }
-
-    label, .label {
-      display: block;
-      margin-bottom: 5px;
-      color: var(--green);
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: .04em;
-    }
-
-    input, select, textarea {
-      width: 100%;
-      min-height: 42px;
-      padding: 9px 11px;
-      border: 1px solid var(--line-strong);
-      border-radius: 0;
-      background: #fffdf7;
-    }
-    input:hover, select:hover, textarea:hover { border-color: var(--green); }
-    textarea {
-      min-height: 118px;
-      resize: vertical;
-      line-height: 1.65;
-    }
-    input[type="file"] {
-      padding: 7px;
-      font-size: 12px;
-    }
-    input[type="file"]::file-selector-button {
-      margin-right: 10px;
-      padding: 6px 10px;
-      border: 0;
-      background: var(--green-soft);
-      color: var(--green);
-      cursor: pointer;
-    }
-
-    .hint {
-      margin: 8px 0 0;
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    .scope-preview {
-      display: block;
-      margin-top: 14px;
-      padding: 9px 11px;
-      border-left: 3px solid var(--green);
-      background: var(--green-soft);
-      font-family: var(--mono);
-      font-size: 11px;
-      overflow-wrap: anywhere;
-    }
-
-    .form-row {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 108px 132px;
-      gap: 12px;
-      align-items: end;
-    }
-
-    .chat-options {
-      display: grid;
-      grid-template-columns: 108px 132px;
-      gap: 12px;
-      margin: 12px 0;
-    }
-
-    .button {
-      min-height: 42px;
-      padding: 9px 16px;
-      border: 1px solid var(--green);
-      border-radius: 0;
-      background: var(--green);
-      color: #fffdf7;
-      font-weight: 700;
-      letter-spacing: .04em;
-      transition: background-color 120ms ease, color 120ms ease, transform 120ms ease;
-    }
-    .button:hover:not(:disabled) { background: #24594b; }
-    .button:active:not(:disabled) { transform: translateY(1px); }
-    .button.secondary {
-      background: transparent;
-      color: var(--green);
-    }
-    .button.secondary:hover:not(:disabled) { background: var(--green-soft); }
-    .button.block { width: 100%; margin-top: 14px; }
-
-    .status {
-      min-height: 25px;
-      margin: 12px 0 0;
-      padding-left: 11px;
-      border-left: 2px solid var(--line-strong);
-      color: var(--muted);
-      font-size: 12px;
-      overflow-wrap: anywhere;
-    }
-    .status[data-tone="success"] { border-color: var(--success); color: var(--success); }
-    .status[data-tone="error"] { border-color: var(--error); color: var(--error); }
-    .status[data-tone="warning"] { border-color: var(--warning); color: var(--warning); }
-
-    .error-text {
-      margin: 8px 0 0;
-      color: var(--error);
-      font-size: 12px;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-    }
-
-    .progress-line {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 48px;
-      gap: 10px;
-      align-items: center;
-      margin-top: 16px;
-    }
-    progress {
-      width: 100%;
-      height: 10px;
-      border: 0;
-      border-radius: 0;
-      background: var(--paper-deep);
-      color: var(--green);
-    }
-    progress::-webkit-progress-bar { background: var(--paper-deep); }
-    progress::-webkit-progress-value { background: var(--green); }
-    progress::-moz-progress-bar { background: var(--green); }
-    .progress-value {
-      font-family: var(--mono);
-      font-size: 12px;
-      text-align: right;
-    }
-
-    .results {
-      max-height: 610px;
-      margin: 16px 0 0;
-      padding: 0;
-      overflow: auto;
-      list-style: none;
-      scrollbar-color: var(--line-strong) transparent;
-    }
-    .results > li {
-      padding: 14px 0;
-      border-top: 1px solid var(--line);
-    }
-    .results > li:first-child { border-top: 0; }
-    .hit-head {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 7px 12px;
-      align-items: baseline;
-      justify-content: space-between;
-    }
-    .chunk-id {
-      color: var(--green);
-      font-family: var(--mono);
-      font-size: 12px;
-      font-weight: 700;
-      overflow-wrap: anywhere;
-    }
-    .score {
-      color: var(--rust);
-      font-family: var(--mono);
-      font-size: 12px;
-      white-space: nowrap;
-    }
-    .source {
-      margin: 3px 0 8px;
-      color: var(--muted);
-      font-family: var(--mono);
-      font-size: 11px;
-      overflow-wrap: anywhere;
-    }
-    .hit-text {
-      margin: 0;
-      color: #263b34;
-      font-size: 13px;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-    }
-    .empty {
-      margin: 0;
-      padding: 18px 0;
-      color: var(--muted);
-      font-family: var(--serif);
-      font-size: 14px;
-    }
-
-    .answer-sheet {
-      min-height: 210px;
-      max-height: 480px;
-      padding: 18px;
-      overflow: auto;
-      border: 1px solid var(--line);
-      background: #fffdf7;
-      font-family: var(--serif);
-      font-size: 16px;
-      line-height: 1.9;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-    }
-    .answer-placeholder { color: var(--muted); }
-
-    .inline-citation {
-      display: inline;
-      margin: 0 1px;
-      padding: 1px 3px;
-      border: 0;
-      border-bottom: 1px solid var(--rust);
-      background: #f4e6dc;
-      color: var(--rust);
-      font-family: var(--mono);
-      font-size: .76em;
-      line-height: 1.4;
-      vertical-align: baseline;
-      white-space: normal;
-      overflow-wrap: anywhere;
-    }
-    .inline-citation:hover { background: #ead2c2; }
-
-    .stream-meta {
-      margin: 10px 0 0;
-      color: var(--muted);
-      font-size: 12px;
-      overflow-wrap: anywhere;
-    }
-
-    .citation-section {
-      margin-top: 22px;
-      padding-top: 16px;
-      border-top: 1px solid var(--line-strong);
-    }
-    .citation-section .panel-heading { margin-bottom: 10px; padding-bottom: 8px; }
-    .citation-section h2 { font-size: 18px; }
-    .citation-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin: 12px 0 0;
-      padding: 0;
-      list-style: none;
-    }
-    .citation-chip {
-      max-width: 100%;
-      padding: 5px 8px;
-      border: 1px solid var(--line-strong);
-      border-radius: 0;
-      background: transparent;
-      color: var(--green);
-      font-family: var(--mono);
-      font-size: 11px;
-      overflow-wrap: anywhere;
-    }
-    .citation-chip:hover { border-color: var(--rust); color: var(--rust); }
-
-    .citation-detail {
-      margin-top: 14px;
-      padding: 14px;
-      border-left: 3px solid var(--rust);
-      background: var(--paper);
-    }
-    .citation-detail h3 {
-      margin-bottom: 4px;
-      font-family: var(--mono);
-      overflow-wrap: anywhere;
-    }
-    .citation-detail pre {
-      max-height: 220px;
-      margin: 10px 0 0;
-      overflow: auto;
-      font-family: var(--sans);
-      font-size: 12px;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-    }
-    .citation-detail .metadata {
-      color: var(--muted);
-      font-family: var(--mono);
-      font-size: 11px;
-    }
-
-    .footer {
-      display: flex;
-      justify-content: space-between;
-      gap: 20px;
-      margin-top: 22px;
-      padding-top: 14px;
-      border-top: 1px solid var(--line-strong);
-      color: var(--muted);
-      font-family: var(--mono);
-      font-size: 10px;
-      letter-spacing: .04em;
-    }
-
-    @media (max-width: 1240px) {
-      .context-grid, .workbench-grid { grid-template-columns: 1fr; }
-      .results { max-height: 480px; }
-    }
-
-    @media (max-width: 1200px) {
-      .wx-app { grid-template-columns: 64px 260px minmax(0, 1fr); }
-    }
-
-    @media (max-width: 899px) {
-      .wx-app { grid-template-columns: 1fr; grid-template-rows: 56px minmax(0, 1fr); }
-      .wx-rail { flex-direction: row; height: 56px; padding: 0 8px; overflow-x: auto; }
-      .wx-brand { margin: 0 8px 0 0; }
-      .wx-nav { min-width: 64px; }
-      .wx-rail :focus-visible { outline-offset: -2px; }
-      .wx-nav.is-active::before {
-        left: 8px;
-        right: 8px;
-        top: auto;
-        bottom: 0;
-        width: auto;
-        height: 3px;
-        border-radius: 2px 2px 0 0;
-      }
-      .wx-list { display: none; }
-      .wx-content { padding: 16px; }
-    }
-
-    @media (max-width: 640px) {
-      .panel { padding: 17px; }
-      .fields, .form-row { grid-template-columns: 1fr; }
-      .chat-options { grid-template-columns: 1fr 1fr; }
-      .field.wide { grid-column: auto; }
-      .footer { flex-direction: column; gap: 4px; }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
-    }
-
-    /* 调测驾驶舱：只读面板 */
-    .wx-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 16px;
-      align-items: start;
-    }
-    .wx-span-2 { grid-column: 1 / -1; }
-    .wx-card-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 12px;
-      padding-bottom: 10px;
-      border-bottom: 1px solid var(--wx-divider);
-    }
-    .wx-card-head h2 {
-      font-family: var(--sans);
-      font-size: 15px;
-      line-height: 1.4;
-    }
-    .wx-kv { display: grid; gap: 8px; }
-    .wx-kv > div {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 12px;
-      font-size: 13px;
-    }
-    .wx-kv span { color: var(--wx-text-secondary); }
-    .wx-kv strong {
-      font-family: var(--mono);
-      font-size: 12px;
-      font-weight: 600;
-      text-align: right;
-      overflow-wrap: anywhere;
-    }
-    .wx-metrics {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 10px;
-    }
-    .wx-metric {
-      display: grid;
-      gap: 2px;
-      padding: 8px 10px;
-      border: 1px solid var(--wx-divider);
-      border-radius: 6px;
-      background: #fafafa;
-      min-width: 0;
-    }
-    .wx-metric span {
-      color: var(--wx-text-secondary);
-      font-size: 12px;
-    }
-    .wx-metric strong {
-      font-family: var(--mono);
-      font-size: 14px;
-      font-weight: 600;
-      overflow-wrap: anywhere;
-    }
-    .wx-delta-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 10px;
-      font-size: 12px;
-      color: var(--wx-text-secondary);
-    }
-    .wx-delta {
-      display: inline-flex;
-      align-items: baseline;
-      gap: 6px;
-      padding: 4px 8px;
-      border: 1px solid var(--wx-divider);
-      border-radius: 6px;
-      background: #fafafa;
-    }
-    .wx-delta strong {
-      font-family: var(--mono);
-      font-weight: 600;
-    }
-    .wx-delta.is-real strong { color: #1a7f37; }
-    .wx-delta.is-danger strong { color: #b42318; }
-    .wx-job-board {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 10px;
-    }
-    .wx-job {
-      display: grid;
-      gap: 2px;
-      padding: 10px 12px;
-      text-align: left;
-      border: 1px solid var(--wx-divider);
-      border-left: 3px solid var(--wx-neutral);
-      border-radius: 6px;
-      background: #fff;
-      min-width: 0;
-    }
-    .wx-job:hover { border-color: var(--wx-primary); }
-    .wx-job.running { border-left-color: var(--wx-warning); }
-    .wx-job.succeeded { border-left-color: var(--wx-primary); }
-    .wx-job.failed { border-left-color: var(--wx-danger); }
-    .wx-job-id {
-      font-family: var(--mono);
-      font-size: 12px;
-      font-weight: 700;
-      color: var(--wx-link);
-    }
-    .wx-job-doc,
-    .wx-job-status,
-    .wx-job-meta,
-    .wx-job-wait {
-      font-size: 12px;
-      color: var(--wx-text-secondary);
-      overflow-wrap: anywhere;
-    }
-    .wx-job-status { color: var(--wx-text); }
-    .wx-timeline { display: grid; gap: 12px; }
-    .wx-timeline-item {
-      display: grid;
-      grid-template-columns: 14px minmax(0, 1fr);
-      gap: 10px;
-      padding-bottom: 12px;
-      border-bottom: 1px dashed var(--wx-divider);
-      font-size: 13px;
-    }
-    .wx-timeline-item:last-child { padding-bottom: 0; border-bottom: 0; }
-    .wx-timeline-dot {
-      width: 8px;
-      height: 8px;
-      margin-top: 6px;
-      border-radius: 50%;
-      background: var(--wx-neutral);
-    }
-    .wx-timeline-item.running .wx-timeline-dot { background: var(--wx-warning); }
-    .wx-timeline-item.succeeded .wx-timeline-dot { background: var(--wx-primary); }
-    .wx-timeline-item.failed .wx-timeline-dot { background: var(--wx-danger); }
-    .wx-timeline-status {
-      margin-left: 8px;
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--wx-text-secondary);
-    }
-    .wx-timeline-meta {
-      display: block;
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--wx-text-tertiary);
-      overflow-wrap: anywhere;
-    }
-    .wx-timeline-item p {
-      margin: 4px 0 0;
-      font-size: 12px;
-      color: var(--wx-text-secondary);
-      overflow-wrap: anywhere;
-    }
-    .wx-trace-layout {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      gap: 16px;
-      align-items: start;
-    }
-    .wx-trace-list { display: grid; gap: 6px; max-height: 360px; overflow: auto; }
-    .wx-list-row {
-      display: grid;
-      grid-template-columns: minmax(0, 160px) minmax(0, 1fr) auto;
-      gap: 10px;
-      align-items: center;
-      padding: 8px 10px;
-      text-align: left;
-      border: 1px solid var(--wx-divider);
-      border-radius: 6px;
-      background: #fff;
-      font-size: 12px;
-    }
-    .wx-list-row:hover { border-color: var(--wx-primary); }
-    .wx-list-row span {
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .wx-list-row span:first-child { font-family: var(--mono); color: var(--wx-link); }
-    .wx-waterfall { display: grid; gap: 8px; }
-    .wx-waterfall-row {
-      display: grid;
-      grid-template-columns: 90px minmax(0, 1fr) 180px;
-      gap: 10px;
-      align-items: center;
-      font-size: 12px;
-    }
-    .wx-waterfall-label {
-      font-family: var(--mono);
-      color: var(--wx-text-secondary);
-      overflow-wrap: anywhere;
-    }
-    .wx-waterfall-bar {
-      width: 100%;
-      height: 12px;
-      fill: var(--wx-primary);
-    }
-    .wx-waterfall-value {
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--wx-text-secondary);
-      overflow-wrap: anywhere;
-    }
-    .wx-empty {
-      grid-column: 1 / -1;
-      margin: 0;
-      padding: 12px;
-      color: var(--wx-text-tertiary);
-      font-size: 12px;
-      text-align: center;
-      border: 1px dashed var(--wx-divider);
-      border-radius: 6px;
-    }
-    .wx-hint {
-      margin: 4px 0 0;
-      color: var(--wx-text-tertiary);
-      font-size: 11px;
-    }
-    .wx-tags {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-top: 10px;
-    }
-    .wx-tag {
-      padding: 2px 8px;
-      border: 1px solid var(--wx-divider);
-      border-radius: 999px;
-      background: var(--wx-list);
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--wx-text-secondary);
-      overflow-wrap: anywhere;
-    }
-    .wx-list-simple { display: grid; gap: 6px; }
-    .wx-list-simple .wx-list-row { grid-template-columns: minmax(0, 1fr); }
-    .wx-list-simple .wx-list-row .wx-badge { justify-self: start; }
-    .wx-list-simple .wx-list-row.is-active {
-      border-color: var(--wx-primary);
-      background: rgba(7, 193, 96, 0.08);
-      box-shadow: inset 3px 0 0 var(--wx-primary);
-    }
-    .wx-layers { display: grid; gap: 8px; }
-    .wx-layer {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 8px 10px;
-      border: 1px solid var(--wx-divider);
-      border-radius: 6px;
-      background: #fafafa;
-      font-size: 13px;
-    }
-    .wx-layer > div {
-      display: grid;
-      gap: 2px;
-      min-width: 0;
-    }
-    .wx-layer > div > span {
-      font-size: 12px;
-      color: var(--wx-text-secondary);
-      overflow-wrap: anywhere;
-    }
-
-    .wx-head-actions { display: flex; align-items: center; gap: 8px; }
-    .wx-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-    .wx-button {
-      min-height: 32px;
-      padding: 6px 12px;
-      border: 1px solid var(--wx-primary);
-      border-radius: 6px;
-      background: var(--wx-primary);
-      color: #fff;
-      font-size: 13px;
-      transition: background-color 120ms ease;
-    }
-    .wx-button:hover:not(:disabled) { background: var(--wx-primary-hover); }
-    .wx-button:disabled { cursor: not-allowed; opacity: .5; }
-    .wx-button.is-danger { border-color: var(--wx-danger); background: var(--wx-danger); }
-    .wx-audit { display: grid; gap: 0; }
-    .wx-audit-item {
-      display: grid;
-      grid-template-columns: 12px minmax(0, 1fr);
-      gap: 10px;
-      padding: 10px 0;
-      border-bottom: 1px dashed var(--wx-divider);
-      font-size: 13px;
-    }
-    .wx-audit-item:last-child { padding-bottom: 0; border-bottom: 0; }
-    .wx-audit-dot {
-      width: 8px;
-      height: 8px;
-      margin-top: 7px;
-      border-radius: 50%;
-      background: var(--wx-neutral);
-    }
-    .wx-audit-item.allowed .wx-audit-dot { background: var(--wx-primary); }
-    .wx-audit-item.denied .wx-audit-dot { background: var(--wx-danger); }
-    .wx-audit-meta {
-      display: block;
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--wx-text-tertiary);
-      overflow-wrap: anywhere;
-    }
-    .wx-audit-item p {
-      margin: 4px 0 0;
-      font-size: 12px;
-      color: var(--wx-text-secondary);
-      overflow-wrap: anywhere;
-    }
-    .wx-output {
-      max-height: 240px;
-      margin: 10px 0 0;
-      padding: 10px;
-      overflow: auto;
-      border: 1px solid var(--wx-divider);
-      border-radius: 6px;
-      background: var(--wx-list);
-      font-family: var(--mono);
-      font-size: 11px;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-    }
-    .wx-error {
-      margin: 10px 0 0;
-      padding: 8px 10px;
-      border-left: 3px solid var(--wx-danger);
-      background: #fff5f5;
-      color: #a12b2b;
-      font-size: 12px;
-      overflow-wrap: anywhere;
-    }
-
-    @media (max-width: 899px) {
-      .wx-grid, .wx-metrics, .wx-job-board, .wx-trace-layout { grid-template-columns: 1fr; }
-      .wx-span-2 { grid-column: auto; }
-      .wx-waterfall-row { grid-template-columns: 72px minmax(0, 1fr); }
-      .wx-waterfall-value { grid-column: 2; }
-    }
-  </style>
+  <meta name="color-scheme" content="light">
+  <title>RAG Operations Console</title>
+  <link rel="stylesheet" href="/ui/css/workbench.css">
 </head>
 <body>
-  <a class="skip-link" href="#workbench">跳到工作区</a>
-  <div class="wx-app">
-    <nav class="wx-rail" aria-label="主导航">
-      <div class="wx-brand">KB</div>
-      <button class="wx-nav is-active" type="button" data-nav="workbench" title="工作台" aria-current="page">
-        <span class="wx-nav-icon" aria-hidden="true">⌂</span><span class="wx-nav-label">工作台</span>
-      </button>
-      <button class="wx-nav" type="button" data-nav="cockpit" title="驾驶舱">
-        <span class="wx-nav-icon" aria-hidden="true">▤</span><span class="wx-nav-label">驾驶舱</span>
-      </button>
-      <button class="wx-nav" type="button" data-nav="identity" title="身份与权限">
-        <span class="wx-nav-icon" aria-hidden="true">◎</span><span class="wx-nav-label">身份</span>
-      </button>
-      <button class="wx-nav" type="button" data-nav="runs" title="评测与压测">
-        <span class="wx-nav-icon" aria-hidden="true">◫</span><span class="wx-nav-label">评测</span>
-      </button>
-      <button class="wx-nav" type="button" data-nav="audit" title="审计">
-        <span class="wx-nav-icon" aria-hidden="true">≡</span><span class="wx-nav-label">审计</span>
-      </button>
-    </nav>
+  <div class="wb-app">
+    <aside class="wb-sidebar">
+      <a class="wb-brand" href="#/overview" aria-label="WorkBuddy overview">
+        <span class="wb-brand-mark" aria-hidden="true">W</span>
+        <span class="wb-brand-copy">
+          <strong>WorkBuddy</strong>
+          <span>RAG Operations</span>
+        </span>
+      </a>
 
-    <aside class="wx-list" id="wx-list" aria-labelledby="wx-list-title">
-      <div class="wx-list-head" id="wx-list-title">工作台</div>
-      <div class="wx-list-body" id="wx-list-body">
-        <p class="wx-list-empty">当前模块暂无列表项</p>
+      <nav class="wb-nav" aria-label="Workspace modules">
+        <p class="wb-nav-label">WORKSPACE</p>
+        <ul class="wb-nav-list">
+          <li><button class="wb-nav-link is-active" type="button" data-nav="overview" aria-current="page" aria-controls="view-overview"><span class="wb-nav-index">01</span><span>Overview</span></button></li>
+          <li><button class="wb-nav-link" type="button" data-nav="lab" aria-controls="view-lab"><span class="wb-nav-index">02</span><span>Query Lab</span></button></li>
+          <li><button class="wb-nav-link" type="button" data-nav="traces" aria-controls="view-traces"><span class="wb-nav-index">03</span><span>Traces</span></button></li>
+          <li><button class="wb-nav-link" type="button" data-nav="ingestion" aria-controls="view-ingestion"><span class="wb-nav-index">04</span><span>Ingestion</span></button></li>
+          <li><button class="wb-nav-link" type="button" data-nav="evaluation" aria-controls="view-evaluation"><span class="wb-nav-index">05</span><span>Evaluation</span></button></li>
+          <li><button class="wb-nav-link" type="button" data-nav="access" aria-controls="view-access"><span class="wb-nav-index">06</span><span>Access Control</span></button></li>
+          <li><button class="wb-nav-link" type="button" data-nav="audit" aria-controls="view-audit"><span class="wb-nav-index">07</span><span>Audit Log</span></button></li>
+        </ul>
+      </nav>
+
+      <div class="wb-sidebar-footer">
+        <span class="wb-status-dot" aria-hidden="true"></span>
+        <div><strong>Operations workspace</strong><span>Scoped to the active tenant</span></div>
       </div>
     </aside>
 
-    <div class="wx-main">
-      <header class="wx-topbar">
-        <div>
-          <h1 class="wx-title">知识运维工作台</h1>
-          <div class="wx-subtitle" id="wx-scope">tenant / kb</div>
+    <div class="wb-workspace">
+      <header class="wb-topbar">
+        <div class="wb-scope-heading">
+          <span class="wb-eyebrow">GLOBAL SCOPE</span>
+          <span class="wb-scope-caption">Applied to every module</span>
         </div>
-        <div class="wx-badges" id="wx-badges"></div>
-      </header>
-      <main class="wx-content">
-        <section id="workbench" data-view="workbench">
-          <div class="context-grid">
-            <section class="panel" aria-labelledby="library-title">
-              <div class="panel-heading">
-                <span class="index">01</span>
-                <h2 id="library-title">选择知识库</h2>
-              </div>
-              <div class="field">
-                <label for="kb-id">知识库 ID</label>
-                <input id="kb-id" name="kb_id" list="kb-options" value="kb_after_sale" maxlength="64" required autocomplete="off">
-                <datalist id="kb-options">
-                  <option value="kb_after_sale"></option>
-                  <option value="kb_smoke"></option>
-                </datalist>
-              </div>
-              <p class="hint">后端未提供知识库列表接口，此处直接输入 ID；示例不构成远端列表。</p>
-            </section>
-
-            <section class="panel" aria-labelledby="identity-title">
-              <div class="panel-heading">
-                <span class="index">02</span>
-                <h2 id="identity-title">租户与角色切换</h2>
-              </div>
-              <div class="fields">
-                <div class="field">
-                  <label for="tenant-id">租户 ID · X-Tenant-Id</label>
-                  <input id="tenant-id" value="demo" required autocomplete="off">
-                </div>
-                <div class="field">
-                  <label for="role">角色预设</label>
-                  <select id="role">
-                    <option value="demo-user">访客 · demo-user</option>
-                    <option value="u_member">成员 · u_member</option>
-                    <option value="u_admin">管理员 · u_admin</option>
-                    <option value="custom">自定义用户</option>
-                  </select>
-                </div>
-                <div class="field wide">
-                  <label for="user-id">用户 ID · X-User-Id</label>
-                  <input id="user-id" value="demo-user" required autocomplete="off">
-                </div>
-              </div>
-              <p class="hint">角色预设仅切换发送的用户 ID，不发送 X-Role；真实权限完全由后端用户表决定。</p>
-              <output id="scope-preview" class="scope-preview" aria-live="polite"></output>
-            </section>
+        <form id="scope-form" class="wb-scope" aria-label="Global request scope">
+          <div class="wb-field wb-field-tenant">
+            <label for="scope-tenant">Tenant ID</label>
+            <input id="scope-tenant" name="tenant" value="demo" maxlength="64" autocomplete="off" spellcheck="false" required>
           </div>
+          <div class="wb-field wb-field-kb">
+            <label for="scope-kb">Knowledge base</label>
+            <input id="scope-kb" name="kb" value="kb_after_sale" maxlength="64" autocomplete="off" spellcheck="false" required>
+          </div>
+          <div class="wb-field wb-field-user">
+            <label for="scope-user">User ID</label>
+            <input id="scope-user" name="user" value="demo_user" maxlength="64" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="wb-field wb-field-window">
+            <label for="scope-window">Time window</label>
+            <select id="scope-window" name="window">
+              <option value="1h">Last hour</option>
+              <option value="24h" selected>Last 24 hours</option>
+              <option value="7d">Last 7 days</option>
+              <option value="30d">Last 30 days</option>
+            </select>
+          </div>
+          <button id="scope-refresh" class="wb-refresh" type="submit">Refresh</button>
+        </form>
+        <output id="app-status" class="wb-app-status" role="status" aria-live="polite">Ready</output>
+      </header>
 
-          <div class="workbench-grid">
-            <div class="column">
-              <section class="panel" aria-labelledby="upload-title">
-                <div class="panel-heading">
-                  <span class="index">03</span>
-                  <h2 id="upload-title">上传与入库进度</h2>
-                </div>
-                <form id="upload-form">
-                  <div class="field">
-                    <label for="document-file">文档文件</label>
-                    <input id="document-file" name="file" type="file" accept=".pdf,.md,.txt" required>
-                  </div>
-                  <button id="upload-button" class="button block" type="submit">上传并跟踪任务</button>
-                </form>
-                <div class="progress-line">
-                  <progress id="upload-progress" max="100" value="0" aria-label="入库任务进度"></progress>
-                  <output id="upload-progress-value" class="progress-value" for="upload-progress">0%</output>
-                </div>
-                <p id="upload-status" class="status" role="status" aria-live="polite">等待选择 PDF、Markdown 或 TXT 文档。</p>
-                <p id="upload-error" class="error-text" role="alert" hidden></p>
-              </section>
-
-              <section class="panel" aria-labelledby="search-title">
-                <div class="panel-heading">
-                  <span class="index">04</span>
-                  <h2 id="search-title">检索列表</h2>
-                </div>
-                <form id="search-form">
-                  <div class="form-row">
-                    <div class="field">
-                      <label for="search-query">检索问题</label>
-                      <input id="search-query" maxlength="2000" required autocomplete="off" placeholder="例如：退货需要哪些凭证？">
-                    </div>
-                    <div class="field">
-                      <label for="search-top-k">Top K</label>
-                      <input id="search-top-k" type="number" value="5" min="1" max="50" required>
-                    </div>
-                    <div class="field">
-                      <label for="search-mode">模式</label>
-                      <select id="search-mode">
-                        <option value="hybrid">混合检索</option>
-                        <option value="vector">向量检索</option>
-                        <option value="bm25">BM25</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div class="fields" style="margin-top: 12px;">
-                    <div class="field">
-                      <label for="search-audience">内容范围</label>
-                      <select id="search-audience">
-                        <option value="public">公开内容</option>
-                        <option value="internal">内部内容</option>
-                      </select>
-                    </div>
-                    <div class="field">
-                      <span class="label" aria-hidden="true">&nbsp;</span>
-                      <button id="search-button" class="button secondary" type="submit">执行检索</button>
-                    </div>
-                  </div>
-                </form>
-                <p id="search-status" class="status" role="status" aria-live="polite">尚未检索。</p>
-                <ol id="search-results" class="results" aria-label="检索命中列表"></ol>
-              </section>
+      <main id="wb-main" class="wb-main">
+        <section id="view-overview" data-view="overview" aria-labelledby="view-overview-title">
+          <header class="wb-view-header">
+            <div><span class="wb-view-kicker">MODULE / 01</span><h1 id="view-overview-title">Overview</h1></div>
+            <p>Operational health and activity for the current scope.</p>
+          </header>
+          <div class="wb-view-body wb-overview" data-view-body>
+            <div class="wb-overview-toolbar">
+              <div>
+                <p class="wb-overview-caption">Fixed-window service, retrieval, generation, and worker health.</p>
+                <p class="wb-overview-legend">Low sample: fewer than 30 samples; interpret rates and percentiles carefully.</p>
+              </div>
+              <div class="wb-overview-statuses" aria-live="polite">
+                <p data-overview-summary-status data-state="idle" role="status">Awaiting refresh.</p>
+                <p data-overview-trends-status data-state="idle" role="status">Awaiting refresh.</p>
+              </div>
             </div>
 
-            <section class="panel" aria-labelledby="chat-title">
-              <div class="panel-heading">
-                <span class="index">05</span>
-                <h2 id="chat-title">流式问答</h2>
+            <div class="wb-overview-grid" aria-label="Operational metrics">
+              <article class="wb-overview-card" data-overview-card="requests">
+                <h2>Requests</h2>
+                <p class="wb-overview-reading"><output data-overview-value="requests">—</output><span data-overview-unit="requests">req</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="requests">—</strong></span><span>Samples <strong data-overview-samples="requests">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="requests" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="avg_qpm">
+                <h2>Avg QPM</h2>
+                <p class="wb-overview-reading"><output data-overview-value="avg_qpm">—</output><span data-overview-unit="avg_qpm">req/min</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="avg_qpm">—</strong></span><span>Samples <strong data-overview-samples="avg_qpm">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="avg_qpm" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="client_errors">
+                <h2>4xx</h2>
+                <p class="wb-overview-reading"><output data-overview-value="client_errors">—</output><span data-overview-unit="client_errors">%</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="client_errors">—</strong></span><span>Samples <strong data-overview-samples="client_errors">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="client_errors" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="server_errors">
+                <h2>5xx</h2>
+                <p class="wb-overview-reading"><output data-overview-value="server_errors">—</output><span data-overview-unit="server_errors">%</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="server_errors">—</strong></span><span>Samples <strong data-overview-samples="server_errors">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="server_errors" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="e2e_p95">
+                <h2>E2E p95</h2>
+                <p class="wb-overview-reading"><output data-overview-value="e2e_p95">—</output><span data-overview-unit="e2e_p95">ms</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="e2e_p95">—</strong></span><span>Samples <strong data-overview-samples="e2e_p95">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="e2e_p95" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="retrieval_p95">
+                <h2>Retrieve p95</h2>
+                <p class="wb-overview-reading"><output data-overview-value="retrieval_p95">—</output><span data-overview-unit="retrieval_p95">ms</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="retrieval_p95">—</strong></span><span>Samples <strong data-overview-samples="retrieval_p95">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="retrieval_p95" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="llm_p95">
+                <h2>LLM p95</h2>
+                <p class="wb-overview-reading"><output data-overview-value="llm_p95">—</output><span data-overview-unit="llm_p95">ms</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="llm_p95">—</strong></span><span>Samples <strong data-overview-samples="llm_p95">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="llm_p95" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="zero_hit">
+                <h2>Zero-hit</h2>
+                <p class="wb-overview-reading"><output data-overview-value="zero_hit">—</output><span data-overview-unit="zero_hit">%</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="zero_hit">—</strong></span><span>Samples <strong data-overview-samples="zero_hit">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="zero_hit" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="refusal">
+                <h2>Refusal</h2>
+                <p class="wb-overview-reading"><output data-overview-value="refusal">—</output><span data-overview-unit="refusal">%</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="refusal">—</strong></span><span>Samples <strong data-overview-samples="refusal">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="refusal" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="citation">
+                <h2>Citation</h2>
+                <p class="wb-overview-reading"><output data-overview-value="citation">—</output><span data-overview-unit="citation">%</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="citation">—</strong></span><span>Samples <strong data-overview-samples="citation">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="citation" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="tokens">
+                <h2>Token</h2>
+                <p class="wb-overview-reading"><output data-overview-value="tokens">—</output><span data-overview-unit="tokens">tokens</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="tokens">—</strong></span><span>Samples <strong data-overview-samples="tokens">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="tokens" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="cost">
+                <h2>Cost</h2>
+                <p class="wb-overview-reading"><output data-overview-value="cost">—</output><span data-overview-unit="cost">USD</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="cost">—</strong></span><span>Samples <strong data-overview-samples="cost">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="cost" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="queue">
+                <h2>Queue</h2>
+                <p class="wb-overview-reading"><output data-overview-value="queue">—</output><span data-overview-unit="queue">queued</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="queue">—</strong></span><span>Samples <strong data-overview-samples="queue">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="queue" hidden></p>
+              </article>
+              <article class="wb-overview-card" data-overview-card="workers">
+                <h2>Workers</h2>
+                <p class="wb-overview-reading"><output data-overview-value="workers">—</output><span data-overview-unit="workers">workers</span></p>
+                <p class="wb-overview-meta"><span>Window <strong data-overview-window="workers">—</strong></span><span>Samples <strong data-overview-samples="workers">—</strong></span></p>
+                <p class="wb-overview-note" data-overview-note="workers" hidden></p>
+              </article>
+            </div>
+
+            <div class="wb-overview-trends" aria-label="Operational trends">
+              <div class="wb-overview-trends-heading"><h2>Trends</h2><p>Fixed buckets · missing values remain empty</p></div>
+              <div class="wb-overview-trend-grid">
+                <article class="wb-overview-trend" data-overview-trend="requests"><h3>Requests</h3><div class="wb-overview-trend-canvas" data-overview-trend-svg="requests"><div class="wb-overview-empty" data-trend-empty>No trend data.</div></div></article>
+                <article class="wb-overview-trend" data-overview-trend="e2e_p95_ms"><h3>E2E p95</h3><div class="wb-overview-trend-canvas" data-overview-trend-svg="e2e_p95_ms"><div class="wb-overview-empty" data-trend-empty>No trend data.</div></div></article>
+                <article class="wb-overview-trend" data-overview-trend="retrieval_p95_ms"><h3>Retrieve p95</h3><div class="wb-overview-trend-canvas" data-overview-trend-svg="retrieval_p95_ms"><div class="wb-overview-empty" data-trend-empty>No trend data.</div></div></article>
+                <article class="wb-overview-trend" data-overview-trend="llm_p95_ms"><h3>LLM p95</h3><div class="wb-overview-trend-canvas" data-overview-trend-svg="llm_p95_ms"><div class="wb-overview-empty" data-trend-empty>No trend data.</div></div></article>
               </div>
-              <form id="chat-form">
-                <div class="field">
-                  <label for="chat-question">提问</label>
-                  <textarea id="chat-question" maxlength="2000" required placeholder="输入基于当前知识库的问题…"></textarea>
-                </div>
-                <div class="chat-options">
-                  <div class="field">
-                    <label for="chat-top-k">Top K</label>
-                    <input id="chat-top-k" type="number" value="5" min="1" max="20" required>
-                  </div>
-                  <div class="field">
-                    <label for="chat-audience">内容范围</label>
-                    <select id="chat-audience">
-                      <option value="public">公开内容</option>
-                      <option value="internal">内部内容</option>
-                    </select>
-                  </div>
-                </div>
-                <button id="chat-button" class="button" type="submit">开始流式问答</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="view-lab" data-view="lab" hidden aria-labelledby="view-lab-title">
+          <header class="wb-view-header">
+            <div><span class="wb-view-kicker">MODULE / 02</span><h1 id="view-lab-title">Query Lab</h1></div>
+            <p>Inspect retrieval and generation behavior in a controlled scope.</p>
+          </header>
+          <div class="wb-view-body wb-lab" data-view-body>
+            <div class="wb-lab-tabs" role="tablist" aria-label="Query Lab tools">
+              <button id="lab-tab-search" class="wb-lab-tab" type="button" role="tab" data-lab-tab="search" aria-selected="true" aria-controls="lab-panel-search">Search</button>
+              <button id="lab-tab-chat" class="wb-lab-tab" type="button" role="tab" data-lab-tab="chat" aria-selected="false" aria-controls="lab-panel-chat" tabindex="-1">Chat</button>
+              <button id="lab-tab-ingest" class="wb-lab-tab" type="button" role="tab" data-lab-tab="ingest" aria-selected="false" aria-controls="lab-panel-ingest" tabindex="-1">Ingest</button>
+            </div>
+
+            <div id="lab-panel-search" class="wb-lab-panel" role="tabpanel" data-lab-panel="search" aria-labelledby="lab-tab-search">
+              <div class="wb-lab-panel-heading">
+                <div><span class="wb-lab-index">01 / RETRIEVAL</span><h2>Retrieval inspection</h2></div>
+                <a id="search-trace-link" class="wb-lab-trace" href="#/traces" hidden>Open search trace</a>
+              </div>
+              <form id="search-form" class="wb-lab-form">
+                <div class="wb-lab-field wb-lab-field-wide"><label for="search-query">Query</label><input id="search-query" maxlength="2000" required autocomplete="off" placeholder="What evidence should the knowledge base return?"></div>
+                <div class="wb-lab-field"><label for="search-top-k">Top K</label><input id="search-top-k" type="number" value="5" min="1" max="50" required></div>
+                <div class="wb-lab-field"><label for="search-mode">Mode</label><select id="search-mode"><option value="hybrid">Hybrid</option><option value="vector">Vector</option><option value="bm25">BM25</option></select></div>
+                <div class="wb-lab-field"><label for="search-audience">Audience</label><select id="search-audience"><option value="public">Public</option><option value="internal">Internal</option></select></div>
+                <button id="search-button" class="wb-lab-action" type="submit">Run search</button>
               </form>
-              <p id="chat-status" class="status" role="status" aria-live="polite">等待提问。回答将按 SSE delta 逐段呈现。</p>
-              <div id="answer" class="answer-sheet" aria-label="问答回答">
-                <span class="answer-placeholder">回答与可点击引用将在这里出现。</span>
-              </div>
-              <p id="stream-meta" class="stream-meta"></p>
+              <p id="search-status" class="wb-lab-status" role="status" aria-live="polite">Awaiting a retrieval query.</p>
+              <ol id="search-results" class="wb-lab-results" aria-label="Retrieval results"><li class="wb-lab-empty">No retrieval runs yet.</li></ol>
+            </div>
 
-              <section class="citation-section" aria-labelledby="citation-title">
-                <div class="panel-heading">
-                  <span class="index">06</span>
-                  <h2 id="citation-title">引用点击展开</h2>
-                </div>
-                <p class="hint">hits 帧只提供 chunk ID。点击回答中的 [chunk_id] 或下方按钮，优先读取检索缓存，未命中时通过现有检索 API 获取原文。</p>
-                <ul id="citation-list" class="citation-list" aria-label="回答引用列表"></ul>
-                <p id="citation-status" class="status" role="status" aria-live="polite">暂无可展开引用。</p>
-                <article id="citation-detail" class="citation-detail" hidden>
+            <div id="lab-panel-chat" class="wb-lab-panel" role="tabpanel" data-lab-panel="chat" aria-labelledby="lab-tab-chat" hidden>
+              <div class="wb-lab-panel-heading">
+                <div><span class="wb-lab-index">02 / GENERATION</span><h2>Streaming answer</h2></div>
+                <a id="chat-trace-link" class="wb-lab-trace" href="#/traces" hidden>Open chat trace</a>
+              </div>
+              <form id="chat-form" class="wb-lab-form">
+                <div class="wb-lab-field wb-lab-field-wide"><label for="chat-question">Question</label><textarea id="chat-question" maxlength="2000" required placeholder="Ask a question grounded in the active knowledge base…"></textarea></div>
+                <div class="wb-lab-field"><label for="chat-top-k">Top K</label><input id="chat-top-k" type="number" value="5" min="1" max="20" required></div>
+                <div class="wb-lab-field"><label for="chat-audience">Audience</label><select id="chat-audience"><option value="public">Public</option><option value="internal">Internal</option></select></div>
+                <button id="chat-button" class="wb-lab-action" type="submit">Start streaming chat</button>
+              </form>
+              <p id="chat-status" class="wb-lab-status" role="status" aria-live="polite">Awaiting a question.</p>
+              <div id="answer" class="wb-lab-answer" aria-label="Streaming answer"></div>
+              <p id="stream-meta" class="wb-lab-stream-meta"></p>
+              <div class="wb-lab-citations">
+                <div class="wb-lab-citations-heading"><h3>Citation sources</h3><p>Select an inline marker or citation to inspect cached text. A cache miss uses retrieval.</p></div>
+                <ul id="citation-list" class="wb-lab-citation-list" aria-label="Answer citations"></ul>
+                <p id="citation-status" class="wb-lab-status" role="status" aria-live="polite">No citations to expand.</p>
+                <article id="citation-detail" class="wb-lab-citation-detail" hidden>
                   <h3 id="citation-heading"></h3>
-                  <p id="citation-source" class="source"></p>
+                  <p id="citation-source" class="wb-lab-source"></p>
                   <pre id="citation-text"></pre>
-                  <pre id="citation-metadata" class="metadata"></pre>
+                  <pre id="citation-metadata" class="wb-lab-metadata"></pre>
                 </article>
-              </section>
-            </section>
-          </div>
+              </div>
+            </div>
 
-          <footer class="footer">
-            <span>TENANT VIA HEADER · NEVER IN REQUEST BODY</span>
-            <span>FASTAPI STATICFILES / SINGLE FILE UI</span>
-          </footer>
+            <div id="lab-panel-ingest" class="wb-lab-panel" role="tabpanel" data-lab-panel="ingest" aria-labelledby="lab-tab-ingest" hidden>
+              <div class="wb-lab-panel-heading"><div><span class="wb-lab-index">03 / INGESTION</span><h2>Document intake</h2></div><p>Real job status, progress, and terminal errors.</p></div>
+              <form id="upload-form" class="wb-lab-form">
+                <div class="wb-lab-field wb-lab-field-wide"><label for="upload-input">Document</label><input id="upload-input" name="file" type="file" accept=".pdf,.md,.txt" required></div>
+                <button id="upload-button" class="wb-lab-action" type="submit">Upload and track job</button>
+              </form>
+              <div class="wb-lab-progress"><progress id="upload-progress" max="100" value="0" aria-label="Ingestion job progress"></progress><output id="upload-progress-value" for="upload-progress">0%</output></div>
+              <p id="upload-status" class="wb-lab-status" role="status" aria-live="polite">Awaiting a document.</p>
+              <p id="upload-error" class="wb-lab-error" role="alert" hidden></p>
+            </div>
+          </div>
         </section>
-        <section data-view="cockpit" hidden>
-          <div class="wx-grid">
-            <section class="wx-card" id="ops-health">
-              <div class="wx-card-head"><h2>系统健康</h2><span class="wx-badge" id="ops-health-badge">-</span></div>
-              <div class="wx-kv" id="ops-health-body"></div>
-            </section>
-            <section class="wx-card" id="ops-queue">
-              <div class="wx-card-head"><h2>任务队列</h2><span class="wx-badge" id="ops-queue-badge">-</span></div>
-              <div class="wx-metrics" id="ops-queue-body"></div>
-            </section>
-            <section class="wx-card wx-span-2" id="ops-ai">
-              <div class="wx-card-head"><h2>AI 指标</h2><span class="wx-badge" id="ops-ai-badge">全部历史</span></div>
-              <div class="wx-metrics" id="ops-ai-body"></div>
-            </section>
-            <section class="wx-card wx-span-2" id="ops-jobs">
-              <div class="wx-card-head">
-                <h2>任务看板</h2>
-                <div class="wx-head-actions">
-                  <span class="wx-badge" id="ops-jobs-badge">-</span>
-                  <button id="job-retry-button" class="wx-button is-danger" hidden>重试失败任务</button>
+
+        <section id="view-traces" data-view="traces" hidden aria-labelledby="view-traces-title">
+          <header class="wb-view-header">
+            <div><span class="wb-view-kicker">MODULE / 03</span><h1 id="view-traces-title">Traces</h1></div>
+            <p>Follow request execution and diagnostic evidence.</p>
+          </header>
+          <div class="wb-view-body wb-traces" data-view-body>
+            <div class="wb-trace-mobile-tabs" role="tablist" aria-label="Trace workspace">
+              <button id="trace-mode-list" class="wb-trace-mode" type="button" role="tab" data-trace-mode="list" aria-selected="true" aria-controls="trace-list-panel">List</button>
+              <button id="trace-mode-detail" class="wb-trace-mode" type="button" role="tab" data-trace-mode="detail" aria-selected="false" aria-controls="trace-detail" tabindex="-1">Detail</button>
+            </div>
+
+            <div class="wb-traces-layout">
+              <aside class="wb-trace-filters" aria-labelledby="trace-filters-title">
+                <div class="wb-trace-section-heading">
+                  <span class="wb-trace-index">01 / FILTERS</span>
+                  <h2 id="trace-filters-title">Trace search</h2>
                 </div>
-              </div>
-              <div class="wx-job-board" id="ops-jobs-body"></div>
-            </section>
-            <section class="wx-card wx-span-2" id="ops-job-events">
-              <div class="wx-card-head"><h2>任务时间线</h2><span class="wx-badge" id="ops-job-events-badge">未选择</span></div>
-              <div id="ops-job-events-body" class="wx-timeline">
-                <div class="wx-empty">点击任务查看阶段时间线</div>
-              </div>
-            </section>
-            <section class="wx-card wx-span-2" id="ops-traces">
-              <div class="wx-card-head"><h2>最近 Trace</h2><span class="wx-badge" id="ops-traces-badge">-</span></div>
-              <div class="wx-trace-layout">
-                <div id="ops-traces-body" class="wx-trace-list"></div>
-                <div id="ops-trace-waterfall" class="wx-waterfall">
-                  <div class="wx-empty">点击左侧 Trace 查看阶段耗时</div>
+                <form id="trace-filter-form" class="wb-trace-filter-form">
+                  <div class="wb-trace-field"><label for="trace-window">Window</label><select id="trace-window" name="window"><option value="1h">Last hour</option><option value="24h" selected>Last 24 hours</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option></select></div>
+                  <div class="wb-trace-field"><label for="trace-outcome">Outcome</label><select id="trace-outcome" name="outcome"><option value="">All outcomes</option><option value="succeeded">Succeeded</option><option value="refused">Refused</option><option value="error">Error</option><option value="cancelled">Cancelled</option></select></div>
+                  <div class="wb-trace-field"><label for="trace-operation">Operation</label><select id="trace-operation" name="operation"><option value="">All operations</option><option value="search">Search</option><option value="chat">Chat</option></select></div>
+                  <div class="wb-trace-field"><label for="trace-mode">Mode</label><input id="trace-mode" name="mode" maxlength="64" autocomplete="off" placeholder="Any mode"></div>
+                  <div class="wb-trace-field"><label for="trace-min-ms">Minimum total (ms)</label><input id="trace-min-ms" name="min_ms" type="number" min="0" step="any" placeholder="0"></div>
+                  <div class="wb-trace-field"><label for="trace-id">Exact Trace ID</label><input id="trace-id" name="trace_id" maxlength="160" pattern="[A-Za-z0-9][A-Za-z0-9_.:\-]{0,159}" autocomplete="off" spellcheck="false" placeholder="Optional exact match"></div>
+                  <div class="wb-trace-field"><label for="trace-limit">Page size</label><input id="trace-limit" name="limit" type="number" min="1" max="100" value="20" required></div>
+                  <button id="trace-apply" class="wb-trace-action" type="submit">Apply filters</button>
+                </form>
+                <p class="wb-trace-filter-note">Nothing loads until Apply, a trace action, or the global Refresh.</p>
+              </aside>
+
+              <section id="trace-list-panel" class="wb-trace-list-panel" aria-labelledby="trace-list-title">
+                <div class="wb-trace-section-heading wb-trace-list-heading">
+                  <div><span class="wb-trace-index">02 / REQUESTS</span><h2 id="trace-list-title">Recent traces</h2></div>
+                  <span>Stable time / ID order</span>
                 </div>
-              </div>
-            </section>
+                <p id="trace-list-status" class="wb-trace-status" role="status" aria-live="polite">Apply filters or refresh to load traces.</p>
+                <div id="trace-table-scroll" class="wb-trace-table-scroll">
+                  <table class="wb-trace-table">
+                    <caption class="wb-sr-only">Scoped request traces</caption>
+                    <thead><tr><th scope="col">Time</th><th scope="col">Trace</th><th scope="col">Operation</th><th scope="col">Outcome</th><th scope="col">Stages</th><th scope="col">Total</th><th scope="col">Hits</th></tr></thead>
+                    <tbody id="trace-list-rows"><tr><td colspan="7" class="wb-trace-empty">No traces loaded.</td></tr></tbody>
+                  </table>
+                </div>
+                <button id="trace-load-more" class="wb-trace-load-more" type="button" hidden>Load more</button>
+              </section>
+
+              <aside id="trace-detail" class="wb-trace-detail" data-trace-detail aria-labelledby="trace-detail-title" tabindex="-1">
+                <div class="wb-trace-section-heading wb-trace-detail-heading">
+                  <div><span class="wb-trace-index">03 / INSPECTOR</span><h2 id="trace-detail-title">Trace Inspector</h2></div>
+                  <button id="trace-drawer-close" class="wb-trace-drawer-close" type="button" data-trace-drawer-close aria-label="Close trace inspector">Close</button>
+                </div>
+                <p id="trace-detail-status" class="wb-trace-status" role="status" aria-live="polite">Select a trace to inspect diagnostic evidence.</p>
+                <p id="trace-missing" class="wb-trace-missing" role="note" hidden></p>
+                <div class="wb-trace-inspector-tabs" role="tablist" aria-label="Trace inspector views">
+                  <button id="trace-inspector-tab-summary" class="wb-trace-inspector-tab" type="button" role="tab" data-trace-tab="summary" aria-selected="true" aria-controls="trace-inspector-panel-summary">Summary</button>
+                  <button id="trace-inspector-tab-timing" class="wb-trace-inspector-tab" type="button" role="tab" data-trace-tab="timing" aria-selected="false" aria-controls="trace-inspector-panel-timing" tabindex="-1">Timing</button>
+                  <button id="trace-inspector-tab-raw" class="wb-trace-inspector-tab" type="button" role="tab" data-trace-tab="raw" aria-selected="false" aria-controls="trace-inspector-panel-raw" tabindex="-1">Raw</button>
+                </div>
+
+                <section id="trace-inspector-panel-summary" class="wb-trace-inspector-panel" role="tabpanel" data-trace-panel="summary" aria-labelledby="trace-inspector-tab-summary">
+                  <dl class="wb-trace-summary">
+                    <div><dt>Trace ID</dt><dd data-trace-summary="trace_id">—</dd></div>
+                    <div><dt>Knowledge base</dt><dd data-trace-summary="kb_id">—</dd></div>
+                    <div><dt>Occurred at</dt><dd data-trace-summary="occurred_at">—</dd></div>
+                    <div><dt>Operation</dt><dd data-trace-summary="operation">—</dd></div>
+                    <div><dt>Mode</dt><dd data-trace-summary="mode">—</dd></div>
+                    <div><dt>Model</dt><dd data-trace-summary="model">—</dd></div>
+                    <div><dt>Outcome</dt><dd data-trace-summary="outcome">—</dd></div>
+                    <div><dt>Hits</dt><dd data-trace-summary="hits">—</dd></div>
+                    <div><dt>Citation valid</dt><dd data-trace-summary="citation">—</dd></div>
+                    <div><dt>Rerank degraded</dt><dd data-trace-summary="rerank">—</dd></div>
+                    <div><dt>Prompt tokens</dt><dd data-trace-summary="prompt_tokens">—</dd></div>
+                    <div><dt>Completion tokens</dt><dd data-trace-summary="completion_tokens">—</dd></div>
+                    <div><dt>Total tokens</dt><dd data-trace-summary="total_tokens">—</dd></div>
+                    <div><dt>Errors</dt><dd data-trace-summary="errors">—</dd></div>
+                  </dl>
+                </section>
+
+                <section id="trace-inspector-panel-timing" class="wb-trace-inspector-panel" role="tabpanel" data-trace-panel="timing" aria-labelledby="trace-inspector-tab-timing" hidden>
+                  <p id="trace-timing-status" class="wb-trace-timing-status">Timing appears after a trace is selected.</p>
+                  <div id="trace-timing-spans" class="wb-trace-timing-spans" aria-label="Trace stage timing"></div>
+                </section>
+
+                <section id="trace-inspector-panel-raw" class="wb-trace-inspector-panel" role="tabpanel" data-trace-panel="raw" aria-labelledby="trace-inspector-tab-raw" hidden>
+                  <div class="wb-trace-raw-toolbar"><button id="trace-copy" class="wb-trace-copy" type="button">Copy Raw JSON</button><p id="trace-copy-status" class="wb-trace-status" role="status" aria-live="polite">Copy uses your browser clipboard permission.</p></div>
+                  <pre id="trace-raw" class="wb-trace-raw" tabindex="0" aria-label="Raw trace JSON"></pre>
+                </section>
+              </aside>
+            </div>
+            <button id="trace-drawer-backdrop" class="wb-trace-drawer-backdrop" type="button" data-trace-drawer-close aria-label="Close trace inspector overlay" tabindex="-1" hidden></button>
           </div>
         </section>
-        <section data-view="identity" hidden>
-          <div class="wx-grid">
-            <section class="wx-card" id="identity-card">
-              <div class="wx-card-head"><h2>身份卡</h2><span class="wx-badge" id="identity-role">-</span></div>
-              <div class="wx-kv" id="identity-body"></div>
-              <div class="wx-tags" id="identity-tags"></div>
-            </section>
-            <section class="wx-card" id="identity-kbs">
-              <div class="wx-card-head"><h2>可见知识库</h2><span class="wx-badge" id="identity-kb-count">-</span></div>
-              <div class="wx-list-simple" id="identity-kb-body"></div>
-            </section>
-            <section class="wx-card wx-span-2" id="isolation-layers">
-              <div class="wx-card-head"><h2>三层隔离</h2><span class="wx-badge">租户 → ACL → RLS</span></div>
-              <div class="wx-layers" id="isolation-body"></div>
-            </section>
-            <section class="wx-card wx-span-2" id="permission-reason">
-              <div class="wx-card-head"><h2>拒绝原因</h2><span class="wx-badge" id="permission-decision">-</span></div>
-              <div id="permission-reason-body"></div>
-            </section>
-            <section class="wx-card wx-span-2" id="identity-compare">
-              <div class="wx-card-head"><h2>身份切换对比</h2><span class="wx-badge">管理员可用</span></div>
-              <div class="wx-actions">
-                <button id="identity-compare-button" class="wx-button" disabled>对比当前 query</button>
+
+        <section id="view-ingestion" data-view="ingestion" hidden aria-labelledby="view-ingestion-title">
+          <header class="wb-view-header">
+            <div><span class="wb-view-kicker">MODULE / 04</span><h1 id="view-ingestion-title">Ingestion</h1></div>
+            <p>Monitor document intake and processing jobs.</p>
+          </header>
+          <div class="wb-view-body wb-ops-workspace" data-view-body>
+            <div class="wb-ops-toolbar">
+              <div class="wb-ops-toolbar-main">
+                <button id="ingestion-load" class="wb-ops-action" type="button">Load jobs</button>
+                <div class="wb-ops-window">
+                  <label for="ingestion-window">Time window</label>
+                  <select id="ingestion-window" disabled aria-describedby="ingestion-window-note"><option>Global window</option></select>
+                </div>
+                <p id="ingestion-window-note" class="wb-ops-note">Time-window filtering is not supported by the jobs API; the latest 50 jobs are shown.</p>
               </div>
-              <div id="identity-compare-body" class="wx-empty">选择 query 后对比 guest / member / admin</div>
-            </section>
+              <p id="ingestion-permission-status" class="wb-ops-permission" data-action-disabled-reason role="status" aria-live="polite">Permissions are checked when jobs load.</p>
+            </div>
+
+            <div class="wb-ops-grid wb-ingestion-grid">
+              <article class="wb-ops-panel wb-ops-history" aria-labelledby="ingestion-jobs-title">
+                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">01 / JOBS</span><h2 id="ingestion-jobs-title">Ingestion jobs</h2></div><span>Independent job state</span></div>
+                <p id="ingestion-jobs-status" class="wb-ops-status-line" role="status" aria-live="polite">Load jobs or refresh to inspect ingestion.</p>
+                <div class="wb-ops-table-scroll">
+                  <table class="wb-ops-table">
+                    <caption class="wb-sr-only">Scoped ingestion jobs</caption>
+                    <thead><tr><th scope="col">Job</th><th scope="col">Document</th><th scope="col">Status</th><th scope="col">Wait</th><th scope="col">Duration</th><th scope="col">Progress</th><th scope="col">Error</th></tr></thead>
+                    <tbody id="ingestion-job-rows"><tr><td colspan="7" class="wb-ops-empty">No ingestion jobs loaded.</td></tr></tbody>
+                  </table>
+                </div>
+              </article>
+
+              <aside id="ingestion-job-detail" class="wb-ops-panel" aria-labelledby="ingestion-detail-title">
+                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">02 / DETAIL</span><h2 id="ingestion-detail-title">Job detail</h2></div></div>
+                <dl class="wb-ops-detail-list">
+                  <div><dt>Job</dt><dd data-job-detail="id">—</dd></div>
+                  <div><dt>Status</dt><dd data-job-detail="status">—</dd></div>
+                  <div><dt>Wait</dt><dd data-job-detail="wait">—</dd></div>
+                  <div><dt>Duration</dt><dd data-job-detail="duration">—</dd></div>
+                  <div><dt>Progress</dt><dd data-job-detail="progress">—</dd></div>
+                  <div><dt>Error</dt><dd data-job-detail="error">—</dd></div>
+                </dl>
+                <button id="ingestion-retry" class="wb-ops-action wb-ops-action-secondary" type="button" hidden disabled>Retry failed job</button>
+                <p id="ingestion-action-status" class="wb-ops-status-line" role="status" aria-live="polite"></p>
+              </aside>
+
+              <article class="wb-ops-panel" aria-labelledby="ingestion-events-title">
+                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">03 / EVENTS</span><h2 id="ingestion-events-title">Job events</h2></div><span>Loaded separately</span></div>
+                <p id="ingestion-job-events-status" class="wb-ops-status-line" role="status" aria-live="polite">Select a job to load its events independently.</p>
+                <ul id="ingestion-job-events" class="wb-ops-events" aria-label="Selected ingestion job events"></ul>
+              </article>
+            </div>
           </div>
         </section>
-        <section data-view="runs" hidden>
-          <div class="wx-grid">
-            <section class="wx-card wx-span-2" id="runs-metrics">
-              <div class="wx-card-head"><h2>最近一次评测</h2><span class="wx-badge" id="runs-metrics-badge">-</span></div>
-              <div class="wx-metrics" id="runs-metrics-body"></div>
-            </section>
-            <section class="wx-card" id="runs-history">
-              <div class="wx-card-head"><h2>运行历史</h2><span class="wx-badge" id="runs-history-badge">-</span></div>
-              <div id="runs-history-body" class="wx-list-simple"></div>
-            </section>
-            <section class="wx-card" id="runs-trigger">
-              <div class="wx-card-head"><h2>受控触发</h2><span class="wx-badge" id="runs-trigger-badge">只读</span></div>
-              <div class="wx-actions">
-                <button id="run-trigger-eval" class="wx-button" disabled>运行 mock 评测</button>
-                <button id="run-trigger-loadtest" class="wx-button" disabled>运行固定压测</button>
-                <button id="run-trigger-drill" class="wx-button" disabled>运行安全演练</button>
+
+        <section id="view-evaluation" data-view="evaluation" hidden aria-labelledby="view-evaluation-title">
+          <header class="wb-view-header">
+            <div><span class="wb-view-kicker">MODULE / 05</span><h1 id="view-evaluation-title">Evaluation</h1></div>
+            <p>Review quality runs and comparable evaluation results.</p>
+          </header>
+          <div class="wb-view-body wb-ops-workspace" data-view-body>
+            <div class="wb-ops-toolbar">
+              <div class="wb-ops-toolbar-main">
+                <button id="evaluation-load" class="wb-ops-action" type="button">Load runs</button>
+                <div class="wb-ops-window">
+                  <label for="evaluation-window">Time window</label>
+                  <select id="evaluation-window" disabled aria-describedby="evaluation-window-note"><option>Global window</option></select>
+                </div>
+                <p id="evaluation-window-note" class="wb-ops-note">Time-window filtering is not supported by run history; the latest 20 runs are shown.</p>
               </div>
-              <div id="drill-actions" class="wx-actions" hidden>
-                <button data-drill="drill_parser" class="wx-button" disabled>parser 降级演练</button>
-                <button data-drill="drill_llm" class="wx-button" disabled>LLM 失败演练</button>
-                <button data-drill="drill_queue" class="wx-button" disabled>队列重试演练</button>
+              <p id="evaluation-permission-status" class="wb-ops-permission" data-action-disabled-reason role="status" aria-live="polite">Permissions are checked when runs load.</p>
+            </div>
+
+            <div class="wb-run-triggers" aria-label="Start an evaluation or operations drill">
+              <div><span class="wb-ops-index">ACTIONS</span><h2>Start a run</h2><p>Each action creates a real queued run; status follows its server detail.</p></div>
+              <div class="wb-run-trigger-buttons">
+                <button id="run-trigger-eval-mock" class="wb-ops-action" type="button" data-kind="eval_mock" disabled>Evaluation</button>
+                <button id="run-trigger-loadtest" class="wb-ops-action wb-ops-action-secondary" type="button" data-kind="loadtest" disabled>Load test</button>
+                <button id="run-trigger-drill-parser" class="wb-ops-action wb-ops-action-secondary" type="button" data-kind="drill_parser" disabled>Parser drill</button>
+                <button id="run-trigger-drill-llm" class="wb-ops-action wb-ops-action-secondary" type="button" data-kind="drill_llm" disabled>LLM drill</button>
+                <button id="run-trigger-drill-queue" class="wb-ops-action wb-ops-action-secondary" type="button" data-kind="drill_queue" disabled>Queue drill</button>
               </div>
-              <div id="runs-delta" class="wx-delta-list"></div>
-              <p class="wx-hint" id="runs-trigger-hint">固定参数：eval --mock；loadtest 并发 20 / 每端点 200；演练为隔离测试。</p>
-            </section>
-            <section class="wx-card wx-span-2" id="runs-detail">
-              <div class="wx-card-head"><h2>运行详情</h2><span class="wx-badge" id="runs-detail-badge">未选择</span></div>
-              <div id="runs-detail-body" class="wx-empty">选择一条运行记录</div>
-            </section>
+            </div>
+            <p id="evaluation-action-status" class="wb-ops-status-line wb-ops-action-status" role="status" aria-live="polite"></p>
+
+            <div class="wb-ops-grid wb-evaluation-grid">
+              <article class="wb-ops-panel wb-ops-history" aria-labelledby="evaluation-runs-title">
+                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">01 / HISTORY</span><h2 id="evaluation-runs-title">Run history</h2></div><span>Independent history state</span></div>
+                <p id="evaluation-runs-status" class="wb-ops-status-line" role="status" aria-live="polite">Load runs or refresh to inspect evaluation history.</p>
+                <div class="wb-ops-table-scroll">
+                  <table class="wb-ops-table wb-evaluation-table">
+                    <caption class="wb-sr-only">Scoped evaluation and drill runs</caption>
+                    <thead><tr><th scope="col">Run</th><th scope="col">Kind</th><th scope="col">Status</th><th scope="col">Requested</th><th scope="col">Started</th><th scope="col">Finished</th><th scope="col">Exit</th></tr></thead>
+                    <tbody id="evaluation-run-rows"><tr><td colspan="7" class="wb-ops-empty">No evaluation runs loaded.</td></tr></tbody>
+                  </table>
+                </div>
+              </article>
+
+              <article id="evaluation-run-detail" class="wb-ops-panel wb-evaluation-detail" aria-labelledby="evaluation-detail-title">
+                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">02 / DETAIL</span><h2 id="evaluation-detail-title">Run detail</h2></div><span>Independent detail state</span></div>
+                <p id="evaluation-detail-status" class="wb-ops-status-line" role="status" aria-live="polite">Select a run to inspect its detail independently.</p>
+                <dl class="wb-ops-detail-list wb-run-fields">
+                  <div><dt>Kind</dt><dd data-run-field="kind">—</dd></div>
+                  <div><dt>Status</dt><dd data-run-field="status">—</dd></div>
+                  <div><dt>Requested</dt><dd data-run-field="requested_at">—</dd></div>
+                  <div><dt>Started</dt><dd data-run-field="started_at">—</dd></div>
+                  <div><dt>Finished</dt><dd data-run-field="finished_at">—</dd></div>
+                  <div><dt>Exit code</dt><dd data-run-field="exit_code">—</dd></div>
+                  <div><dt>Artifact path</dt><dd data-run-field="artifact_path">—</dd></div>
+                  <div><dt>Error</dt><dd data-run-field="error">—</dd></div>
+                </dl>
+
+                <div class="wb-run-metrics-heading"><h3>Quality metrics</h3><p id="evaluation-delta-context">No comparison loaded.</p></div>
+                <div class="wb-run-metric-grid">
+                  <div class="wb-run-metric"><span>Recall@K</span><strong data-run-metric="recall_at_k">—</strong><small>Delta <output data-run-delta="recall_at_k">—</output></small></div>
+                  <div class="wb-run-metric"><span>MRR</span><strong data-run-metric="mrr">—</strong><small>Delta <output data-run-delta="mrr">—</output></small></div>
+                  <div class="wb-run-metric"><span>Hit rate</span><strong data-run-metric="hit_rate">—</strong><small>Delta <output data-run-delta="hit_rate">—</output></small></div>
+                  <div class="wb-run-metric"><span>Refusal accuracy</span><strong data-run-metric="refusal_accuracy">—</strong><small>Delta <output data-run-delta="refusal_accuracy">—</output></small></div>
+                  <div class="wb-run-metric"><span>Answer coverage</span><strong data-run-metric="answer_coverage">—</strong><small>Delta <output data-run-delta="answer_coverage">—</output></small></div>
+                  <div class="wb-run-metric"><span>Citation accuracy</span><strong data-run-metric="citation_accuracy">—</strong><small>Delta <output data-run-delta="citation_accuracy">—</output></small></div>
+                </div>
+                <h3 class="wb-run-output-title">Output tail</h3>
+                <pre id="evaluation-run-output" class="wb-run-output" tabindex="0" aria-label="Run output tail">—</pre>
+              </article>
+            </div>
           </div>
         </section>
-        <section data-view="audit" hidden>
-          <div class="wx-card">
-            <div class="wx-card-head"><h2>操作审计</h2><span class="wx-badge" id="audit-badge">最近 50 条</span></div>
-            <div id="audit-timeline" class="wx-audit"></div>
+
+        <section id="view-access" data-view="access" hidden aria-labelledby="view-access-title">
+          <header class="wb-view-header">
+            <div><span class="wb-view-kicker">MODULE / 06</span><h1 id="view-access-title">Access Control</h1></div>
+            <p>Inspect identity, permissions, and knowledge-base access.</p>
+          </header>
+          <div class="wb-view-body wb-ops-workspace wb-access" data-view-body>
+            <div class="wb-ops-toolbar">
+              <div class="wb-ops-toolbar-main">
+                <button id="access-load" class="wb-ops-action" type="button">Load access state</button>
+                <p class="wb-ops-note">Identity and knowledge-base permissions load independently; either result remains visible if the other request fails.</p>
+              </div>
+              <p id="access-permission-status" class="wb-ops-permission" data-action-disabled-reason role="status" aria-live="polite">Permissions are checked when access state loads.</p>
+            </div>
+
+            <div class="wb-access-grid">
+              <article class="wb-ops-panel" aria-labelledby="access-identity-title">
+                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">01 / IDENTITY</span><h2 id="access-identity-title">Current identity</h2></div><span>/v1/identity</span></div>
+                <p id="access-identity-status" class="wb-ops-status-line" role="status" aria-live="polite">Load access state or refresh to inspect identity.</p>
+                <dl class="wb-ops-detail-list">
+                  <div><dt>Tenant</dt><dd data-access-field="tenant">—</dd></div>
+                  <div><dt>User</dt><dd data-access-field="user">—</dd></div>
+                  <div><dt>Role</dt><dd data-access-field="role">—</dd></div>
+                  <div><dt>Tags</dt><dd data-access-field="tags">—</dd></div>
+                  <div><dt>Tenant KBs</dt><dd data-access-field="kbs">—</dd></div>
+                </dl>
+              </article>
+
+              <article class="wb-ops-panel" aria-labelledby="access-kb-title">
+                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">02 / DECISION</span><h2 id="access-kb-title">KB scoped decision</h2></div><span>/v1/ops/permissions</span></div>
+                <p id="access-kb-permission-status" class="wb-ops-status-line" role="status" aria-live="polite">Knowledge-base permissions load separately from identity.</p>
+                <dl class="wb-ops-detail-list">
+                  <div><dt>KB</dt><dd data-access-kb-field="kb">—</dd></div>
+                  <div><dt>Decision</dt><dd data-access-kb-field="decision">—</dd></div>
+                  <div><dt>Scoped chunks</dt><dd data-access-kb-field="scoped_count">—</dd></div>
+                  <div><dt>Bare connection chunks</dt><dd data-access-kb-field="bare_count">—</dd></div>
+                </dl>
+                <p class="wb-access-reason"><strong>API reason</strong><span id="access-permission-reason">—</span></p>
+              </article>
+            </div>
+
+            <article class="wb-ops-panel wb-access-isolation" aria-labelledby="access-isolation-title">
+              <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">03 / BOUNDARIES</span><h2 id="access-isolation-title">Three isolation boundaries</h2></div><span>Only fields returned by the APIs are shown</span></div>
+              <div class="wb-access-layers">
+                <div class="wb-access-layer" data-access-layer="tenant"><h3>Tenant boundary</h3><p data-access-layer-detail>—</p></div>
+                <div class="wb-access-layer" data-access-layer="kb"><h3>KB boundary</h3><p data-access-layer-detail>—</p></div>
+                <div class="wb-access-layer" data-access-layer="user"><h3>User boundary</h3><p data-access-layer-detail>—</p></div>
+              </div>
+            </article>
+
+            <article class="wb-ops-panel wb-access-compare" aria-labelledby="access-compare-title">
+              <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">04 / COMPARE</span><h2 id="access-compare-title">Identity visibility comparison</h2></div><span>Administrator action; the server verifies permission again</span></div>
+              <form id="access-compare-form" class="wb-access-compare-form" novalidate>
+                <div class="wb-access-field">
+                  <label for="access-compare-query">Query</label>
+                  <textarea id="access-compare-query" minlength="1" maxlength="500" rows="2" required aria-describedby="access-compare-query-note access-compare-error"></textarea>
+                  <small id="access-compare-query-note">1–500 characters after trimming.</small>
+                </div>
+                <div class="wb-access-field">
+                  <label for="access-compare-user-ids">User IDs</label>
+                  <input id="access-compare-user-ids" value="guest,u_member,u_admin" required autocomplete="off" spellcheck="false" aria-describedby="access-compare-user-note access-compare-error">
+                  <small id="access-compare-user-note">1–3 comma-separated user IDs.</small>
+                </div>
+                <div class="wb-access-field">
+                  <label for="access-compare-top-k">Top K</label>
+                  <input id="access-compare-top-k" type="number" value="5" min="1" max="10" step="1" required aria-describedby="access-compare-top-k-note access-compare-error">
+                  <small id="access-compare-top-k-note">An integer from 1 to 10.</small>
+                </div>
+                <button id="access-compare-submit" class="wb-ops-action" type="submit" disabled aria-describedby="access-permission-status">Compare identities</button>
+                <p id="access-compare-error" class="wb-access-error" role="alert" hidden></p>
+              </form>
+              <p id="access-compare-status" class="wb-ops-status-line" role="status" aria-live="polite">Load permissions before comparing identities.</p>
+              <div id="access-compare-results" class="wb-access-compare-results" aria-label="Per-user identity comparison results"></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="view-audit" data-view="audit" hidden aria-labelledby="view-audit-title">
+          <header class="wb-view-header">
+            <div><span class="wb-view-kicker">MODULE / 07</span><h1 id="view-audit-title">Audit Log</h1></div>
+            <p>Review scoped operational actions and audit evidence.</p>
+          </header>
+          <div class="wb-view-body wb-ops-workspace wb-audit" data-view-body>
+            <div class="wb-ops-toolbar">
+              <div class="wb-ops-toolbar-main">
+                <button id="audit-load" class="wb-ops-action" type="button">Load audit records</button>
+                <p class="wb-ops-note">The latest 50 records are requested from the API and presented in ascending time order. Missing fields remain unavailable.</p>
+              </div>
+            </div>
+            <article class="wb-ops-panel wb-audit-panel" aria-labelledby="audit-timeline-title">
+              <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">01 / TIMELINE</span><h2 id="audit-timeline-title">Operational audit timeline</h2></div><span>Oldest first · arrow keys move between events</span></div>
+              <p id="audit-status" class="wb-ops-status-line" role="status" aria-live="polite">Load audit records or refresh to inspect the timeline.</p>
+              <ol id="audit-timeline" class="wb-audit-timeline" aria-label="Operational audit timeline, oldest first"></ol>
+            </article>
           </div>
         </section>
       </main>
     </div>
   </div>
-  <noscript>此工作台需要启用 JavaScript 才能调用检索与问答接口。</noscript>
-
-  <script>
-    (() => {
-      "use strict";
-
-      const byId = (id) => document.getElementById(id);
-      const elements = {
-        tenant: byId("tenant-id"),
-        kb: byId("kb-id"),
-        role: byId("role"),
-        user: byId("user-id"),
-        scopePreview: byId("scope-preview"),
-        wxScope: byId("wx-scope"),
-        uploadForm: byId("upload-form"),
-        file: byId("document-file"),
-        uploadButton: byId("upload-button"),
-        uploadProgress: byId("upload-progress"),
-        uploadProgressValue: byId("upload-progress-value"),
-        uploadStatus: byId("upload-status"),
-        uploadError: byId("upload-error"),
-        searchForm: byId("search-form"),
-        searchQuery: byId("search-query"),
-        searchTopK: byId("search-top-k"),
-        searchMode: byId("search-mode"),
-        searchAudience: byId("search-audience"),
-        searchButton: byId("search-button"),
-        searchStatus: byId("search-status"),
-        searchResults: byId("search-results"),
-        chatForm: byId("chat-form"),
-        chatQuestion: byId("chat-question"),
-        chatTopK: byId("chat-top-k"),
-        chatAudience: byId("chat-audience"),
-        chatButton: byId("chat-button"),
-        chatStatus: byId("chat-status"),
-        answer: byId("answer"),
-        streamMeta: byId("stream-meta"),
-        citationList: byId("citation-list"),
-        citationStatus: byId("citation-status"),
-        citationDetail: byId("citation-detail"),
-        citationHeading: byId("citation-heading"),
-        citationSource: byId("citation-source"),
-        citationText: byId("citation-text"),
-        citationMetadata: byId("citation-metadata")
-      };
-
-      const state = {
-        upload: null,
-        search: null,
-        chat: null,
-        history: [],
-        hitCache: new Map()
-      };
-      let uploadSequence = 0;
-      let searchSequence = 0;
-      let chatSequence = 0;
-      let citationSequence = 0;
-
-      function node(tag, className, text) {
-        const element = document.createElement(tag);
-        if (className) element.className = className;
-        if (text !== undefined) element.textContent = text;
-        return element;
-      }
-
-      function setStatus(element, message, tone = "neutral") {
-        element.textContent = message;
-        element.dataset.tone = tone;
-      }
-
-      function currentScope() {
-        return {
-          tenant: elements.tenant.value.trim(),
-          kb: elements.kb.value.trim(),
-          user: elements.user.value.trim()
-        };
-      }
-
-      function scopeKey(scope) {
-        return JSON.stringify([scope.tenant, scope.kb, scope.user]);
-      }
-
-      function updateScopePreview() {
-        const scope = currentScope();
-        elements.scopePreview.textContent = `tenant=${scope.tenant || "（未填写）"} · kb=${scope.kb || "（未填写）"} · user=${scope.user || "（未填写）"}`;
-        elements.wxScope.textContent = `${scope.tenant || "tenant"} / ${scope.kb || "kb"}`;
-      }
-
-      function validateScope(scope, includeUser = true) {
-        if (!scope.tenant || !scope.kb) {
-          throw new Error("请先填写租户 ID 和知识库 ID。");
-        }
-        if (includeUser && !scope.user) {
-          throw new Error("请先填写用户 ID。");
-        }
-      }
-
-      function requestHeaders(scope, includeUser, json = false) {
-        const headers = { "X-Tenant-Id": scope.tenant };
-        if (includeUser) headers["X-User-Id"] = scope.user;
-        if (json) headers["Content-Type"] = "application/json";
-        return headers;
-      }
-
-      async function responseError(response) {
-        let message = response.statusText || "请求失败";
-        try {
-          const body = await response.json();
-          if (typeof body.detail === "string") {
-            message = body.detail;
-          } else if (Array.isArray(body.detail)) {
-            message = body.detail.map((item) => item.msg || JSON.stringify(item)).join("；");
-          } else if (typeof body.message === "string") {
-            message = body.message;
-          }
-        } catch (_error) {
-          // 非 JSON 错误响应保留 HTTP 状态文本。
-        }
-        return new Error(`HTTP ${response.status} · ${message}`);
-      }
-
-      async function checkedFetch(url, options) {
-        const response = await fetch(url, options);
-        if (!response.ok) throw await responseError(response);
-        return response;
-      }
-
-      function isAbort(error) {
-        return error && error.name === "AbortError";
-      }
-
-      function showUploadError(message) {
-        elements.uploadError.textContent = message;
-        elements.uploadError.hidden = !message;
-      }
-
-      function setUploadProgress(value) {
-        const numeric = Number(value);
-        const progress = Number.isFinite(numeric) ? Math.min(100, Math.max(0, numeric)) : 0;
-        elements.uploadProgress.value = progress;
-        elements.uploadProgressValue.textContent = `${Math.round(progress)}%`;
-      }
-
-      function stopUpload() {
-        if (state.upload) {
-          clearTimeout(state.upload.timer);
-          state.upload.controller.abort();
-          state.upload = null;
-        }
-        elements.uploadButton.disabled = false;
-        elements.uploadButton.textContent = "上传并跟踪任务";
-      }
-
-      function stopSearch() {
-        if (state.search) {
-          state.search.controller.abort();
-          state.search = null;
-        }
-        elements.searchButton.disabled = false;
-        elements.searchButton.textContent = "执行检索";
-      }
-
-      function stopChat() {
-        if (state.chat) {
-          state.chat.controller.abort();
-          state.chat = null;
-        }
-        elements.chatButton.disabled = false;
-        elements.chatButton.textContent = "开始流式问答";
-      }
-
-      function renderSearchHits(hits, emptyMessage = "尚未检索。") {
-        elements.searchResults.replaceChildren();
-        if (!hits.length) {
-          const item = node("li");
-          item.append(node("p", "empty", emptyMessage));
-          elements.searchResults.append(item);
-          return;
-        }
-
-        hits.forEach((hit) => {
-          const item = node("li");
-          const article = node("article");
-          const heading = node("div", "hit-head");
-          heading.append(
-            node("code", "chunk-id", String(hit.chunk_id)),
-            node("span", "score", `score ${Number(hit.score).toFixed(6)}`)
-          );
-          article.append(
-            heading,
-            node("p", "source", `doc_id: ${hit.doc_id}`),
-            node("p", "hit-text", String(hit.text))
-          );
-          item.append(article);
-          elements.searchResults.append(item);
-        });
-      }
-
-      function cacheHits(hits) {
-        hits.forEach((hit) => state.hitCache.set(String(hit.chunk_id), hit));
-      }
-
-      function clearCitation(message = "暂无可展开引用。") {
-        citationSequence += 1;
-        elements.citationList.replaceChildren();
-        elements.citationDetail.hidden = true;
-        elements.citationHeading.textContent = "";
-        elements.citationSource.textContent = "";
-        elements.citationText.textContent = "";
-        elements.citationMetadata.textContent = "";
-        setStatus(elements.citationStatus, message);
-      }
-
-      function clearChatView() {
-        elements.answer.replaceChildren(node("span", "answer-placeholder", "回答与可点击引用将在这里出现。"));
-        elements.streamMeta.textContent = "";
-        clearCitation();
-      }
-
-      const opsState = {
-        summary: null,
-        jobs: [],
-        traces: [],
-        traceGroups: new Map(),
-        selectedJobId: null,
-        selectedTraceId: null,
-        runs: [],
-        selectedRunId: null,
-        runTimer: null,
-        timer: null,
-        loading: false,
-        epoch: 0
-      };
-
-      const OPS_LABELS = {
-        queued: "排队",
-        running: "运行",
-        succeeded: "成功",
-        failed: "失败",
-        started: "开始",
-        parsing: "解析",
-        chunking: "切分",
-        embedding: "嵌入",
-        publishing: "发布",
-        claimed: "已领取",
-        eval_mock: "mock 评测",
-        loadtest: "固定压测",
-        drill_parser: "解析演练",
-        drill_llm: "LLM 演练",
-        drill_queue: "队列演练",
-        allowed: "放行",
-        denied: "拒绝"
-      };
-
-      function opsLabel(value) {
-        const key = String(value == null ? "" : value);
-        return OPS_LABELS[key] || key || "-";
-      }
-
-      function fmtTimestamp(value) {
-        if (value == null || value === "") return "-";
-        const date = new Date(value);
-        return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
-      }
-
-      function escapeHtml(value) {
-        return String(value == null ? "" : value).replace(/[&<>"']/g, (char) => {
-          if (char === "&") return "&amp;";
-          if (char === "<") return "&lt;";
-          if (char === ">") return "&gt;";
-          if (char === "'") return "&#39;";
-          return "&quot;";
-        });
-      }
-
-      function opsElement(id) {
-        return document.getElementById(id);
-      }
-
-      function opsView() {
-        return document.querySelector('[data-view="cockpit"]');
-      }
-
-      function emptyRow(message) {
-        return `<div class="wx-empty">${escapeHtml(message)}</div>`;
-      }
-
-      async function opsJson(path, options = {}) {
-        const scope = currentScope();
-        const response = await checkedFetch(path, {
-          ...options,
-          headers: {
-            ...requestHeaders(scope, true),
-            ...(options.headers || {})
-          }
-        });
-        return response.json();
-      }
-
-      function fmtSeconds(value) {
-        return value == null ? "-" : `${Number(value).toFixed(1)}s`;
-      }
-
-      function fmtPercent(value) {
-        return value == null ? "-" : `${(Number(value) * 100).toFixed(2)}%`;
-      }
-
-      function fmtMs(value) {
-        return value == null ? "-" : `${Number(value).toFixed(0)}ms`;
-      }
-
-      function fmtNumber(value) {
-        if (value == null || value === "") return "-";
-        const number = Number(value);
-        return Number.isFinite(number) ? number.toFixed(4) : "-";
-      }
-
-      function opsScopeReady(scope) {
-        return Boolean(scope.tenant && scope.kb);
-      }
-
-      function resetOpsPanels(message) {
-        ["ops-health", "ops-queue", "ops-jobs"].forEach((id) => {
-          opsElement(`${id}-badge`).textContent = "-";
-          opsElement(`${id}-body`).innerHTML = emptyRow(message);
-        });
-        opsElement("ops-ai-badge").textContent = "全部历史";
-        opsElement("ops-ai-body").innerHTML = emptyRow(message);
-        opsElement("ops-job-events-badge").textContent = "未选择";
-        opsElement("ops-job-events-body").innerHTML = emptyRow("点击任务查看阶段时间线");
-        opsElement("ops-traces-badge").textContent = "-";
-        opsElement("ops-traces-body").innerHTML = emptyRow(message);
-        opsElement("ops-trace-waterfall").innerHTML = emptyRow("点击左侧 Trace 查看阶段耗时");
-      }
-
-      function renderSummaryError(error) {
-        const message = `加载失败：${error && error.message ? error.message : "未知错误"}`;
-        ["ops-health", "ops-queue", "ops-ai"].forEach((id) => {
-          opsElement(`${id}-badge`).textContent = "加载失败";
-          opsElement(`${id}-body`).innerHTML = emptyRow(message);
-        });
-      }
-
-      async function loadOpsSummary() {
-        if (opsState.loading) return;
-        const scope = currentScope();
-        if (!opsScopeReady(scope)) {
-          resetOpsPanels("请先填写租户 ID 和知识库 ID。");
-          return;
-        }
-        const epoch = opsState.epoch;
-        opsState.loading = true;
-        loadOpsJobs();
-        loadOpsTraces();
-        try {
-          const data = await opsJson(
-            `/v1/ops/summary?kb_id=${encodeURIComponent(scope.kb)}`
-          );
-          if (epoch !== opsState.epoch) return;
-          opsState.summary = data;
-          renderHealth(data.health);
-          renderQueue(data.queue);
-          renderAi(data.ai);
-        } catch (error) {
-          if (epoch !== opsState.epoch) return;
-          console.warn("驾驶舱摘要加载失败", error);
-          renderSummaryError(error);
-        } finally {
-          if (epoch === opsState.epoch) opsState.loading = false;
-        }
-      }
-
-      async function loadOpsJobs() {
-        const epoch = opsState.epoch;
-        try {
-          const data = await opsJson(
-            `/v1/ops/jobs?kb_id=${encodeURIComponent(currentScope().kb)}&limit=50`
-          );
-          if (epoch !== opsState.epoch) return;
-          opsState.jobs = Array.isArray(data.jobs) ? data.jobs : [];
-          renderJobs(opsState.jobs, data.counts || {});
-        } catch (error) {
-          if (epoch !== opsState.epoch) return;
-          console.warn("任务看板加载失败", error);
-          opsElement("ops-jobs-badge").textContent = "加载失败";
-          opsElement("ops-jobs-body").innerHTML = emptyRow(
-            `任务看板加载失败：${error.message}`
-          );
-        }
-      }
-
-      async function loadJobEvents(jobId) {
-        opsState.selectedJobId = jobId;
-        const epoch = opsState.epoch;
-        try {
-          const data = await opsJson(`/v1/ops/jobs/${encodeURIComponent(jobId)}/events`);
-          if (epoch !== opsState.epoch || opsState.selectedJobId !== jobId) return;
-          renderTimeline(jobId, Array.isArray(data.events) ? data.events : []);
-        } catch (error) {
-          if (epoch !== opsState.epoch || opsState.selectedJobId !== jobId) return;
-          console.warn("任务事件加载失败", error);
-          opsElement("ops-job-events-badge").textContent = "加载失败";
-          opsElement("ops-job-events-body").innerHTML = emptyRow(
-            `任务 #${jobId} 事件加载失败：${error.message}`
-          );
-        }
-        updateRetryButton(
-          opsState.jobs.find((job) => Number(job.id) === Number(jobId)) || null
-        );
-      }
-
-      async function loadOpsTraces() {
-        const epoch = opsState.epoch;
-        try {
-          const data = await opsJson(
-            `/v1/ops/traces?kb_id=${encodeURIComponent(currentScope().kb)}&limit=50`
-          );
-          if (epoch !== opsState.epoch) return;
-          opsState.traces = Array.isArray(data.traces) ? data.traces : [];
-          renderTraceList(opsState.traces);
-        } catch (error) {
-          if (epoch !== opsState.epoch) return;
-          console.warn("Trace 列表加载失败", error);
-          opsElement("ops-traces-badge").textContent = "加载失败";
-          opsElement("ops-traces-body").innerHTML = emptyRow(
-            `Trace 列表加载失败：${error.message}`
-          );
-        }
-      }
-
-      function renderHealth(health) {
-        const badge = opsElement("ops-health-badge");
-        const body = opsElement("ops-health-body");
-        if (!health) {
-          badge.textContent = "-";
-          body.innerHTML = "";
-          return;
-        }
-        badge.textContent = health.parser === "up" ? "正常" : String(health.parser || "-");
-        const workers = (health.workers || [])
-          .map((worker) => {
-            const age = Math.round(Number(worker.age_seconds) || 0);
-            return `${escapeHtml(worker.worker_id)} · ${age}s`;
-          })
-          .join("<br>") || "无心跳";
-        body.innerHTML = [
-          ["API", escapeHtml(health.api ?? "-")],
-          ["数据库", escapeHtml(health.db ?? "-")],
-          ["parser", escapeHtml(health.parser ?? "-")],
-          ["worker", workers]
-        ]
-          .map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`)
-          .join("");
-      }
-
-      function renderQueue(queue) {
-        const badge = opsElement("ops-queue-badge");
-        const body = opsElement("ops-queue-body");
-        if (!queue) {
-          badge.textContent = "-";
-          body.innerHTML = "";
-          return;
-        }
-        badge.textContent = `${queue.total ?? 0} 个任务`;
-        body.innerHTML = [
-          ["排队", queue.queued],
-          ["运行", queue.running],
-          ["成功", queue.succeeded],
-          ["失败", queue.failed],
-          ["最老等待", fmtSeconds(queue.oldest_queued_seconds)],
-          ["平均耗时", fmtSeconds(queue.avg_duration_seconds)]
-        ]
-          .map(
-            ([label, value]) =>
-              `<div class="wx-metric"><span>${label}</span><strong>${value ?? "-"}</strong></div>`
-          )
-          .join("");
-      }
-
-      function renderAi(ai) {
-        const body = opsElement("ops-ai-body");
-        opsElement("ops-ai-badge").textContent = "全部历史";
-        if (!ai) {
-          body.innerHTML = "";
-          return;
-        }
-        const tokens = ai.tokens || {};
-        const latency = ai.llm_latency_ms || {};
-        body.innerHTML = [
-          ["请求数", ai.requests],
-          ["拒答率", fmtPercent(ai.refusal_rate)],
-          ["引用通过率", fmtPercent(ai.citation_ok_rate)],
-          ["rerank 降级", fmtPercent(ai.rerank_degraded_rate)],
-          ["Token 总量", tokens.total],
-          ["LLM p95", fmtMs(latency.p95)],
-          ["模型", escapeHtml(ai.model || "-")],
-          [
-            "估算成本",
-            ai.estimated_cost == null ? "未配置价格" : Number(ai.estimated_cost).toFixed(6)
-          ]
-        ]
-          .map(
-            ([label, value]) =>
-              `<div class="wx-metric"><span>${label}</span><strong>${value ?? "-"}</strong></div>`
-          )
-          .join("");
-      }
-
-      function renderJobs(jobs, counts) {
-        const badge = opsElement("ops-jobs-badge");
-        const body = opsElement("ops-jobs-body");
-        badge.textContent = `排队 ${counts.queued ?? 0} · 运行 ${counts.running ?? 0} · 失败 ${counts.failed ?? 0}`;
-        body.innerHTML =
-          jobs
-            .map((job) => {
-              const status = String(job.status || "unknown");
-              const statusClass = ["queued", "running", "succeeded", "failed"].includes(status)
-                ? status
-                : "unknown";
-              return `
-                <button class="wx-job ${statusClass}" type="button" data-job-id="${Number(job.id)}">
-                  <span class="wx-job-id">#${Number(job.id)}</span>
-                  <span class="wx-job-doc">${escapeHtml(job.doc_id || "-")}</span>
-                  <span class="wx-job-status">${escapeHtml(opsLabel(status))}</span>
-                  <span class="wx-job-meta">${Number(job.progress) || 0}% · ${Number(job.attempts) || 0} 次</span>
-                  <span class="wx-job-wait">等待 ${fmtSeconds(job.wait_seconds)} · 耗时 ${fmtSeconds(job.duration_seconds)}</span>
-                </button>
-              `;
-            })
-            .join("") || emptyRow("暂无任务");
-        for (const button of body.querySelectorAll("[data-job-id]")) {
-          button.addEventListener("click", () => loadJobEvents(Number(button.dataset.jobId)));
-        }
-      }
-
-      function renderTimeline(jobId, events) {
-        opsElement("ops-job-events-badge").textContent = `#${jobId} · ${events.length} 阶段`;
-        opsElement("ops-job-events-body").innerHTML =
-          events
-            .map((event) => {
-              const status = String(event.status || "unknown");
-              const statusClass = ["queued", "running", "succeeded", "failed"].includes(status)
-                ? status
-                : "unknown";
-              return `
-                <div class="wx-timeline-item ${statusClass}">
-                  <span class="wx-timeline-dot"></span>
-                  <div>
-                    <strong>${escapeHtml(opsLabel(event.stage))}</strong>
-                    <span class="wx-timeline-status">${escapeHtml(opsLabel(status))}</span>
-                    <span class="wx-timeline-meta">${event.progress == null ? "-" : `${Number(event.progress)}%`} · ${escapeHtml(fmtTimestamp(event.created_at))}</span>
-                    ${event.message ? `<p>${escapeHtml(event.message)}</p>` : ""}
-                  </div>
-                </div>
-              `;
-            })
-            .join("") || emptyRow("暂无阶段事件");
-      }
-
-      function renderTraceList(traces) {
-        const groups = new Map();
-        for (const trace of traces) {
-          const traceId = String(trace.trace_id || "unknown");
-          if (!groups.has(traceId)) groups.set(traceId, []);
-          groups.get(traceId).push(trace);
-        }
-        opsState.traceGroups = groups;
-        const body = opsElement("ops-traces-body");
-        opsElement("ops-traces-badge").textContent = `${groups.size} 条`;
-        body.innerHTML =
-          [...groups.entries()]
-            .map(([traceId, stages]) => {
-              const refused = stages.some((item) => item.refused);
-              return `
-                <button class="wx-list-row" type="button" data-trace-id="${escapeHtml(traceId)}">
-                  <span>${escapeHtml(traceId)}</span>
-                  <span>${escapeHtml(stages[0].query || "")}</span>
-                  <span class="wx-badge ${refused ? "is-danger" : "is-real"}">${refused ? "拒答" : "回答"} · ${stages.length} 阶段</span>
-                </button>
-              `;
-            })
-            .join("") || emptyRow("暂无 trace");
-        for (const button of body.querySelectorAll("[data-trace-id]")) {
-          button.addEventListener("click", () => {
-            opsState.selectedTraceId = button.dataset.traceId;
-            renderWaterfall(groups.get(button.dataset.traceId) || []);
-          });
-        }
-        if (opsState.selectedTraceId && groups.has(opsState.selectedTraceId)) {
-          renderWaterfall(groups.get(opsState.selectedTraceId));
-        }
-      }
-
-      function renderWaterfall(stages) {
-        const container = opsElement("ops-trace-waterfall");
-        const ordered = [...stages].sort((a, b) =>
-          String(a.ts ?? "").localeCompare(String(b.ts ?? ""))
-        );
-        const total = ordered.reduce((sum, stage) => sum + Number(stage.ms || 0), 0) || 1;
-        container.innerHTML = ordered.length
-          ? `${ordered
-              .map((stage) => {
-                const width = Math.max(2, (Number(stage.ms || 0) / total) * 100);
-                return `
-                  <div class="wx-waterfall-row">
-                    <span class="wx-waterfall-label">${escapeHtml(opsLabel(stage.stage))}</span>
-                    <svg viewBox="0 0 100 12" preserveAspectRatio="none" class="wx-waterfall-bar">
-                      <rect x="0" y="0" width="${width.toFixed(2)}" height="12" rx="3"></rect>
-                    </svg>
-                    <span class="wx-waterfall-value">${fmtMs(stage.ms)} · ${Number(stage.hits) || 0} 命中${stage.refused ? " · 拒答" : ""}</span>
-                  </div>
-                `;
-              })
-              .join("")}
-            <p class="wx-hint">总耗时 ${fmtMs(total)}（柱宽按阶段耗时占比）</p>`
-          : emptyRow("点击左侧 Trace 查看阶段耗时");
-      }
-
-      function startOpsPolling() {
-        stopOpsPolling();
-        opsState.timer = setInterval(() => {
-          if (document.visibilityState !== "visible") return;
-          const view = opsView();
-          if (!view || view.hidden) return;
-          loadOpsSummary();
-          if (opsState.selectedJobId) loadJobEvents(opsState.selectedJobId);
-        }, 3000);
-      }
-
-      function stopOpsPolling() {
-        if (opsState.timer) clearInterval(opsState.timer);
-        opsState.timer = null;
-      }
-
-      function resetOpsState() {
-        stopOpsPolling();
-        if (opsState.runTimer) clearTimeout(opsState.runTimer);
-        opsState.runTimer = null;
-        opsState.epoch += 1;
-        opsState.loading = false;
-        opsState.summary = null;
-        opsState.jobs = [];
-        opsState.traces = [];
-        opsState.traceGroups = new Map();
-        opsState.selectedJobId = null;
-        opsState.selectedTraceId = null;
-        opsState.runs = [];
-        opsState.selectedRunId = null;
-        window.__runs = [];
-        resetOpsPanels("上下文已切换，等待重新加载。");
-        resetRunsPanels("上下文已切换，等待重新加载。");
-        const view = opsView();
-        if (view && !view.hidden) {
-          loadOpsSummary();
-          startOpsPolling();
-        }
-      }
-
-      const RUN_TRIGGER_BUTTONS = [
-        "run-trigger-eval",
-        "run-trigger-loadtest",
-        "run-trigger-drill"
-      ];
-
-      function runsView() {
-        return document.querySelector('[data-view="runs"]');
-      }
-
-      function resetRunsPanels(message) {
-        opsElement("runs-metrics-badge").textContent = "-";
-        opsElement("runs-metrics-body").innerHTML = emptyRow(message);
-        opsElement("runs-history-badge").textContent = "-";
-        opsElement("runs-history-body").innerHTML = emptyRow(message);
-        opsElement("runs-detail-badge").textContent = "未选择";
-        opsElement("runs-detail-badge").classList.remove("is-real", "is-danger");
-        opsElement("runs-detail-body").className = "wx-empty";
-        opsElement("runs-detail-body").textContent = "选择一条运行记录";
-      }
-
-      function updateActionAvailability() {
-        const enabled = window.__identity?.ops?.can_trigger === true;
-        for (const id of RUN_TRIGGER_BUTTONS) {
-          const button = opsElement(id);
-          if (button) button.disabled = !enabled;
-        }
-        for (const button of document.querySelectorAll("[data-drill]")) {
-          button.disabled = !enabled;
-        }
-        const compareButton = opsElement("identity-compare-button");
-        if (compareButton) compareButton.disabled = !enabled;
-        const badge = opsElement("runs-trigger-badge");
-        if (badge) {
-          badge.textContent = enabled ? "管理员可用" : "只读";
-          badge.classList.toggle("is-real", enabled);
-        }
-        const job = opsState.jobs.find(
-          (item) => Number(item.id) === Number(opsState.selectedJobId)
-        );
-        updateRetryButton(enabled ? job || null : null);
-      }
-
-      async function loadRuns() {
-        const scope = currentScope();
-        updateActionAvailability();
-        if (!opsScopeReady(scope)) {
-          resetRunsPanels("请先填写租户 ID 和知识库 ID。");
-          return;
-        }
-        const epoch = opsState.epoch;
-        try {
-          const data = await opsJson(
-            `/v1/ops/runs?kb_id=${encodeURIComponent(scope.kb)}&limit=20`
-          );
-          if (epoch !== opsState.epoch) return;
-          opsState.runs = Array.isArray(data.runs) ? data.runs : [];
-          window.__runs = opsState.runs;
-          renderRuns(opsState.runs);
-          updateActionAvailability();
-        } catch (error) {
-          if (epoch !== opsState.epoch) return;
-          console.warn("运行历史加载失败", error);
-          opsElement("runs-history-badge").textContent = "加载失败";
-          opsElement("runs-history-body").innerHTML = emptyRow(
-            `运行历史加载失败：${error.message}`
-          );
-        }
-      }
-
-      function renderRuns(runs) {
-        const body = opsElement("runs-history-body");
-        opsElement("runs-history-badge").textContent = `${runs.length} 条`;
-        body.innerHTML =
-          runs
-            .map((run) => {
-              const status = String(run.status || "unknown");
-              const statusClass = status === "failed" ? "is-danger" : "is-real";
-              const active = Number(opsState.selectedRunId) === Number(run.id);
-              return `
-                <button class="wx-list-row${active ? " is-active" : ""}" type="button" data-run-id="${Number(run.id)}">
-                  <span>#${Number(run.id)} · ${escapeHtml(opsLabel(run.kind))}</span>
-                  <span class="wx-badge ${statusClass}">${escapeHtml(opsLabel(status))}</span>
-                  <span class="wx-audit-meta">${escapeHtml(run.requested_by || "-")} · ${escapeHtml(fmtTimestamp(run.requested_at))}</span>
-                </button>
-              `;
-            })
-            .join("") || emptyRow("暂无运行记录");
-        for (const button of body.querySelectorAll("[data-run-id]")) {
-          button.addEventListener("click", () => loadRunDetail(Number(button.dataset.runId)));
-        }
-        const latestEval = runs.find((run) => run.kind === "eval_mock" && run.summary) || null;
-        renderRunMetrics(latestEval);
-      }
-
-      function renderRunMetrics(run) {
-        const badge = opsElement("runs-metrics-badge");
-        const body = opsElement("runs-metrics-body");
-        const summary = run && run.summary ? run.summary : null;
-        if (!run || !summary) {
-          badge.textContent = "-";
-          body.innerHTML = emptyRow("暂无评测结果");
-          opsElement("runs-delta").textContent = "首次运行，暂无对比";
-          return;
-        }
-        badge.textContent = `#${Number(run.id)} · ${fmtTimestamp(run.finished_at || run.requested_at)}`;
-        const metrics = summary.metrics || {};
-        const counts = summary.counts || {};
-        body.innerHTML = [
-          ["Recall@k", fmtNumber(metrics.recall_at_k)],
-          ["MRR", fmtNumber(metrics.mrr)],
-          ["Hit Rate", fmtNumber(metrics.hit_rate)],
-          ["拒答准确率", fmtNumber(metrics.refusal_accuracy)],
-          ["答案覆盖率", fmtNumber(metrics.answer_coverage)],
-          ["引用准确率", fmtNumber(metrics.citation_accuracy)],
-          ["用例数", counts.cases == null ? "-" : String(Number(counts.cases))],
-          [
-            "生成错误",
-            counts.generation_errors == null ? "-" : String(Number(counts.generation_errors))
-          ]
-        ]
-          .map(
-            ([label, value]) =>
-              `<div class="wx-metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value ?? "-")}</strong></div>`
-          )
-          .join("");
-        renderDelta(run);
-      }
-
-      function renderDelta(run) {
-        const container = opsElement("runs-delta");
-        const previous = (window.__runs || []).find(
-          (item) => item.kind === run.kind && item.id < run.id && item.summary
-        );
-        if (!previous) {
-          container.textContent = "首次运行，暂无对比";
-          return;
-        }
-        const current = run.summary?.metrics || {};
-        const before = previous.summary?.metrics || {};
-        const rows = [
-          ["Recall@5", "recall_at_k"],
-          ["MRR@5", "mrr"],
-          ["Hit Rate@5", "hit_rate"]
-        ].map(([label, key]) => {
-          const delta = Number(current[key] || 0) - Number(before[key] || 0);
-          return `<div class="wx-delta ${delta < 0 ? "is-danger" : "is-real"}">
-            <span>${label}</span><strong>${delta >= 0 ? "+" : ""}${delta.toFixed(4)}</strong>
-          </div>`;
-        });
-        container.innerHTML = rows.join("");
-      }
-
-      async function loadRunDetail(runId) {
-        opsState.selectedRunId = runId;
-        const epoch = opsState.epoch;
-        renderRuns(opsState.runs);
-        try {
-          const data = await opsJson(`/v1/ops/runs/${encodeURIComponent(runId)}`);
-          if (epoch !== opsState.epoch || Number(opsState.selectedRunId) !== Number(runId)) return;
-          showRun(data);
-        } catch (error) {
-          if (epoch !== opsState.epoch || Number(opsState.selectedRunId) !== Number(runId)) return;
-          console.warn("运行详情加载失败", error);
-          opsElement("runs-detail-badge").textContent = "加载失败";
-          opsElement("runs-detail-badge").classList.add("is-danger");
-          opsElement("runs-detail-body").className = "wx-empty";
-          opsElement("runs-detail-body").innerHTML = emptyRow(
-            `运行详情加载失败：${error.message}`
-          );
-        }
-      }
-
-      function showRun(run) {
-        opsState.selectedRunId = run.id;
-        const status = String(run.status || "unknown");
-        const badge = opsElement("runs-detail-badge");
-        const body = opsElement("runs-detail-body");
-        badge.textContent = `#${Number(run.id)} · ${opsLabel(status)}`;
-        badge.classList.toggle("is-danger", status === "failed");
-        badge.classList.toggle("is-real", status !== "failed");
-        body.className = "";
-        const rows = [
-          ["类型", opsLabel(run.kind)],
-          ["状态", opsLabel(status)],
-          ["退出码", run.exit_code == null ? "-" : String(run.exit_code)],
-          ["发起人", run.requested_by || "-"],
-          ["开始时间", fmtTimestamp(run.started_at)],
-          ["结束时间", fmtTimestamp(run.finished_at)],
-          ["产物路径", run.artifact_path || "-"]
-        ];
-        body.innerHTML = `
-          <div class="wx-kv">
-            ${rows
-              .map(
-                ([label, value]) =>
-                  `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`
-              )
-              .join("")}
-          </div>
-          ${run.error ? `<p class="wx-error">${escapeHtml(run.error)}</p>` : ""}
-          ${run.output_tail ? `<pre class="wx-output">${escapeHtml(run.output_tail)}</pre>` : ""}
-        `;
-      }
-
-      async function triggerRun(kind) {
-        const scope = currentScope();
-        const badge = opsElement("runs-trigger-badge");
-        const hint = opsElement("runs-trigger-hint");
-        if (!opsScopeReady(scope)) {
-          hint.textContent = "请先填写租户 ID 和知识库 ID。";
-          return;
-        }
-        for (const id of RUN_TRIGGER_BUTTONS) opsElement(id).disabled = true;
-        hint.textContent = `正在提交 ${opsLabel(kind)}…`;
-        try {
-          const response = await checkedFetch(
-            `/v1/ops/kbs/${encodeURIComponent(scope.kb)}/runs`,
-            {
-              method: "POST",
-              headers: requestHeaders(scope, true, true),
-              body: JSON.stringify({ kind, params: {} })
-            }
-          );
-          const data = await response.json();
-          hint.textContent = `已入队 #${Number(data.run_id)}，正在轮询 ${opsLabel(kind)} 状态。`;
-          await loadRuns();
-          pollRun(Number(data.run_id));
-        } catch (error) {
-          console.warn("运行触发失败", error);
-          updateActionAvailability();
-          badge.textContent = "触发失败";
-          badge.classList.remove("is-real");
-          badge.classList.add("is-danger");
-          hint.textContent = `触发失败：${error.message}`;
-        }
-      }
-
-      async function pollRun(runId) {
-        const epoch = opsState.epoch;
-        const view = runsView();
-        if (!view || view.hidden) return;
-        try {
-          const data = await opsJson(`/v1/ops/runs/${encodeURIComponent(runId)}`);
-          if (epoch !== opsState.epoch) return;
-          showRun(data);
-          const viewNow = runsView();
-          if (
-            (data.status === "queued" || data.status === "running") &&
-            viewNow &&
-            !viewNow.hidden
-          ) {
-            if (opsState.runTimer) clearTimeout(opsState.runTimer);
-            opsState.runTimer = setTimeout(() => pollRun(runId), 2000);
-          } else if (data.status !== "queued" && data.status !== "running") {
-            loadRuns();
-          }
-        } catch (error) {
-          if (epoch !== opsState.epoch) return;
-          console.warn("运行详情轮询失败", error);
-          opsElement("runs-detail-badge").textContent = "加载失败";
-          opsElement("runs-detail-badge").classList.add("is-danger");
-          opsElement("runs-detail-body").className = "wx-empty";
-          opsElement("runs-detail-body").innerHTML = emptyRow(
-            `运行详情加载失败：${error.message}`
-          );
-        }
-      }
-
-      async function loadAudit() {
-        const scope = currentScope();
-        if (!scope.tenant || !scope.user) {
-          opsElement("audit-badge").textContent = "不可用";
-          opsElement("audit-timeline").innerHTML = emptyRow(
-            "请先填写租户 ID 和用户 ID。"
-          );
-          return;
-        }
-        const epoch = opsState.epoch;
-        try {
-          const data = await opsJson("/v1/ops/audit?limit=50");
-          if (epoch !== opsState.epoch) return;
-          renderAudit(Array.isArray(data.audit) ? data.audit : []);
-        } catch (error) {
-          if (epoch !== opsState.epoch) return;
-          console.warn("审计加载失败", error);
-          opsElement("audit-badge").textContent = "不可用";
-          opsElement("audit-timeline").innerHTML = emptyRow(
-            `审计不可用：${error.message}`
-          );
-        }
-      }
-
-      function renderAudit(records) {
-        opsElement("audit-badge").textContent = `最近 ${records.length} 条`;
-        opsElement("audit-timeline").innerHTML =
-          records
-            .map((record) => {
-              const result = String(record.result || "");
-              const resultClass = result === "denied" ? "is-danger" : "is-real";
-              const itemClass = result === "denied" ? "denied" : result === "allowed" ? "allowed" : "";
-              return `
-                <div class="wx-audit-item ${itemClass}">
-                  <span class="wx-audit-dot"></span>
-                  <div>
-                    <strong>${escapeHtml(record.actor || "-")}</strong> · ${escapeHtml(record.action || "-")}
-                    <span class="wx-badge ${resultClass}">${escapeHtml(opsLabel(result))}</span>
-                    <span class="wx-audit-meta">target=${escapeHtml(record.target || "-")} · ${escapeHtml(fmtTimestamp(record.created_at))}</span>
-                    ${record.reason ? `<p>${escapeHtml(record.reason)}</p>` : ""}
-                  </div>
-                </div>
-              `;
-            })
-            .join("") || emptyRow("暂无审计记录");
-      }
-
-      function updateRetryButton(job) {
-        const button = opsElement("job-retry-button");
-        if (!button) return;
-        const canTrigger = window.__identity?.ops?.can_trigger === true;
-        button.hidden = !(canTrigger && job && job.status === "failed");
-      }
-
-      async function retrySelectedJob() {
-        const jobId = opsState.selectedJobId;
-        if (!jobId) return;
-        const button = opsElement("job-retry-button");
-        const previousText = button.textContent;
-        button.disabled = true;
-        button.textContent = "重试中…";
-        try {
-          const response = await checkedFetch(
-            `/v1/ops/jobs/${encodeURIComponent(jobId)}/retry`,
-            {
-              method: "POST",
-              headers: requestHeaders(currentScope(), true)
-            }
-          );
-          await response.json();
-          await Promise.all([loadOpsJobs(), loadJobEvents(jobId), loadAudit()]);
-        } catch (error) {
-          console.warn("任务重试失败", error);
-          opsElement("ops-job-events-badge").textContent = "重试失败";
-          opsElement("ops-job-events-body").innerHTML = emptyRow(
-            `任务 #${jobId} 重试失败：${error.message}`
-          );
-        } finally {
-          button.textContent = previousText;
-          button.disabled = false;
-          updateActionAvailability();
-        }
-      }
-
-      function identityView() {
-        return document.querySelector('[data-view="identity"]');
-      }
-
-      function resetIdentityPanels(message) {
-        window.__identity = null;
-        opsElement("identity-role").textContent = "-";
-        opsElement("identity-role").classList.remove("is-real");
-        opsElement("identity-body").innerHTML = emptyRow(message);
-        opsElement("identity-tags").innerHTML = "";
-        opsElement("identity-kb-count").textContent = "-";
-        opsElement("identity-kb-body").innerHTML = emptyRow(message);
-        opsElement("permission-decision").textContent = "-";
-        opsElement("permission-decision").classList.remove("is-danger");
-        opsElement("isolation-body").innerHTML = emptyRow(message);
-        opsElement("permission-reason-body").innerHTML = emptyRow(message);
-        updateActionAvailability();
-      }
-
-      async function compareIdentity() {
-        const scope = currentScope();
-        const query = elements.searchQuery.value.trim();
-        const button = opsElement("identity-compare-button");
-        const body = opsElement("identity-compare-body");
-        if (!query) {
-          body.innerHTML = emptyRow("请先在工作台填写检索问题，作为对比用的 query。");
-          return;
-        }
-        const previousText = button ? button.textContent : "";
-        if (button) {
-          button.disabled = true;
-          button.textContent = "对比中…";
-        }
-        try {
-          const data = await opsJson(
-            `/v1/ops/kbs/${encodeURIComponent(scope.kb)}/identity-compare`,
-            {
-              method: "POST",
-              headers: requestHeaders(scope, true, true),
-              body: JSON.stringify({
-                query,
-                user_ids: ["guest", "u_member", "u_admin"],
-                top_k: 5
-              })
-            }
-          );
-          const rows = Array.isArray(data.users) ? data.users : [];
-          body.innerHTML = `
-    <table class="wx-table">
-      <thead><tr><th>用户</th><th>角色</th><th>标签</th><th>命中</th><th>最高分</th><th>耗时</th></tr></thead>
-      <tbody>${rows
-        .map((row) => {
-          const tags = (Array.isArray(row.tags) ? row.tags : [])
-            .map((tag) => escapeHtml(tag))
-            .join(", ");
-          return `
-        <tr>
-          <td>${escapeHtml(row.user)}</td>
-          <td>${escapeHtml(row.role)}</td>
-          <td>${tags || "-"}</td>
-          <td>${escapeHtml(row.hits)}</td>
-          <td>${row.top_score == null ? "-" : escapeHtml(row.top_score)}</td>
-          <td>${escapeHtml(row.latency_ms)} ms</td>
-        </tr>`;
-        })
-        .join("")}</tbody>
-    </table>`;
-        } catch (error) {
-          console.warn("身份对比失败", error);
-          body.innerHTML = emptyRow(`身份对比失败：${error.message}`);
-        } finally {
-          if (button) {
-            button.textContent = previousText;
-            button.disabled = window.__identity?.ops?.can_trigger !== true;
-          }
-        }
-      }
-
-      async function loadIdentity() {
-        // 身份只在本次请求成功后落盘，避免跨租户/跨用户残留旧角色。
-        window.__identity = null;
-        const epoch = opsState.epoch;
-        const scope = currentScope();
-        if (!scope.tenant || !scope.user) {
-          resetIdentityPanels("请先填写租户 ID 和用户 ID。");
-          return;
-        }
-        // 两条请求各自承接错误，任一失败只影响自己的卡片。
-        const identityTask = opsJson("/v1/identity").then(
-          (data) => ({ data }),
-          (error) => ({ error })
-        );
-        const permissionTask = scope.kb
-          ? opsJson(
-              `/v1/ops/permissions?kb_id=${encodeURIComponent(scope.kb)}`
-            ).then(
-              (data) => ({ data }),
-              (error) => ({ error })
-            )
-          : Promise.resolve({ skipped: true });
-
-        const identityResult = await identityTask;
-        if (epoch !== opsState.epoch) return;
-        const identity = identityResult.error ? null : identityResult.data;
-        if (identityResult.error) {
-          console.warn("身份卡加载失败", identityResult.error);
-          renderIdentityError(identityResult.error);
-        } else {
-          window.__identity = identity;
-          renderIdentityCard(identity);
-        }
-
-        const permissionResult = await permissionTask;
-        if (epoch !== opsState.epoch) return;
-        if (permissionResult.skipped) {
-          renderIsolation(identity, null);
-          renderPermissionUnavailable();
-        } else if (permissionResult.error) {
-          console.warn("权限解释加载失败", permissionResult.error);
-          // 权限接口不可用时，层 1/3 仍用身份卡的隔离数据展示。
-          renderIsolation(identity, null);
-          renderPermissionError(permissionResult.error);
-        } else {
-          renderIsolation(identity, permissionResult.data);
-          renderPermissions(permissionResult.data);
-        }
-
-        if (typeof updateActionAvailability === "function") updateActionAvailability();
-      }
-
-      function renderIdentityCard(identity) {
-        const role = opsElement("identity-role");
-        role.textContent = identity.role || "-";
-        role.classList.toggle("is-real", Boolean(identity.is_admin));
-        opsElement("identity-body").innerHTML = [
-          ["租户", identity.tenant],
-          ["用户", identity.user],
-          ["角色", identity.role],
-          ["管理员", identity.is_admin ? "是" : "否"],
-          [
-            "可触发调测",
-            identity.ops && identity.ops.can_trigger ? "是" : "否（管理员/开关限制）"
-          ]
-        ]
-          .map(
-            ([key, value]) =>
-              `<div><span>${escapeHtml(key)}</span><strong>${escapeHtml(value)}</strong></div>`
-          )
-          .join("");
-        const tags = Array.isArray(identity.tags) ? identity.tags : [];
-        opsElement("identity-tags").innerHTML = tags.length
-          ? tags.map((tag) => `<span class="wx-tag">${escapeHtml(tag)}</span>`).join("")
-          : '<span class="wx-empty">无标签</span>';
-        const kbs = Array.isArray(identity.kbs) ? identity.kbs : [];
-        const activeKb = currentScope().kb;
-        opsElement("identity-kb-count").textContent = `${kbs.length} 个`;
-        opsElement("identity-kb-body").innerHTML = kbs.length
-          ? kbs
-              .map((kb) => {
-                const active = kb === activeKb;
-                return `<button class="wx-list-row${active ? " is-active" : ""}" type="button" data-kb="${escapeHtml(kb)}" title="${escapeHtml(kb)}" aria-pressed="${active}"><span>${escapeHtml(kb)}</span></button>`;
-              })
-              .join("")
-          : emptyRow("当前租户无知识库");
-        identityView()
-          .querySelectorAll("[data-kb]")
-          .forEach((button) => {
-            button.addEventListener("click", () => {
-              elements.kb.value = button.dataset.kb;
-              // 走统一失效路径：epoch+1、工作台缓存清空、身份面板重载。
-              invalidateWork();
-            });
-          });
-      }
-
-      const ACL_MODE_LABELS = {
-        admin_bypass: "管理员直通（ACL 旁路）",
-        public_or_tag_intersection: "公开或标签交集"
-      };
-
-      function aclModeLabel(mode) {
-        if (!mode) return "-";
-        return ACL_MODE_LABELS[mode] || mode;
-      }
-
-      function renderIsolation(identity, permissions) {
-        const acl = (permissions && permissions.acl) || {};
-        const permissionRls = (permissions && permissions.rls) || null;
-        const permissionKb = (permissions && permissions.kb) || {};
-        const identityIsolation = (identity && identity.isolation) || {};
-        const identityRls = identityIsolation.rls || null;
-
-        const tenantScope = permissions
-          ? Boolean(permissionKb.tenant_match)
-          : Boolean(identityIsolation.tenant_scope);
-        const layers = [
-          {
-            name: "1. 租户作用域",
-            status: tenantScope ? "启用" : "缺失",
-            ok: tenantScope,
-            detail: "缺 tenant 直接抛错"
-          },
-          {
-            name: "2. 文档 ACL",
-            status: permissions ? aclModeLabel(acl.mode) : "未知",
-            ok: Boolean(permissions && acl.mode),
-            detail: permissions
-              ? `tags: ${(acl.user_tags || []).join(", ") || "无"}`
-              : "未知（权限接口不可用）"
-          },
-          permissionRls
-            ? {
-                name: "3. 数据库 RLS",
-                status: permissionRls.enabled ? "启用" : "未启用",
-                ok: Boolean(permissionRls.enabled),
-                detail: `bare_count=${permissionRls.bare_count == null ? "-" : permissionRls.bare_count}`
-              }
-            : {
-                name: "3. 数据库 RLS",
-                status: identityRls && identityRls.enabled ? "启用" : "未知",
-                ok: Boolean(identityRls && identityRls.enabled),
-                detail: identityRls
-                  ? `policy_count=${identityRls.policy_count == null ? "-" : identityRls.policy_count}${identityRls.forced ? " · forced" : ""}`
-                  : "身份接口不可用"
-              }
-        ];
-        opsElement("isolation-body").innerHTML = layers
-          .map(
-            (layer) => `
-    <div class="wx-layer">
-      <div><strong>${escapeHtml(layer.name)}</strong><span>${escapeHtml(layer.detail)}</span></div>
-      <span class="wx-badge ${layer.ok ? "is-real" : ""}">${escapeHtml(layer.status)}</span>
-    </div>
-  `
-          )
-          .join("");
-      }
-
-      function renderPermissions(permissions) {
-        const rls = permissions.rls || {};
-        const kb = permissions.kb || {};
-        const decision = opsElement("permission-decision");
-        decision.textContent = permissions.decision === "allow" ? "允许" : "拒绝";
-        decision.classList.toggle("is-danger", permissions.decision !== "allow");
-        opsElement("permission-reason-body").innerHTML = `
-    <p>${escapeHtml(permissions.reason)}</p>
-    <div class="wx-kv">
-      <div><span>KB</span><strong>${escapeHtml(kb.id)}</strong></div>
-      <div><span>租户匹配</span><strong>${kb.tenant_match ? "是" : "否"}</strong></div>
-      <div><span>可见 chunk</span><strong>${rls.scoped_count == null ? "-" : rls.scoped_count}</strong></div>
-      <div><span>RLS 裸连接</span><strong>${rls.bare_count == null ? "-" : rls.bare_count}</strong></div>
-    </div>
-  `;
-      }
-
-      function renderPermissionUnavailable() {
-        const decision = opsElement("permission-decision");
-        decision.textContent = "未选择知识库";
-        decision.classList.remove("is-danger");
-        opsElement("permission-reason-body").innerHTML = emptyRow(
-          "未选择知识库，无法解释权限判定。"
-        );
-      }
-
-      function renderIdentityError(error) {
-        window.__identity = null;
-        const message = `加载失败：${error && error.message ? error.message : "未知错误"}`;
-        opsElement("identity-role").textContent = "-";
-        opsElement("identity-role").classList.remove("is-real");
-        opsElement("identity-body").innerHTML = emptyRow(message);
-        opsElement("identity-tags").innerHTML = "";
-        opsElement("identity-kb-count").textContent = "-";
-        opsElement("identity-kb-body").innerHTML = emptyRow(message);
-      }
-
-      function renderPermissionError(error) {
-        const message = `加载失败：${error && error.message ? error.message : "未知错误"}`;
-        const decision = opsElement("permission-decision");
-        decision.textContent = "加载失败";
-        decision.classList.add("is-danger");
-        opsElement("permission-reason-body").innerHTML = emptyRow(message);
-      }
-
-      function invalidateWork() {
-        stopUpload();
-        stopSearch();
-        stopChat();
-        resetOpsState();
-        window.__identity = null;
-        updateActionAvailability();
-        const identityPanel = identityView();
-        if (identityPanel && !identityPanel.hidden) loadIdentity();
-        state.history = [];
-        state.hitCache.clear();
-        setUploadProgress(0);
-        showUploadError("");
-        renderSearchHits([]);
-        clearChatView();
-        const message = "上下文已切换：旧轮询、检索与流式请求已停止，历史及原文缓存已清空。";
-        setStatus(elements.uploadStatus, message, "warning");
-        setStatus(elements.searchStatus, message, "warning");
-        setStatus(elements.chatStatus, message, "warning");
-        setStatus(elements.citationStatus, message, "warning");
-        updateScopePreview();
-      }
-
-      function renderJob(job) {
-        setUploadProgress(job.progress);
-        const tone = job.status === "failed" ? "error" : job.status === "succeeded" ? "success" : "neutral";
-        setStatus(
-          elements.uploadStatus,
-          `状态 ${job.status} · 任务 #${job.id} · 文档 ${job.doc_id} · 来源 ${job.source} · 尝试 ${job.attempts} 次`,
-          tone
-        );
-        showUploadError(job.error ? `任务错误：${job.error}` : "");
-      }
-
-      async function pollJob(uploadId) {
-        const active = state.upload;
-        if (!active || active.id !== uploadId) return;
-        try {
-          const response = await checkedFetch(`/v1/jobs/${encodeURIComponent(active.jobId)}`, {
-            headers: requestHeaders(active.scope, false),
-            signal: active.controller.signal
-          });
-          const job = await response.json();
-          if (!state.upload || state.upload.id !== uploadId) return;
-          renderJob(job);
-          if (job.status === "succeeded" || job.status === "failed") {
-            state.upload = null;
-            elements.uploadButton.disabled = false;
-            elements.uploadButton.textContent = "上传并跟踪任务";
-            return;
-          }
-          active.timer = setTimeout(() => pollJob(uploadId), 900);
-        } catch (error) {
-          if (!state.upload || state.upload.id !== uploadId || isAbort(error)) return;
-          state.upload = null;
-          elements.uploadButton.disabled = false;
-          elements.uploadButton.textContent = "上传并跟踪任务";
-          setStatus(elements.uploadStatus, "任务轮询已停止，请重新上传或稍后重试。", "error");
-          showUploadError(`轮询失败：${error.message}`);
-        }
-      }
-
-      async function startUpload(event) {
-        event.preventDefault();
-        stopUpload();
-        showUploadError("");
-        const file = elements.file.files[0];
-        if (!file) {
-          setStatus(elements.uploadStatus, "请选择要上传的文件。", "error");
-          return;
-        }
-        if (!/\.(pdf|md|txt)$/i.test(file.name)) {
-          setStatus(elements.uploadStatus, "仅支持 .pdf、.md、.txt 文件。", "error");
-          return;
-        }
-
-        let scope;
-        try {
-          scope = currentScope();
-          validateScope(scope, false);
-        } catch (error) {
-          setStatus(elements.uploadStatus, error.message, "error");
-          return;
-        }
-
-        const id = ++uploadSequence;
-        const controller = new AbortController();
-        const form = new FormData();
-        form.append("file", file);
-        state.upload = { id, controller, scope, timer: null, jobId: null };
-        setUploadProgress(0);
-        elements.uploadButton.disabled = true;
-        elements.uploadButton.textContent = "正在提交…";
-        setStatus(elements.uploadStatus, `正在上传 ${file.name}；任务创建后显示真实入库进度。`);
-
-        try {
-          const response = await checkedFetch(`/v1/kbs/${encodeURIComponent(scope.kb)}/documents`, {
-            method: "POST",
-            headers: requestHeaders(scope, false),
-            body: form,
-            signal: controller.signal
-          });
-          const body = await response.json();
-          if (!state.upload || state.upload.id !== id) return;
-          state.upload.jobId = body.job_id;
-          elements.uploadButton.textContent = "正在入库…";
-          setStatus(
-            elements.uploadStatus,
-            `任务 #${body.job_id} 已创建 · 文档 ${body.doc_id}${body.duplicated ? " · 重复内容已复用" : ""}`
-          );
-          await pollJob(id);
-        } catch (error) {
-          if (!state.upload || state.upload.id !== id || isAbort(error)) return;
-          state.upload = null;
-          elements.uploadButton.disabled = false;
-          elements.uploadButton.textContent = "上传并跟踪任务";
-          setStatus(elements.uploadStatus, "上传失败，可修正后重试。", "error");
-          showUploadError(error.message);
-        }
-      }
-
-      async function startSearch(event) {
-        event.preventDefault();
-        stopSearch();
-        let scope;
-        try {
-          scope = currentScope();
-          validateScope(scope);
-        } catch (error) {
-          setStatus(elements.searchStatus, error.message, "error");
-          return;
-        }
-
-        const query = elements.searchQuery.value.trim();
-        if (!query) {
-          setStatus(elements.searchStatus, "请输入检索问题。", "error");
-          return;
-        }
-        const id = ++searchSequence;
-        const controller = new AbortController();
-        const key = scopeKey(scope);
-        state.search = { id, controller, key };
-        elements.searchButton.disabled = true;
-        elements.searchButton.textContent = "检索中…";
-        renderSearchHits([], "正在等待检索结果…");
-        setStatus(elements.searchStatus, "正在检索，结果将显示分数与 chunk / 文档来源。 ");
-
-        try {
-          const response = await checkedFetch(`/v1/kbs/${encodeURIComponent(scope.kb)}/search`, {
-            method: "POST",
-            headers: requestHeaders(scope, true, true),
-            body: JSON.stringify({
-              query,
-              top_k: Number(elements.searchTopK.value),
-              mode: elements.searchMode.value,
-              audience: elements.searchAudience.value
-            }),
-            signal: controller.signal
-          });
-          const body = await response.json();
-          if (!state.search || state.search.id !== id || scopeKey(currentScope()) !== key) return;
-          state.search = null;
-          cacheHits(body.hits);
-          renderSearchHits(body.hits, "没有命中内容。可调整问题、模式或内容范围后重试。");
-          setStatus(
-            elements.searchStatus,
-            `检索完成 · ${body.hits.length} 条命中 · ${body.mode} · KB ${body.kb_id}`,
-            body.hits.length ? "success" : "warning"
-          );
-        } catch (error) {
-          if (!state.search || state.search.id !== id || isAbort(error)) return;
-          state.search = null;
-          renderSearchHits([], "检索失败，暂无结果。");
-          setStatus(elements.searchStatus, `检索失败：${error.message}`, "error");
-        } finally {
-          if (!state.search || state.search.id === id) {
-            elements.searchButton.disabled = false;
-            elements.searchButton.textContent = "执行检索";
-          }
-        }
-      }
-
-      function renderCitation(hit) {
-        elements.citationDetail.hidden = false;
-        elements.citationHeading.textContent = `[${hit.chunk_id}]`;
-        elements.citationSource.textContent = `doc_id: ${hit.doc_id} · score ${Number(hit.score).toFixed(6)}`;
-        elements.citationText.textContent = String(hit.text);
-        elements.citationMetadata.textContent = JSON.stringify(hit.metadata ?? {}, null, 2);
-        setStatus(elements.citationStatus, `已展开 ${hit.chunk_id} 的检索原文与 metadata。`, "success");
-      }
-
-      async function showCitation(chunkId) {
-        const chat = state.chat;
-        if (!chat) {
-          clearCitation("原文不可用：请先检索或完成一次问答。");
-          return;
-        }
-        const id = ++citationSequence;
-        const cached = state.hitCache.get(chunkId);
-        if (cached) {
-          renderCitation(cached);
-          return;
-        }
-
-        const key = scopeKey(chat.scope);
-        elements.citationDetail.hidden = true;
-        setStatus(elements.citationStatus, `正在通过检索 API 获取 ${chunkId} 的原文…`);
-        try {
-          const response = await checkedFetch(`/v1/kbs/${encodeURIComponent(chat.scope.kb)}/search`, {
-            method: "POST",
-            headers: requestHeaders(chat.scope, true, true),
-            body: JSON.stringify({
-              query: chat.rewritten || chat.question,
-              top_k: chat.topK,
-              mode: "hybrid",
-              audience: chat.audience
-            })
-          });
-          const body = await response.json();
-          if (state.chat !== chat || scopeKey(currentScope()) !== key) return;
-          cacheHits(body.hits);
-          if (id !== citationSequence) return;
-          const hit = state.hitCache.get(chunkId);
-          if (hit) {
-            renderCitation(hit);
-          } else {
-            elements.citationDetail.hidden = true;
-            setStatus(
-              elements.citationStatus,
-              `原文不可用：本次检索未命中 ${chunkId}。请先执行相同问题的检索，或核对回答引用。`,
-              "warning"
-            );
-          }
-        } catch (error) {
-          if (state.chat !== chat || id !== citationSequence) return;
-          elements.citationDetail.hidden = true;
-          setStatus(elements.citationStatus, `引用原文获取失败：${error.message}`, "error");
-        }
-      }
-
-      function appendAnswerText(container, text) {
-        const citationPattern = /\[([A-Za-z0-9][A-Za-z0-9_.:#-]{0,159})\]/g;
-        let cursor = 0;
-        for (const match of text.matchAll(citationPattern)) {
-          if (match.index > cursor) {
-            container.append(document.createTextNode(text.slice(cursor, match.index)));
-          }
-          const chunkId = match[1];
-          const button = node("button", "inline-citation", match[0]);
-          button.type = "button";
-          button.title = `展开引用 ${chunkId}`;
-          button.addEventListener("click", () => showCitation(chunkId));
-          container.append(button);
-          cursor = match.index + match[0].length;
-        }
-        if (cursor < text.length) {
-          container.append(document.createTextNode(text.slice(cursor)));
-        }
-      }
-
-      function renderAnswer() {
-        const chat = state.chat;
-        elements.answer.replaceChildren();
-        if (!chat || !chat.answer) {
-          elements.answer.append(node("span", "answer-placeholder", chat ? "已建立流式响应，等待 delta…" : "回答与可点击引用将在这里出现。"));
-          return;
-        }
-        appendAnswerText(elements.answer, chat.answer);
-        elements.answer.scrollTop = elements.answer.scrollHeight;
-      }
-
-      function renderCitationList(chat) {
-        elements.citationList.replaceChildren();
-        elements.citationDetail.hidden = true;
-        if (!chat.citations.length) {
-          setStatus(elements.citationStatus, "hits 帧未提供引用；没有可展开的原文。", "warning");
-          return;
-        }
-        chat.citations.forEach((chunkId) => {
-          const item = node("li");
-          const button = node("button", "citation-chip", `[${chunkId}]`);
-          button.type = "button";
-          button.title = `展开引用 ${chunkId}`;
-          button.addEventListener("click", () => showCitation(chunkId));
-          item.append(button);
-          elements.citationList.append(item);
-        });
-        setStatus(elements.citationStatus, `收到 ${chat.citations.length} 条引用，点击可展开原文。`);
-      }
-
-      function renderStreamMeta(payload) {
-        const notes = [];
-        if (payload.rewritten) notes.push(`改写：${payload.rewritten}`);
-        if (payload.rerank_degraded) notes.push("重排已降级");
-        if (payload.citation_ok === false) notes.push("引用校验未通过，请核验原文");
-        elements.streamMeta.textContent = notes.join(" · ");
-      }
-
-      function consumeFrame(chat, rawFrame) {
-        let eventName = "message";
-        const dataLines = [];
-        rawFrame.split(/\r\n|\n|\r/).forEach((line) => {
-          if (!line || line.startsWith(":")) return;
-          if (line.startsWith("event:")) {
-            eventName = line.slice(6).trimStart();
-          } else if (line.startsWith("data:")) {
-            let value = line.slice(5);
-            if (value.startsWith(" ")) value = value.slice(1);
-            dataLines.push(value);
-          }
-        });
-        if (!dataLines.length) return false;
-        const rawData = dataLines.join("\n");
-        if (rawData === "[DONE]") return true;
-
-        let payload;
-        try {
-          payload = JSON.parse(rawData);
-        } catch (_error) {
-          throw new Error("无法解析服务端 SSE 数据。 ");
-        }
-        if (eventName === "error") {
-          throw new Error(payload.message || "服务端返回流式错误。 ");
-        }
-        if (eventName === "hits") {
-          chat.citations = Array.isArray(payload.chunks) ? payload.chunks.map(String) : [];
-          chat.rewritten = typeof payload.rewritten === "string" ? payload.rewritten : "";
-          renderStreamMeta(payload);
-          renderCitationList(chat);
-          return false;
-        }
-        if (typeof payload.delta === "string") {
-          chat.answer += payload.delta;
-          renderAnswer();
-        }
-        return false;
-      }
-
-      async function consumeStream(response, chat) {
-        if (!response.body) throw new Error("浏览器未收到可读取的响应流。 ");
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        let receivedDone = false;
-
-        function drainFrames() {
-          let separator = /\r\n\r\n|\n\n|\r\r/.exec(buffer);
-          while (separator && !receivedDone) {
-            const frame = buffer.slice(0, separator.index);
-            buffer = buffer.slice(separator.index + separator[0].length);
-            receivedDone = consumeFrame(chat, frame);
-            separator = /\r\n\r\n|\n\n|\r\r/.exec(buffer);
-          }
-        }
-
-        try {
-          while (!receivedDone) {
-            const result = await reader.read();
-            if (result.done) break;
-            buffer += decoder.decode(result.value, { stream: true });
-            drainFrames();
-          }
-          buffer += decoder.decode();
-          if (!receivedDone) drainFrames();
-          if (!receivedDone && buffer.trim()) {
-            receivedDone = consumeFrame(chat, buffer);
-            buffer = "";
-          }
-          if (!receivedDone) throw new Error("流式响应在 [DONE] 前意外结束。 ");
-          await reader.cancel().catch(() => undefined);
-        } catch (error) {
-          await reader.cancel().catch(() => undefined);
-          throw error;
-        } finally {
-          reader.releaseLock();
-        }
-      }
-
-      async function startChat(event) {
-        event.preventDefault();
-        stopChat();
-        citationSequence += 1;
-        let scope;
-        try {
-          scope = currentScope();
-          validateScope(scope);
-        } catch (error) {
-          setStatus(elements.chatStatus, error.message, "error");
-          return;
-        }
-        const question = elements.chatQuestion.value.trim();
-        if (!question) {
-          setStatus(elements.chatStatus, "请输入问题。", "error");
-          return;
-        }
-
-        const id = ++chatSequence;
-        const controller = new AbortController();
-        const chat = {
-          id,
-          controller,
-          scope,
-          question,
-          rewritten: "",
-          topK: Number(elements.chatTopK.value),
-          audience: elements.chatAudience.value,
-          answer: "",
-          citations: []
-        };
-        state.chat = chat;
-        elements.chatButton.disabled = true;
-        elements.chatButton.textContent = "正在回答…";
-        elements.streamMeta.textContent = "";
-        clearCitation("等待 hits 帧提供引用…");
-        renderAnswer();
-        setStatus(elements.chatStatus, "正在连接流式问答接口…");
-
-        try {
-          const response = await checkedFetch("/v1/chat/stream", {
-            method: "POST",
-            headers: {
-              ...requestHeaders(scope, true, true),
-              "Accept": "text/event-stream"
-            },
-            body: JSON.stringify({
-              kb_id: scope.kb,
-              question,
-              history: state.history.slice(-12).map((turn) => ({ ...turn })),
-              top_k: chat.topK,
-              audience: chat.audience
-            }),
-            signal: controller.signal
-          });
-          if (state.chat !== chat) return;
-          setStatus(elements.chatStatus, "流式响应中 · 正在接收 delta…");
-          await consumeStream(response, chat);
-          if (state.chat !== chat) return;
-          state.history.push(
-            { role: "user", content: question },
-            { role: "assistant", content: chat.answer }
-          );
-          state.history = state.history.slice(-12);
-          setStatus(elements.chatStatus, `回答完成 · 收到 [DONE] · ${chat.citations.length} 条引用`, "success");
-        } catch (error) {
-          if (state.chat !== chat || isAbort(error)) return;
-          setStatus(elements.chatStatus, `流式问答失败：${error.message}；可重新提问。`, "error");
-        } finally {
-          if (state.chat === chat) {
-            elements.chatButton.disabled = false;
-            elements.chatButton.textContent = "开始流式问答";
-          }
-        }
-      }
-
-      elements.uploadForm.addEventListener("submit", startUpload);
-      elements.searchForm.addEventListener("submit", startSearch);
-      elements.chatForm.addEventListener("submit", startChat);
-      opsElement("job-retry-button").addEventListener("click", retrySelectedJob);
-      opsElement("identity-compare-button").addEventListener("click", compareIdentity);
-      opsElement("run-trigger-eval").addEventListener("click", () => triggerRun("eval_mock"));
-      opsElement("run-trigger-loadtest").addEventListener("click", () => {
-        if (confirm("固定压测：并发 20，每端点 200 请求，会占用本机资源。继续？")) {
-          triggerRun("loadtest");
-        }
-      });
-      opsElement("run-trigger-drill").addEventListener("click", () => {
-        opsElement("drill-actions").hidden = false;
-      });
-      document.querySelectorAll("[data-drill]").forEach((button) => {
-        button.addEventListener("click", () => {
-          if (
-            confirm(
-              `安全演练：${button.dataset.drill}，只运行隔离测试，不影响运行中的服务。继续？`
-            )
-          ) {
-            triggerRun(button.dataset.drill);
-          }
-        });
-      });
-
-      elements.role.addEventListener("change", () => {
-        if (elements.role.value !== "custom") {
-          elements.user.value = elements.role.value;
-        }
-        invalidateWork();
-      });
-      elements.user.addEventListener("input", () => {
-        const matchingRole = Array.from(elements.role.options).find(
-          (option) => option.value === elements.user.value.trim()
-        );
-        elements.role.value = matchingRole ? matchingRole.value : "custom";
-        invalidateWork();
-      });
-      [elements.tenant, elements.kb].forEach((input) => {
-        input.addEventListener("input", invalidateWork);
-      });
-      [elements.searchAudience, elements.chatAudience].forEach((select) => {
-        select.addEventListener("change", invalidateWork);
-      });
-
-      const navButtons = document.querySelectorAll("[data-nav]");
-      const views = document.querySelectorAll("[data-view]");
-
-      function showView(name) {
-        views.forEach((view) => {
-          view.hidden = view.dataset.view !== name;
-        });
-        navButtons.forEach((button) => {
-          const active = button.dataset.nav === name;
-          button.classList.toggle("is-active", active);
-          if (active) {
-            button.setAttribute("aria-current", "page");
-          } else {
-            button.removeAttribute("aria-current");
-          }
-        });
-        const titleMap = {
-          workbench: "工作台",
-          cockpit: "调测驾驶舱",
-          identity: "身份与权限",
-          runs: "评测与压测",
-          audit: "操作审计"
-        };
-        byId("wx-list-title").textContent = titleMap[name] || name;
-        if (name === "cockpit") {
-          if (typeof loadOpsSummary === "function") loadOpsSummary();
-          if (typeof startOpsPolling === "function") startOpsPolling();
-        } else if (typeof stopOpsPolling === "function") {
-          stopOpsPolling();
-        }
-        if (name === "identity" && typeof loadIdentity === "function") loadIdentity();
-        if (name === "runs") {
-          if (typeof loadRuns === "function") loadRuns();
-          // 触发按钮依赖身份卡里的 ops.can_trigger，进入评测页时同步拉取。
-          if (typeof loadIdentity === "function") loadIdentity();
-        }
-        if (name === "audit" && typeof loadAudit === "function") loadAudit();
-      }
-
-      navButtons.forEach((button) => {
-        button.addEventListener("click", () => showView(button.dataset.nav));
-      });
-
-      renderSearchHits([]);
-      updateScopePreview();
-    })();
-  </script>
+  <script type="module" src="/ui/js/app.mjs"></script>
 </body>
 </html>
