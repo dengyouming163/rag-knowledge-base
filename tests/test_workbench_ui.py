@@ -2636,3 +2636,81 @@ def test_access_audit_and_permission_stale_responses_and_destroy_are_isolated(wo
         "auditSafe": True,
         "auditDestroySafe": True,
     }
+
+
+def test_access_audit_bfcache_restore_and_subsequent_pagehide_cleanup(workbench_page) -> None:
+    page, workbench_url = workbench_page
+    page.set_default_timeout(7000)
+    page.add_init_script("""
+        window.__task15BfcachePermissionSignals = [];
+        window.__task15BfcacheAuditSignals = [];
+        const originalFetch = window.fetch.bind(window);
+        window.fetch = (input, init = {}) => {
+            const path = String(input);
+            const entry = { path, signal: init.signal };
+            if (path.includes('/v1/identity') || path.includes('/v1/ops/permissions')) {
+                window.__task15BfcachePermissionSignals.push(entry);
+            }
+            if (path.includes('/v1/ops/audit')) {
+                window.__task15BfcacheAuditSignals.push(entry);
+            }
+            return originalFetch(input, init);
+        };
+    """)
+    identity_calls: list[str] = []
+    permission_calls: list[str] = []
+    pending_audit = []
+
+    def identity_route(route) -> None:
+        identity_calls.append(route.request.url)
+        _fulfill_json(route, _task14_identity())
+
+    def permission_route(route) -> None:
+        permission_calls.append(route.request.url)
+        kb_id = parse_qs(urlparse(route.request.url).query)["kb_id"][0]
+        payload = _task14_permissions()
+        payload["kb"]["id"] = kb_id
+        payload["reason"] = f"permission for {kb_id}"
+        _fulfill_json(route, payload)
+
+    page.route("**/v1/identity", identity_route)
+    page.route("**/v1/ops/permissions?*", permission_route)
+    page.route("**/v1/ops/audit?*", lambda route: pending_audit.append(route))
+    page.goto(f"{workbench_url}#/access")
+    page.locator("#access-load").click()
+    page.locator("#access-permission-reason").filter(
+        has_text="permission for kb_after_sale"
+    ).wait_for()
+    assert len(identity_calls) == 1
+    assert len(permission_calls) == 1
+
+    page.evaluate("""
+        window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+        window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+    """)
+    assert len(identity_calls) == 1
+    assert len(permission_calls) == 1
+
+    page.locator("#scope-kb").fill("kb_restored")
+    page.locator("#scope-kb").press("Tab")
+    assert len(identity_calls) == 1
+    assert len(permission_calls) == 1
+    page.locator("#access-load").click()
+    page.locator("#access-permission-reason").filter(
+        has_text="permission for kb_restored"
+    ).wait_for()
+    assert len(identity_calls) == 2
+    assert len(permission_calls) == 2
+    assert parse_qs(urlparse(permission_calls[-1]).query)["kb_id"] == ["kb_restored"]
+
+    page.locator('[data-nav="audit"]').click()
+    page.locator("#view-audit").wait_for(state="visible")
+    page.locator("#audit-load").click()
+    page.wait_for_function("window.__task15BfcacheAuditSignals.length === 1")
+    page.evaluate(
+        "window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false }))"
+    )
+    page.wait_for_function("window.__task15BfcacheAuditSignals[0].signal.aborted")
+    page.locator("#audit-load").click()
+    assert page.evaluate("window.__task15BfcacheAuditSignals.length") == 1
+    _fulfill_json(pending_audit.pop(0), {"audit": []})

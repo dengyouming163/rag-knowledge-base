@@ -146,6 +146,12 @@ function destroyWorkbench() {
   permissionsController?.destroy();
 }
 
+function handlePageHide(event) {
+  if (event.persisted) return;
+  window.removeEventListener("pagehide", handlePageHide);
+  destroyWorkbench();
+}
+
 function initializeWorkbench() {
   activeScope = readScope();
   overviewController = createOverview({
@@ -203,7 +209,7 @@ function initializeWorkbench() {
   });
 
   window.addEventListener("hashchange", restoreRoute);
-  window.addEventListener("pagehide", destroyWorkbench, { once: true });
+  window.addEventListener("pagehide", handlePageHide);
 
   for (const id of ["scope-tenant", "scope-kb", "scope-user", "scope-window"]) {
     document.getElementById(id)?.addEventListener("change", applyScope);
