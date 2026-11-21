@@ -57,6 +57,10 @@ SSE_HEADERS = {
 
 DELTA_SIZE = 12
 
+# RagPipeline 调用 retriever.retrieve 时不传 mode，走检索器默认的 hybrid；
+# ops_rag_metrics.mode 按 spec 记录“实际检索模式”，因此固定写 hybrid。
+CHAT_RETRIEVAL_MODE = "hybrid"
+
 
 def _deltas(text: str) -> list[str]:
     return [text[index : index + DELTA_SIZE] for index in range(0, len(text), DELTA_SIZE)]
@@ -134,7 +138,7 @@ async def chat_stream(
             "tenant_id": tenant_id,
             "kb_id": payload.kb_id,
             "operation": "chat",
-            "mode": "chat",
+            "mode": CHAT_RETRIEVAL_MODE,
             "outcome": outcome,
             "hits": len(chunks),
             "citation_ok": (

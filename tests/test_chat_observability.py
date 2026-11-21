@@ -202,7 +202,7 @@ def test_chat_success_records_one_terminal_metric_and_real_stage_spans(monkeypat
     assert len(metrics) == 1
     metric = metrics[0]
     assert metric["operation"] == "chat"
-    assert metric["mode"] == "chat"
+    assert metric["mode"] == "hybrid"
     assert metric["outcome"] == "succeeded"
     assert metric["hits"] == 1
     assert metric["model"] == "answer-model"
