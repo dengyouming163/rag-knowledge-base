@@ -342,6 +342,36 @@ test("timing keeps every named unknown span in other and only uses explicit unac
   assert.equal(withoutExplicit.spans.some((span) => span.stage === "unaccounted"), false);
 });
 
+test("timing renders prototype keys and unnamed stages as literal other labels", () => {
+  const sourceStages = ["constructor", "toString", "__proto__", null];
+  const model = buildTimingModel({
+    metric: {
+      total_ms: 400,
+      stage_spans: sourceStages.map((stage, index) => ({
+        stage,
+        start_ms: index * 100,
+        duration_ms: 100,
+        status: "ok",
+      })),
+    },
+  });
+
+  assert.deepEqual(model.spans.map((span) => span.stage), ["other", "other", "other", "other"]);
+  assert.deepEqual(model.spans.map((span) => span.sourceStage), [
+    "constructor", "toString", "__proto__", "unnamed-4",
+  ]);
+  assert.deepEqual(model.spans.map((span) => span.label), [
+    "other · constructor", "other · toString", "other · __proto__", "other · unnamed-4",
+  ]);
+  for (const span of model.spans) {
+    assert.equal(typeof span.stage, "string");
+    assert.equal(typeof span.label, "string");
+    assert.ok(Number.isFinite(span.left));
+    assert.ok(Number.isFinite(span.width));
+    assert.ok(Number.isFinite(span.percentage));
+  }
+});
+
 test("zero and missing totals never generate Infinity or NaN and remain readable", () => {
   for (const totalMs of [0, null, undefined]) {
     const model = buildTimingModel({
@@ -354,6 +384,64 @@ test("zero and missing totals never generate Infinity or NaN and remain readable
     assert.match(model.status, totalMs === 0 ? /Zero-duration/ : /not recorded/);
     assert.ok(model.spans.every((span) => span.left === null && span.width === null && span.percentage === null));
     assert.doesNotMatch(JSON.stringify(model), /Infinity|NaN/);
+  }
+});
+
+test("extreme timing values stay finite and fall back to non-proportional bars", async (t) => {
+  const scenarios = [
+    {
+      name: "minimum positive total",
+      metric: {
+        total_ms: Number.MIN_VALUE,
+        stage_spans: [{ stage: "retrieve", start_ms: 1, duration_ms: 1, status: "ok" }],
+      },
+    },
+    {
+      name: "span end addition overflow",
+      metric: {
+        total_ms: Number.MAX_VALUE,
+        timings_unaccounted_ms: 1,
+        stage_spans: [{
+          stage: "retrieve",
+          start_ms: Number.MAX_VALUE,
+          duration_ms: Number.MAX_VALUE,
+          status: "ok",
+        }],
+      },
+    },
+    {
+      name: "unaccounted ratio overflow",
+      metric: {
+        total_ms: 1,
+        timings_unaccounted_ms: Number.MAX_VALUE,
+        stage_spans: [{ stage: "retrieve", start_ms: 0, duration_ms: 0, status: "ok" }],
+      },
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    await t.test(scenario.name, () => {
+      const model = buildTimingModel({ metric: scenario.metric });
+      assert.ok(Number.isFinite(model.totalMs), `${scenario.name}: totalMs`);
+      for (const [index, span] of model.spans.entries()) {
+        for (const field of ["startMs", "durationMs", "left", "width", "percentage"]) {
+          const value = span[field];
+          if (value !== null) {
+            assert.ok(
+              Number.isFinite(value),
+              `${scenario.name}: span ${index} ${field} must be finite or null, got ${value}`,
+            );
+          }
+        }
+      }
+      assert.equal(model.proportional, false);
+      assert.match(model.status, /proportion unavailable/i);
+      for (const span of model.spans) {
+        assert.equal(span.left, null);
+        assert.equal(span.width, null);
+        assert.equal(span.percentage, null);
+      }
+    });
   }
 });
 
@@ -594,6 +682,198 @@ test("inactive and destroyed views abort slow work, ignore late responses, and r
   assert.equal(root.listenerCount("click"), 0);
   assert.equal(root.listenerCount("keydown"), 0);
   assert.equal(fixture.mediaListeners.length, 0);
+});
+
+test("a delayed clipboard success cannot overwrite a newly selected trace", async (t) => {
+  const pending = deferred();
+  const { root, view, context } = createFixture(t, {
+    clipboard: { writeText: () => pending.promise },
+    api: async (path) => detailFixture(new URL(path, "http://workbuddy.test").pathname.split("/").at(-2)),
+  });
+
+  await view.selectTrace("trace-a", { context: context(), updateHash: false });
+  const copying = view.copyRaw();
+  await view.selectTrace("trace-b", { context: context(), updateHash: false });
+  const selectedStatus = root.text("#trace-copy-status");
+  pending.resolve();
+  const copied = await copying;
+
+  assert.equal(copied, false);
+  assert.equal(root.text("#trace-copy-status"), selectedStatus);
+  assert.doesNotMatch(root.text("#trace-copy-status"), /Copied|Copy failed/i);
+});
+
+test("a delayed clipboard failure cannot overwrite a changed scope", async (t) => {
+  const pending = deferred();
+  const fixture = createFixture(t, {
+    clipboard: { writeText: () => pending.promise },
+    api: async (path) => detailFixture(new URL(path, "http://workbuddy.test").pathname.split("/").at(-2)),
+  });
+  const { root, view, guard, window, context } = fixture;
+
+  await view.selectTrace("trace-a", { context: context(), updateHash: false });
+  const copying = view.copyRaw();
+  guard.invalidate();
+  const changed = {
+    scope: { tenant: "tenant_b", kb: "kb_2", user: "user_2", window: "7d" },
+    ...guard.snapshot(),
+  };
+  window.dispatchEvent(new CustomEvent("workbuddy:scopechange", { detail: changed }));
+  const clearedStatus = root.text("#trace-copy-status");
+  pending.reject(new Error("permission denied"));
+  const copied = await copying;
+
+  assert.equal(copied, false);
+  assert.equal(root.text("#trace-copy-status"), clearedStatus);
+  assert.doesNotMatch(root.text("#trace-copy-status"), /Copied|Copy failed/i);
+});
+
+test("a delayed clipboard result cannot write while the view is inactive", async (t) => {
+  const pending = deferred();
+  const { root, view, context } = createFixture(t, {
+    clipboard: { writeText: () => pending.promise },
+  });
+
+  await view.selectTrace("trace-a", { context: context(), updateHash: false });
+  const copying = view.copyRaw();
+  view.setActive(false);
+  const inactiveStatus = root.text("#trace-copy-status");
+  pending.resolve();
+  const copied = await copying;
+
+  assert.equal(copied, false);
+  assert.equal(root.text("#trace-copy-status"), inactiveStatus);
+  assert.doesNotMatch(root.text("#trace-copy-status"), /Copied|Copy failed/i);
+});
+
+test("leaving and returning settles a cancelled list request and ignores its abort-insensitive response", async (t) => {
+  const pending = deferred();
+  const calls = [];
+  const { root, view, context } = createFixture(t, {
+    api: (_path, options) => {
+      calls.push(options);
+      return pending.promise;
+    },
+  });
+
+  const request = view.loadTraces(context());
+  assert.equal(calls.length, 1);
+  view.setActive(false);
+  const cancelledStatus = root.text("#trace-list-status");
+  const cancelledDisabled = root.querySelector("#trace-load-more").disabled;
+  assert.equal(calls[0].signal.aborted, true);
+  view.setActive(true);
+  pending.resolve({ items: [traceRow("late-list")], next_cursor: null });
+  await request;
+
+  assert.match(cancelledStatus, /cancelled/i);
+  assert.doesNotMatch(cancelledStatus, /Loading traces/i);
+  assert.equal(cancelledDisabled, false);
+  assert.equal(root.text("#trace-list-status"), cancelledStatus);
+  assert.equal(root.querySelector("#trace-load-more").disabled, false);
+  assert.equal(root.querySelectorAll("[data-trace-select]").length, 0);
+});
+
+test("hidden to visible settles loadMore and ignores an abort-insensitive stale page", async (t) => {
+  const pending = deferred();
+  const calls = [];
+  const cursor = { before_occurred_at: "2026-11-20T09:59:59+00:00", before_id: 99 };
+  const { root, view, document, context } = createFixture(t, {
+    api: (_path, options) => {
+      calls.push(options);
+      if (calls.length === 1) {
+        return Promise.resolve({ items: [traceRow("trace-a")], next_cursor: cursor });
+      }
+      return pending.promise;
+    },
+  });
+
+  await view.loadTraces(context());
+  const request = view.loadMore(context());
+  assert.equal(root.querySelector("#trace-load-more").disabled, true);
+  document.visibilityState = "hidden";
+  document.dispatchEvent(new Event("visibilitychange"));
+  const cancelledStatus = root.text("#trace-list-status");
+  const cancelledDisabled = root.querySelector("#trace-load-more").disabled;
+  assert.equal(calls[1].signal.aborted, true);
+  document.visibilityState = "visible";
+  document.dispatchEvent(new Event("visibilitychange"));
+  pending.resolve({ items: [traceRow("late-page")], next_cursor: null });
+  await request;
+
+  assert.match(cancelledStatus, /cancelled/i);
+  assert.doesNotMatch(cancelledStatus, /Loading older traces/i);
+  assert.equal(cancelledDisabled, false);
+  assert.equal(root.text("#trace-list-status"), cancelledStatus);
+  assert.equal(root.querySelector("#trace-load-more").disabled, false);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(root.querySelectorAll("[data-trace-select]").map((row) => row.dataset.traceSelect), ["trace-a"]);
+});
+
+test("cancelled detail loading settles both detail and Timing and ignores stale resolution", async (t) => {
+  const pending = deferred();
+  const { root, view, context } = createFixture(t, { api: () => pending.promise });
+
+  const request = view.selectTrace("trace-a", { context: context(), updateHash: false });
+  view.setActive(false);
+  const detailStatus = root.text("#trace-detail-status");
+  const timingStatus = root.text("#trace-timing-status");
+  view.setActive(true);
+  pending.resolve(detailFixture("late-detail"));
+  await request;
+
+  assert.match(detailStatus, /cancelled/i);
+  assert.match(timingStatus, /cancelled/i);
+  assert.doesNotMatch(timingStatus, /Loading timing/i);
+  assert.equal(root.text("#trace-detail-status"), detailStatus);
+  assert.equal(root.text("#trace-timing-status"), timingStatus);
+  assert.equal(root.text("#trace-raw"), "");
+});
+
+test("detail HTTP and network failures settle Timing with the same readable failure", async (t) => {
+  const { root, view, context } = createFixture(t, {
+    api: async (path) => {
+      if (path.includes("trace-404")) throw new Error("HTTP 404: trace not found");
+      throw new Error("network offline");
+    },
+  });
+
+  await view.selectTrace("trace-404", { context: context(), updateHash: false });
+  assert.match(root.text("#trace-detail-status"), /unavailable.*404/i);
+  assert.match(root.text("#trace-timing-status"), /unavailable.*404/i);
+  assert.doesNotMatch(root.text("#trace-timing-status"), /Loading timing/i);
+
+  await view.selectTrace("trace-network", { context: context(), updateHash: false });
+  assert.match(root.text("#trace-detail-status"), /unavailable.*network offline/i);
+  assert.match(root.text("#trace-timing-status"), /unavailable.*network offline/i);
+  assert.doesNotMatch(root.text("#trace-timing-status"), /Loading timing/i);
+});
+
+test("an obsolete list finally cannot settle the replacement operation", async (t) => {
+  const calls = [];
+  const { root, view, context } = createFixture(t, {
+    api: () => {
+      const pending = deferred();
+      calls.push(pending);
+      return pending.promise;
+    },
+  });
+
+  const first = view.loadTraces(context());
+  const second = view.loadTraces(context());
+  assert.equal(root.text("#trace-list-status"), "Loading traces…");
+  assert.equal(root.querySelector("#trace-load-more").disabled, true);
+  calls[0].resolve({ items: [traceRow("obsolete")], next_cursor: null });
+  await first;
+  assert.equal(root.text("#trace-list-status"), "Loading traces…");
+  assert.equal(root.querySelector("#trace-load-more").disabled, true);
+  assert.equal(root.querySelectorAll("[data-trace-select]").length, 0);
+
+  calls[1].resolve({ items: [traceRow("current")], next_cursor: null });
+  await second;
+  assert.match(root.text("#trace-list-status"), /1 trace loaded/);
+  assert.equal(root.querySelector("#trace-load-more").disabled, false);
+  assert.deepEqual(root.querySelectorAll("[data-trace-select]").map((row) => row.dataset.traceSelect), ["current"]);
 });
 
 test("createTraces without a root is a safe terminal no-op", async () => {

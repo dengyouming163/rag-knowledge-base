@@ -748,3 +748,197 @@ def test_trace_slow_requests_abort_on_exit_and_scope_change_without_late_render(
     assert page.locator("#trace-list-rows tr[data-trace-id]").count() == 0
     assert page.locator("#trace-raw").text_content() == ""
     assert page.evaluate("window.__traceSignals.length") == 2
+
+
+def test_trace_cancelled_requests_settle_and_ignore_abort_insensitive_responses(
+    workbench_page,
+) -> None:
+    page, workbench_url = workbench_page
+    page.add_init_script(
+        """
+            window.__tracePending = [];
+            window.__traceSignals = [];
+            window.__deferNextList = false;
+            const originalFetch = window.fetch.bind(window);
+            window.fetch = (input, init = {}) => {
+                const url = String(input);
+                if (url.includes('/v1/ops/trace-list')) {
+                    window.__traceSignals.push(init.signal);
+                    if (window.__deferNextList) {
+                        window.__deferNextList = false;
+                        return new Promise(resolve => {
+                            window.__tracePending.push({ url, resolve });
+                        });
+                    }
+                }
+                return originalFetch(input, init);
+            };
+            window.__respondToStaleList = body => {
+                const pending = window.__tracePending.shift();
+                pending.resolve(new Response(JSON.stringify(body), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                }));
+            };
+        """
+    )
+    cursor = {"before_occurred_at": "2026-11-20T09:59:59+00:00", "before_id": 99}
+    page.route(
+        "**/v1/ops/trace-list**",
+        lambda route: _fulfill_json(
+            route,
+            {"items": [_trace_row("trace-a")], "next_cursor": cursor},
+        ),
+    )
+
+    def detail_route(route) -> None:
+        if "/trace-404/" in route.request.url:
+            _fulfill_json(route, {"detail": "trace not found"}, status=404)
+        elif "/trace-network/" in route.request.url:
+            route.abort("failed")
+        else:
+            _fulfill_json(route, _trace_detail("trace-a"))
+
+    page.route("**/v1/ops/traces/*/detail**", detail_route)
+    page.set_viewport_size({"width": 1440, "height": 1000})
+    page.goto(f"{workbench_url}#/traces")
+
+    page.evaluate("window.__deferNextList = true")
+    page.locator("#trace-apply").click()
+    page.wait_for_function("window.__tracePending.length === 1")
+    assert page.locator("#trace-list-status").inner_text() == "Loading traces…"
+    page.evaluate("window.location.hash = '#/overview'")
+    page.locator("#view-overview").wait_for(state="visible")
+    page.wait_for_function("window.__traceSignals[0].aborted")
+    assert "cancelled" in page.locator("#trace-list-status").inner_text()
+    assert page.locator("#trace-load-more").is_enabled()
+    page.evaluate("window.location.hash = '#/traces'")
+    page.locator("#view-traces").wait_for(state="visible")
+    cancelled_status = page.locator("#trace-list-status").inner_text()
+    assert "Loading traces" not in cancelled_status
+    page.evaluate(
+        """async () => {
+            window.__respondToStaleList({
+                items: [{ trace_id: 'late-list', occurred_at: '2026-11-20T10:00:00Z' }],
+                next_cursor: null,
+            });
+            await Promise.resolve();
+            await Promise.resolve();
+            await Promise.resolve();
+        }"""
+    )
+    assert page.locator("#trace-list-status").inner_text() == cancelled_status
+    assert page.locator('tr[data-trace-id="late-list"]').count() == 0
+
+    page.locator("#trace-apply").click()
+    page.locator('[data-trace-select="trace-a"]').wait_for(state="visible")
+    page.evaluate("window.__deferNextList = true")
+    page.locator("#trace-load-more").click()
+    page.wait_for_function("window.__tracePending.length === 1")
+    assert page.locator("#trace-load-more").is_disabled()
+    page.evaluate(
+        """() => {
+            Object.defineProperty(document, 'visibilityState', {
+                configurable: true,
+                value: 'hidden',
+            });
+            document.dispatchEvent(new Event('visibilitychange'));
+        }"""
+    )
+    page.wait_for_function("window.__traceSignals[2].aborted")
+    cancelled_status = page.locator("#trace-list-status").inner_text()
+    assert "cancelled" in cancelled_status
+    assert "Loading older traces" not in cancelled_status
+    assert page.locator("#trace-load-more").is_enabled()
+    page.evaluate(
+        """() => {
+            Object.defineProperty(document, 'visibilityState', {
+                configurable: true,
+                value: 'visible',
+            });
+            document.dispatchEvent(new Event('visibilitychange'));
+        }"""
+    )
+    page.evaluate(
+        """async () => {
+            window.__respondToStaleList({
+                items: [{ trace_id: 'late-page', occurred_at: '2026-11-20T09:00:00Z' }],
+                next_cursor: null,
+            });
+            await Promise.resolve();
+            await Promise.resolve();
+            await Promise.resolve();
+        }"""
+    )
+    assert page.locator("#trace-list-status").inner_text() == cancelled_status
+    assert page.locator('tr[data-trace-id="late-page"]').count() == 0
+    assert page.locator('tr[data-trace-id="trace-a"]').count() == 1
+    assert page.locator("#trace-load-more").is_enabled()
+
+    page.evaluate("window.location.hash = '#/traces/trace-404'")
+    page.locator("#trace-detail-status").filter(has_text="unavailable").wait_for()
+    assert "404" in page.locator("#trace-timing-status").inner_text()
+    assert "Loading timing" not in page.locator("#trace-timing-status").inner_text()
+    page.evaluate("window.location.hash = '#/traces/trace-network'")
+    page.locator("#trace-detail-status").filter(has_text="unavailable").wait_for()
+    assert "unavailable" in page.locator("#trace-timing-status").inner_text()
+    assert "Loading timing" not in page.locator("#trace-timing-status").inner_text()
+
+
+def test_trace_delayed_clipboard_cannot_overwrite_trace_or_scope_changes(
+    workbench_page,
+) -> None:
+    page, workbench_url = workbench_page
+    page.route(
+        "**/v1/ops/traces/*/detail**",
+        lambda route: _fulfill_json(
+            route,
+            _trace_detail(urlparse(route.request.url).path.rsplit("/", 2)[-2]),
+        ),
+    )
+    page.set_viewport_size({"width": 1440, "height": 1000})
+    page.goto(f"{workbench_url}#/traces/trace-a")
+    page.locator("#trace-raw").filter(has_text="trace-a").wait_for(state="attached")
+    page.locator("#trace-inspector-tab-raw").click()
+    page.evaluate(
+        """
+            window.__clipboardWrites = [];
+            Object.defineProperty(navigator, 'clipboard', {
+                configurable: true,
+                value: {
+                    writeText(value) {
+                        let resolve;
+                        let reject;
+                        const promise = new Promise((resolvePromise, rejectPromise) => {
+                            resolve = resolvePromise;
+                            reject = rejectPromise;
+                        });
+                        const write = { value, resolve, reject, settled: false };
+                        window.__clipboardWrites.push(write);
+                        return promise.finally(() => { write.settled = true; });
+                    },
+                },
+            });
+        """
+    )
+
+    page.locator("#trace-copy").click()
+    page.wait_for_function("window.__clipboardWrites.length === 1")
+    page.evaluate("window.location.hash = '#/traces/trace-b'")
+    page.locator("#trace-raw").filter(has_text="trace-b").wait_for()
+    selected_status = page.locator("#trace-copy-status").inner_text()
+    page.evaluate("window.__clipboardWrites[0].resolve()")
+    page.wait_for_function("window.__clipboardWrites[0].settled")
+    assert page.locator("#trace-copy-status").inner_text() == selected_status
+    assert "Copied" not in selected_status
+
+    page.locator("#trace-copy").click()
+    page.wait_for_function("window.__clipboardWrites.length === 2")
+    page.locator("#scope-kb").fill("kb_changed")
+    page.locator("#scope-kb").press("Tab")
+    page.locator("#trace-list-status").filter(has_text="Apply filters").wait_for()
+    cleared_status = page.locator("#trace-copy-status").inner_text()
+    page.evaluate("window.__clipboardWrites[1].reject(new Error('permission denied'))")
+    page.wait_for_function("window.__clipboardWrites[1].settled")
+    assert page.locator("#trace-copy-status").inner_text() == cleared_status
+    assert "Copy failed" not in cleared_status

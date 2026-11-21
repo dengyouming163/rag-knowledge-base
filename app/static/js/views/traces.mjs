@@ -60,11 +60,21 @@ export function buildTraceListUrl(scope = {}, filters = {}, cursor = null) {
 export function buildTimingModel(detail = {}) {
   const metric = detail?.metric && typeof detail.metric === "object" ? detail.metric : null;
   const totalMs = finiteNonNegative(metric?.total_ms);
-  const proportional = totalMs !== null && totalMs > 0;
+  let proportional = totalMs !== null && totalMs > 0;
+  let proportionOverflow = false;
+  const proportion = (value) => {
+    if (!proportional || value === null) return null;
+    const ratio = value / totalMs * 100;
+    if (!Number.isFinite(ratio)) {
+      proportionOverflow = true;
+      return null;
+    }
+    return ratio;
+  };
   const sourceSpans = Array.isArray(metric?.stage_spans) ? metric.stage_spans : [];
   const spans = sourceSpans.map((span, index) => {
     const sourceStage = String(span?.stage || `unnamed-${index + 1}`);
-    const stage = STAGE_NAMES[sourceStage] || "other";
+    const stage = Object.hasOwn(STAGE_NAMES, sourceStage) ? STAGE_NAMES[sourceStage] : "other";
     const startMs = finiteNonNegative(span?.start_ms);
     const durationMs = finiteNonNegative(span?.duration_ms);
     return {
@@ -74,9 +84,9 @@ export function buildTimingModel(detail = {}) {
       status: String(span?.status || "Not recorded"),
       startMs,
       durationMs,
-      left: proportional && startMs !== null ? startMs / totalMs * 100 : null,
-      width: proportional && durationMs !== null ? durationMs / totalMs * 100 : null,
-      percentage: proportional && durationMs !== null ? durationMs / totalMs * 100 : null,
+      left: proportion(startMs),
+      width: proportion(durationMs),
+      percentage: proportion(durationMs),
       source: "stage_spans",
     };
   });
@@ -85,10 +95,19 @@ export function buildTimingModel(detail = {}) {
     metric?.timings_unaccounted_ms ?? detail?.timings_unaccounted_ms,
   );
   if (explicitUnaccounted !== null && explicitUnaccounted > 0) {
-    const ends = spans
+    const endValues = spans
       .filter((span) => span.startMs !== null && span.durationMs !== null)
-      .map((span) => span.startMs + span.durationMs);
-    const startMs = ends.length ? Math.max(...ends) : 0;
+      .map((span) => {
+        const end = span.startMs + span.durationMs;
+        if (!Number.isFinite(end)) {
+          proportionOverflow = true;
+          return null;
+        }
+        return end;
+      });
+    const invalidEnd = endValues.some((end) => end === null);
+    const ends = endValues.filter((end) => end !== null);
+    const startMs = invalidEnd ? null : ends.length ? Math.max(...ends) : 0;
     spans.push({
       stage: "unaccounted",
       sourceStage: "unaccounted",
@@ -96,17 +115,27 @@ export function buildTimingModel(detail = {}) {
       status: "Not a named stage",
       startMs,
       durationMs: explicitUnaccounted,
-      left: proportional ? startMs / totalMs * 100 : null,
-      width: proportional ? explicitUnaccounted / totalMs * 100 : null,
-      percentage: proportional ? explicitUnaccounted / totalMs * 100 : null,
+      left: proportion(startMs),
+      width: proportion(explicitUnaccounted),
+      percentage: proportion(explicitUnaccounted),
       source: "timings_unaccounted_ms",
     });
+  }
+
+  if (proportionOverflow) {
+    proportional = false;
+    for (const span of spans) {
+      span.left = null;
+      span.width = null;
+      span.percentage = null;
+    }
   }
 
   let status;
   if (!metric) status = "Timing unavailable: metric summary was not recorded.";
   else if (totalMs === null) status = "Total duration was not recorded; proportional timing is unavailable.";
   else if (totalMs === 0) status = "Zero-duration trace · 0.0 ms; proportional timing is unavailable.";
+  else if (proportionOverflow) status = `Total ${formatMs(totalMs)} · proportion unavailable because a timing sum or ratio exceeded the finite range.`;
   else if (!spans.length) status = `Total ${formatMs(totalMs)} · no stage spans were recorded.`;
   else status = `Total ${formatMs(totalMs)} · bars are normalized to total_ms.`;
   return { totalMs, proportional, zeroDuration: totalMs === 0, spans, status };
@@ -205,6 +234,15 @@ export function createTraces({
     operations[kind] = null;
     operation.unlink();
     operation.controller.abort();
+    if (destroyed) return;
+    if (kind === "list") {
+      setText("#trace-list-status", "Trace list request cancelled. Refresh to retry.");
+      const loadMore = byId("trace-load-more");
+      if (loadMore) loadMore.disabled = false;
+    } else {
+      setText("#trace-detail-status", "Trace detail loading cancelled. Select the trace to retry.");
+      setText("#trace-timing-status", "Timing loading cancelled. Select the trace to retry.");
+    }
   }
 
   function cancelAll() {
@@ -592,6 +630,7 @@ export function createTraces({
     } catch (error) {
       if (operationIsCurrent(operation) && !isAbort(error)) {
         setText("#trace-detail-status", `Trace detail unavailable: ${errorMessage(error)}`);
+        setText("#trace-timing-status", `Timing unavailable: ${errorMessage(error)}`);
       }
       return undefined;
     } finally {
@@ -638,15 +677,25 @@ export function createTraces({
       setText("#trace-copy-status", "No Raw JSON is available to copy.");
       return false;
     }
+    const copyContext = currentContext;
+    const copyTraceId = selectedTraceId;
+    const copyDetail = selectedDetail;
+    const copyIsCurrent = () => !destroyed
+      && active
+      && currentContext === copyContext
+      && selectedTraceId === copyTraceId
+      && selectedDetail === copyDetail
+      && !copyContext?.signal?.aborted
+      && (!guard || guard.isCurrent(copyContext));
     try {
       const targetClipboard = clipboard ?? globalThis.navigator?.clipboard;
       if (!targetClipboard?.writeText) throw new Error("Clipboard API is unavailable");
       await targetClipboard.writeText(raw);
-      if (destroyed) return false;
+      if (!copyIsCurrent()) return false;
       setText("#trace-copy-status", "Copied Raw JSON to the clipboard.");
       return true;
     } catch (error) {
-      if (!destroyed) {
+      if (copyIsCurrent()) {
         setText("#trace-copy-status", `Copy failed: ${errorMessage(error)}. Select and copy the Raw JSON manually.`);
       }
       return false;
