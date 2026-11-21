@@ -1,12 +1,14 @@
 import { ScopeGuard } from "./core.mjs";
 import { createOverview } from "./views/overview.mjs";
 import { createLab } from "./views/lab.mjs";
+import { createTraces } from "./views/traces.mjs";
 
 const VIEW_NAMES = ["overview", "lab", "traces", "ingestion", "evaluation", "access", "audit"];
 const scopeGuard = new ScopeGuard();
 let activeScope = null;
 let overviewController = null;
 let labController = null;
+let tracesController = null;
 
 function normalizeView(name) {
   return VIEW_NAMES.includes(name) ? name : "overview";
@@ -51,6 +53,7 @@ export function showView(name, root = globalThis.document) {
   });
   overviewController?.setActive(activeView === "overview");
   labController?.setActive(activeView === "lab");
+  tracesController?.setActive(activeView === "traces");
   return activeView;
 }
 
@@ -66,7 +69,7 @@ function readScope() {
 
 function clearViewState() {
   document.querySelectorAll("[data-view]").forEach((view) => {
-    if (view.dataset.view === "overview" || view.dataset.view === "lab") return;
+    if (["overview", "lab", "traces"].includes(view.dataset.view)) return;
     view.querySelectorAll("[data-view-body]").forEach((body) => body.replaceChildren());
     view.querySelectorAll(".is-selected").forEach((item) => item.classList.remove("is-selected"));
     view.querySelectorAll("[aria-selected]").forEach((item) => item.setAttribute("aria-selected", "false"));
@@ -74,6 +77,7 @@ function clearViewState() {
   });
   overviewController?.clear();
   labController?.clear();
+  tracesController?.clear();
 }
 
 function setStatus(message) {
@@ -119,6 +123,11 @@ function initializeWorkbench() {
   });
   labController = createLab({
     root: document.getElementById("view-lab"),
+    guard: scopeGuard,
+    scope: activeScope,
+  });
+  tracesController = createTraces({
+    root: document.getElementById("view-traces"),
     guard: scopeGuard,
     scope: activeScope,
   });
