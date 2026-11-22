@@ -1,14 +1,8 @@
 import { apiJson } from "../api.mjs";
+import { formatError, t } from "../i18n/index.mjs";
 
 function scopeKey(scope = {}) {
   return JSON.stringify([scope.tenant, scope.kb, scope.user, scope.window]);
-}
-
-function errorMessage(error) {
-  const detail = error?.body?.detail;
-  if (typeof detail === "string") return detail;
-  if (typeof detail?.message === "string") return detail.message;
-  return error instanceof Error && error.message ? error.message : "Request failed";
 }
 
 function finiteNonNegative(value) {
@@ -87,7 +81,7 @@ export function createIngestion({
 
   function syncPermissions() {
     if (destroyed) return;
-    const reason = permissions?.actionReason() ?? "Action availability is verified by the server.";
+    const reason = permissions?.actionReason() ?? t("ingestion.actionAvailability");
     setText("#ingestion-permission-status", reason);
     const retry = byId("ingestion-retry");
     const job = selectedJob();
@@ -96,7 +90,7 @@ export function createIngestion({
     retry.disabled = Boolean(operations.retry) || (permissions ? !permissions.canRetry(job) : job?.status !== "failed");
     retry.title = retry.disabled && !operations.retry && permissions
       ? permissions.retryReason(job)
-      : `Retry failed job #${selectedJobId ?? "—"}`;
+      : t("ingestion.retryTitle", { id: selectedJobId ?? "—" });
   }
 
   function renderJobs() {
@@ -105,7 +99,7 @@ export function createIngestion({
     const rows = [];
     if (!jobs.length) {
       const row = makeElement("tr");
-      const cell = makeElement("td", "wb-ops-empty", "No ingestion jobs in this scope.");
+      const cell = makeElement("td", "wb-ops-empty", t("ingestion.noJobsInScope"));
       cell.colSpan = 7;
       row.appendChild(cell);
       rows.push(row);
@@ -119,7 +113,7 @@ export function createIngestion({
       const select = makeElement("button", "wb-ops-select", `#${id}`);
       select.type = "button";
       select.dataset.jobSelect = id;
-      select.setAttribute("aria-label", `Inspect ingestion job ${id}`);
+      select.setAttribute("aria-label", t("ingestion.inspectJobAria", { id }));
       if (id === selectedJobId) select.setAttribute("aria-current", "true");
       jobCell.appendChild(select);
       row.appendChild(jobCell);
@@ -158,12 +152,12 @@ export function createIngestion({
     syncPermissions();
   }
 
-  function clearEvents(message = "Select a job to load its events independently.") {
+  function clearEvents(message = t("ingestion.eventsStatus")) {
     byId("ingestion-job-events")?.replaceChildren();
     setText("#ingestion-job-events-status", message);
   }
 
-  function clearSelection(message = "Select a job to load its events independently.") {
+  function clearSelection(message = t("ingestion.eventsStatus")) {
     selectedJobId = null;
     renderJobs();
     renderJobDetail();
@@ -183,9 +177,9 @@ export function createIngestion({
     operation.unlink();
     operation.controller.abort();
     if (destroyed) return;
-    if (kind === "jobs") setText("#ingestion-jobs-status", "Jobs request cancelled. Load jobs to retry.");
-    if (kind === "events") setText("#ingestion-job-events-status", "Event request cancelled. Select the job to retry.");
-    if (kind === "retry") setText("#ingestion-action-status", "Retry request cancelled; reload the job to verify its actual state.");
+    if (kind === "jobs") setText("#ingestion-jobs-status", t("ingestion.jobsCancelled"));
+    if (kind === "events") setText("#ingestion-job-events-status", t("ingestion.eventsCancelled"));
+    if (kind === "retry") setText("#ingestion-action-status", t("ingestion.retryCancelled"));
     syncPermissions();
   }
 
@@ -221,7 +215,7 @@ export function createIngestion({
   async function loadJobs(context = currentContext) {
     const operation = beginOperation("jobs", context);
     if (!operation) return false;
-    setText("#ingestion-jobs-status", "Loading ingestion jobs…");
+    setText("#ingestion-jobs-status", t("ingestion.loadingJobs"));
     const query = new URLSearchParams({ kb_id: context.scope.kb, limit: "50" });
     try {
       const data = await api(`/v1/ops/jobs?${query.toString()}`, {
@@ -237,12 +231,17 @@ export function createIngestion({
       const counts = data?.counts ?? {};
       setText(
         "#ingestion-jobs-status",
-        `${jobs.length} jobs · queued ${counts.queued ?? "—"} · running ${counts.running ?? "—"} · failed ${counts.failed ?? "—"}`,
+        t("ingestion.jobsSummary", {
+          count: jobs.length,
+          queued: counts.queued ?? "—",
+          running: counts.running ?? "—",
+          failed: counts.failed ?? "—",
+        }),
       );
       return true;
     } catch (error) {
       if (!operationIsCurrent(operation)) return false;
-      setText("#ingestion-jobs-status", `Jobs unavailable: ${errorMessage(error)}`);
+      setText("#ingestion-jobs-status", t("ingestion.jobsUnavailable", { error: formatError(error) }));
       return false;
     } finally {
       if (finishOperation(operation) && contextIsCurrent(operation.context)) syncPermissions();
@@ -255,7 +254,7 @@ export function createIngestion({
     const operation = beginOperation("events", context);
     if (!operation) return false;
     byId("ingestion-job-events")?.replaceChildren();
-    setText("#ingestion-job-events-status", `Loading events for job #${id}…`);
+    setText("#ingestion-job-events-status", t("ingestion.loadingEvents", { id }));
     try {
       const data = await api(`/v1/ops/jobs/${encodeURIComponent(id)}/events`, {
         scope: context.scope,
@@ -278,21 +277,21 @@ export function createIngestion({
         return item;
       });
       if (!items.length) {
-        const empty = makeElement("li", "wb-ops-empty", "No events recorded for this job.");
+        const empty = makeElement("li", "wb-ops-empty", t("ingestion.noEvents"));
         byId("ingestion-job-events")?.replaceChildren(empty);
       } else {
         byId("ingestion-job-events")?.replaceChildren(...items);
       }
-      setText("#ingestion-job-events-status", `${events.length} events for job #${id}.`);
+      setText("#ingestion-job-events-status", t("ingestion.eventsSummary", { count: events.length, id }));
       return true;
     } catch (error) {
       if (!operationIsCurrent(operation) || selectedJobId !== id) return false;
       if (error?.status === 404) {
         jobs = jobs.filter((job) => validJobId(job.id) !== id);
-        clearSelection("The selected job is no longer visible.");
-        setText("#ingestion-action-status", `Job #${id} is no longer visible.`);
+        clearSelection(t("ingestion.jobGoneNotice"));
+        setText("#ingestion-action-status", t("ingestion.jobGone", { id }));
       } else {
-        setText("#ingestion-job-events-status", `Events unavailable: ${errorMessage(error)}`);
+        setText("#ingestion-job-events-status", t("ingestion.eventsUnavailable", { error: formatError(error) }));
       }
       return false;
     } finally {
@@ -323,7 +322,7 @@ export function createIngestion({
     const operation = beginOperation("retry", context);
     if (!operation) return false;
     syncPermissions();
-    setText("#ingestion-action-status", `Retrying job #${id}…`);
+    setText("#ingestion-action-status", t("ingestion.retrying", { id }));
     try {
       const { status } = await api(`/v1/ops/jobs/${encodeURIComponent(id)}/retry`, {
         method: "POST",
@@ -333,29 +332,29 @@ export function createIngestion({
       });
       if (!operationIsCurrent(operation)) return false;
       if (status !== 202) {
-        setText("#ingestion-action-status", `Retry failed: Expected HTTP 202, received HTTP ${status}.`);
+        setText("#ingestion-action-status", t("ingestion.retryWrongStatus", { status }));
         return false;
       }
-      setText("#ingestion-action-status", `Retry accepted for job #${id}; reloading actual state…`);
+      setText("#ingestion-action-status", t("ingestion.retryAccepted", { id }));
       const results = await Promise.all([loadJobs(context), loadEvents(id, context)]);
       if (!contextIsCurrent(context) || selectedJobId !== id) return results.every(Boolean);
       setText(
         "#ingestion-action-status",
         results.every(Boolean)
-          ? `Retry accepted; reloaded job #${id} and events from the server.`
-          : `Retry accepted, but job #${id} could not be fully reloaded. Inspect the local errors above.`,
+          ? t("ingestion.retryReloaded", { id })
+          : t("ingestion.retryPartial", { id }),
       );
       return results.every(Boolean);
     } catch (error) {
       if (!operationIsCurrent(operation)) return false;
       if (error?.status === 409) {
-        setText("#ingestion-action-status", `已有运行中的任务；请刷新任务状态。${errorMessage(error)}`);
+        setText("#ingestion-action-status", `已有运行中的任务；请刷新任务状态。${formatError(error)}`);
       } else if (error?.status === 404) {
         jobs = jobs.filter((item) => validJobId(item.id) !== id);
-        clearSelection("The selected job is no longer visible.");
-        setText("#ingestion-action-status", `Job #${id} is no longer visible.`);
+        clearSelection(t("ingestion.jobGoneNotice"));
+        setText("#ingestion-action-status", t("ingestion.jobGone", { id }));
       } else {
-        setText("#ingestion-action-status", `Retry failed: ${errorMessage(error)}`);
+        setText("#ingestion-action-status", t("ingestion.retryFailed", { error: formatError(error) }));
       }
       return false;
     } finally {
@@ -440,9 +439,9 @@ export function createIngestion({
     renderJobs();
     renderJobDetail();
     clearEvents();
-    setText("#ingestion-jobs-status", "Load jobs or refresh to inspect ingestion.");
+    setText("#ingestion-jobs-status", t("ingestion.jobsStatus"));
     setText("#ingestion-action-status", "");
-    setText("#ingestion-permission-status", "Permissions are checked when jobs load.");
+    setText("#ingestion-permission-status", t("ingestion.permissionStatus"));
   }
 
   root.addEventListener("click", onRootClick);
