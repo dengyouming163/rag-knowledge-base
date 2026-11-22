@@ -357,53 +357,53 @@
 
         <section id="view-ingestion" data-view="ingestion" hidden aria-labelledby="view-ingestion-title">
           <header class="wb-view-header">
-            <div><span class="wb-view-kicker">MODULE / 04</span><h1 id="view-ingestion-title">Ingestion</h1></div>
-            <p>Monitor document intake and processing jobs.</p>
+            <div><span class="wb-view-kicker" data-i18n="ingestion.kicker">MODULE / 04</span><h1 id="view-ingestion-title" data-i18n="ingestion.title">Ingestion</h1></div>
+            <p data-i18n="ingestion.subtitle">Monitor document intake and processing jobs.</p>
           </header>
           <div class="wb-view-body wb-ops-workspace" data-view-body>
             <div class="wb-ops-toolbar">
               <div class="wb-ops-toolbar-main">
-                <button id="ingestion-load" class="wb-ops-action" type="button">Load jobs</button>
+                <button id="ingestion-load" class="wb-ops-action" type="button" data-i18n="ingestion.loadJobs">Load jobs</button>
                 <div class="wb-ops-window">
-                  <label for="ingestion-window">Time window</label>
-                  <select id="ingestion-window" disabled aria-describedby="ingestion-window-note"><option>Global window</option></select>
+                  <label for="ingestion-window" data-i18n="ingestion.timeWindow">Time window</label>
+                  <select id="ingestion-window" disabled aria-describedby="ingestion-window-note"><option data-i18n="ingestion.globalWindow">Global window</option></select>
                 </div>
-                <p id="ingestion-window-note" class="wb-ops-note">Time-window filtering is not supported by the jobs API; the latest 50 jobs are shown.</p>
+                <p id="ingestion-window-note" class="wb-ops-note" data-i18n="ingestion.windowNote">Time-window filtering is not supported by the jobs API; the latest 50 jobs are shown.</p>
               </div>
-              <p id="ingestion-permission-status" class="wb-ops-permission" data-action-disabled-reason role="status" aria-live="polite">Permissions are checked when jobs load.</p>
+              <p id="ingestion-permission-status" class="wb-ops-permission" data-action-disabled-reason role="status" aria-live="polite" data-i18n="ingestion.permissionStatus">Permissions are checked when jobs load.</p>
             </div>
 
             <div class="wb-ops-grid wb-ingestion-grid">
               <article class="wb-ops-panel wb-ops-history" aria-labelledby="ingestion-jobs-title">
-                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">01 / JOBS</span><h2 id="ingestion-jobs-title">Ingestion jobs</h2></div><span>Independent job state</span></div>
-                <p id="ingestion-jobs-status" class="wb-ops-status-line" role="status" aria-live="polite">Load jobs or refresh to inspect ingestion.</p>
+                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index" data-i18n="ingestion.jobsIndex">01 / JOBS</span><h2 id="ingestion-jobs-title" data-i18n="ingestion.jobsTitle">Ingestion jobs</h2></div><span data-i18n="ingestion.independentState">Independent job state</span></div>
+                <p id="ingestion-jobs-status" class="wb-ops-status-line" role="status" aria-live="polite" data-i18n="ingestion.jobsStatus">Load jobs or refresh to inspect ingestion.</p>
                 <div class="wb-ops-table-scroll">
                   <table class="wb-ops-table">
-                    <caption class="wb-sr-only">Scoped ingestion jobs</caption>
-                    <thead><tr><th scope="col">Job</th><th scope="col">Document</th><th scope="col">Status</th><th scope="col">Wait</th><th scope="col">Duration</th><th scope="col">Progress</th><th scope="col">Error</th></tr></thead>
-                    <tbody id="ingestion-job-rows"><tr><td colspan="7" class="wb-ops-empty">No ingestion jobs loaded.</td></tr></tbody>
+                    <caption class="wb-sr-only" data-i18n="ingestion.tableCaption">Scoped ingestion jobs</caption>
+                    <thead><tr><th scope="col" data-i18n="ingestion.job">Job</th><th scope="col" data-i18n="ingestion.document">Document</th><th scope="col" data-i18n="ingestion.status">Status</th><th scope="col" data-i18n="ingestion.wait">Wait</th><th scope="col" data-i18n="ingestion.duration">Duration</th><th scope="col" data-i18n="ingestion.progress">Progress</th><th scope="col" data-i18n="ingestion.error">Error</th></tr></thead>
+                    <tbody id="ingestion-job-rows"><tr><td colspan="7" class="wb-ops-empty" data-i18n="ingestion.noJobs">No ingestion jobs loaded.</td></tr></tbody>
                   </table>
                 </div>
               </article>
 
               <aside id="ingestion-job-detail" class="wb-ops-panel" aria-labelledby="ingestion-detail-title">
-                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">02 / DETAIL</span><h2 id="ingestion-detail-title">Job detail</h2></div></div>
+                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index" data-i18n="ingestion.detailIndex">02 / DETAIL</span><h2 id="ingestion-detail-title" data-i18n="ingestion.detailTitle">Job detail</h2></div></div>
                 <dl class="wb-ops-detail-list">
-                  <div><dt>Job</dt><dd data-job-detail="id">—</dd></div>
-                  <div><dt>Status</dt><dd data-job-detail="status">—</dd></div>
-                  <div><dt>Wait</dt><dd data-job-detail="wait">—</dd></div>
-                  <div><dt>Duration</dt><dd data-job-detail="duration">—</dd></div>
-                  <div><dt>Progress</dt><dd data-job-detail="progress">—</dd></div>
-                  <div><dt>Error</dt><dd data-job-detail="error">—</dd></div>
+                  <div><dt data-i18n="ingestion.job">Job</dt><dd data-job-detail="id">—</dd></div>
+                  <div><dt data-i18n="ingestion.status">Status</dt><dd data-job-detail="status">—</dd></div>
+                  <div><dt data-i18n="ingestion.wait">Wait</dt><dd data-job-detail="wait">—</dd></div>
+                  <div><dt data-i18n="ingestion.duration">Duration</dt><dd data-job-detail="duration">—</dd></div>
+                  <div><dt data-i18n="ingestion.progress">Progress</dt><dd data-job-detail="progress">—</dd></div>
+                  <div><dt data-i18n="ingestion.error">Error</dt><dd data-job-detail="error">—</dd></div>
                 </dl>
-                <button id="ingestion-retry" class="wb-ops-action wb-ops-action-secondary" type="button" hidden disabled>Retry failed job</button>
+                <button id="ingestion-retry" class="wb-ops-action wb-ops-action-secondary" type="button" hidden disabled data-i18n="ingestion.retry">Retry failed job</button>
                 <p id="ingestion-action-status" class="wb-ops-status-line" role="status" aria-live="polite"></p>
               </aside>
 
               <article class="wb-ops-panel" aria-labelledby="ingestion-events-title">
-                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">03 / EVENTS</span><h2 id="ingestion-events-title">Job events</h2></div><span>Loaded separately</span></div>
-                <p id="ingestion-job-events-status" class="wb-ops-status-line" role="status" aria-live="polite">Select a job to load its events independently.</p>
-                <ul id="ingestion-job-events" class="wb-ops-events" aria-label="Selected ingestion job events"></ul>
+                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index" data-i18n="ingestion.eventsIndex">03 / EVENTS</span><h2 id="ingestion-events-title" data-i18n="ingestion.eventsTitle">Job events</h2></div><span data-i18n="ingestion.loadedSeparately">Loaded separately</span></div>
+                <p id="ingestion-job-events-status" class="wb-ops-status-line" role="status" aria-live="polite" data-i18n="ingestion.eventsStatus">Select a job to load its events independently.</p>
+                <ul id="ingestion-job-events" class="wb-ops-events" aria-label="Selected ingestion job events" data-i18n-aria-label="ingestion.eventsAriaLabel"></ul>
               </article>
             </div>
           </div>

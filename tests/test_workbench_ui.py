@@ -2821,3 +2821,5 @@ def test_workbench_chinese_copy_covers_shell_and_overview(workbench_page) -> Non
     assert page.locator("#search-button").inner_text() == "执行检索"
     assert page.locator("#view-traces h1").inner_text() == "调用追踪"
     assert page.locator(".wb-trace-table thead th").first.inner_text() == "时间"
+    assert page.locator("#view-ingestion h1").inner_text() == "入库任务"
+    assert page.locator("#ingestion-retry").text_content() == "重试失败任务"
