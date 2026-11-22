@@ -7,11 +7,56 @@ import {
   applyTranslations,
   formatError,
   getLocale,
+  LOCALES,
   normalizeLocale,
   resolveLocale,
   setLocale,
   t,
 } from "../../app/static/js/i18n/index.mjs";
+
+function importFreshI18n(name) {
+  const url = new URL("../../app/static/js/i18n/index.mjs", import.meta.url);
+  url.searchParams.set("test", name);
+  return import(url.href);
+}
+
+test("storage read failures do not block resolution or initialization", async () => {
+  const fresh = await importFreshI18n("storage-read");
+  const documentElement = { lang: "" };
+  globalThis.localStorage = {
+    getItem() { throw new Error("storage read blocked"); },
+  };
+  globalThis.location = { search: "" };
+  globalThis.document = { documentElement };
+  try {
+    assert.equal(resolveLocale({ query: "en" }), "en");
+    assert.equal(fresh.initLocale(), "zh-CN");
+    assert.equal(documentElement.lang, "zh-CN");
+  } finally {
+    delete globalThis.localStorage;
+    delete globalThis.location;
+    delete globalThis.document;
+    setLocale("zh-CN", { persist: false });
+  }
+});
+
+test("storage write failures do not block locale or document updates", () => {
+  const documentElement = { lang: "zh-CN" };
+  globalThis.localStorage = {
+    setItem() { throw new Error("storage write blocked"); },
+  };
+  globalThis.document = { documentElement };
+  try {
+    setLocale("zh-CN", { persist: false });
+    assert.doesNotThrow(() => setLocale("en"));
+    assert.equal(getLocale(), "en");
+    assert.equal(documentElement.lang, "en");
+  } finally {
+    delete globalThis.localStorage;
+    delete globalThis.document;
+    setLocale("zh-CN", { persist: false });
+  }
+});
 
 test("normalizeLocale maps regional variants", () => {
   assert.equal(normalizeLocale("zh"), "zh-CN");
@@ -20,6 +65,17 @@ test("normalizeLocale maps regional variants", () => {
   assert.equal(normalizeLocale("EN"), "en");
   assert.equal(normalizeLocale("fr"), null);
   assert.equal(normalizeLocale(""), null);
+});
+
+test("normalizeLocale derives aliases from registered locales", () => {
+  LOCALES.push({ code: "fr-CA", label: "Français", dictionary: {} });
+  try {
+    assert.equal(normalizeLocale("fr"), "fr-CA");
+    assert.equal(normalizeLocale("fr-FR"), "fr-CA");
+    assert.equal(normalizeLocale("FR-ca"), "fr-CA");
+  } finally {
+    LOCALES.pop();
+  }
 });
 
 test("resolveLocale prefers query, then storage, then default", () => {
@@ -56,14 +112,48 @@ test("t falls back from missing zh key to en and then to the key", () => {
   assert.equal(t("missing.key"), "missing.key");
 });
 
+test("t falls back to en when the active zh-CN dictionary lacks a key", () => {
+  const original = zhCN["nav.overview"];
+  delete zhCN["nav.overview"];
+  setLocale("zh-CN", { persist: false });
+  try {
+    assert.equal(t("nav.overview"), "Overview");
+  } finally {
+    zhCN["nav.overview"] = original;
+  }
+});
+
+test("t ignores inherited dictionary properties", () => {
+  setLocale("zh-CN", { persist: false });
+  assert.equal(t("constructor"), "constructor");
+  assert.equal(t("__proto__"), "__proto__");
+});
+
 test("t interpolates named parameters and keeps missing ones", () => {
   setLocale("zh-CN", { persist: false });
   assert.equal(t("lab.search.complete", { count: 2, mode: "hybrid" }), "检索完成 · 2 条命中 · hybrid");
   assert.equal(t("lab.search.complete", { count: 2 }), "检索完成 · 2 条命中 · {mode}");
 });
 
+test("t does not reprocess placeholders inside replacement values", () => {
+  setLocale("zh-CN", { persist: false });
+  assert.equal(
+    t("lab.search.complete", { count: "{mode}", mode: "hybrid" }),
+    "检索完成 · {mode} 条命中 · hybrid",
+  );
+});
+
 test("dictionaries expose the same key set", () => {
   assert.deepEqual(Object.keys(zhCN).sort(), Object.keys(en).sort());
+});
+
+test("dictionaries use matching placeholder sets for every key", () => {
+  const placeholders = (value) => [...new Set(
+    [...value.matchAll(/\{(\w+)\}/g)].map((match) => match[1]),
+  )].sort();
+  for (const key of Object.keys(en)) {
+    assert.deepEqual(placeholders(zhCN[key]), placeholders(en[key]), key);
+  }
 });
 
 test("applyTranslations updates text and attributes idempotently", () => {
@@ -74,8 +164,14 @@ test("applyTranslations updates text and attributes idempotently", () => {
       getAttribute: () => "topbar.language",
       setAttribute(name, value) { this[name] = value; },
     }],
-    "[data-i18n-placeholder]": [],
-    "[data-i18n-title]": [],
+    "[data-i18n-placeholder]": [{
+      getAttribute: () => "topbar.language",
+      setAttribute(name, value) { this[name] = value; },
+    }],
+    "[data-i18n-title]": [{
+      getAttribute: () => "app.title",
+      setAttribute(name, value) { this[name] = value; },
+    }],
   };
   const root = {
     querySelectorAll(selector) {
@@ -85,8 +181,28 @@ test("applyTranslations updates text and attributes idempotently", () => {
   applyTranslations(root);
   assert.equal(root.querySelectorAll("[data-i18n]")[0].textContent, "Overview");
   assert.equal(root.querySelectorAll("[data-i18n-aria-label]")[0]["aria-label"], "Language");
+  assert.equal(root.querySelectorAll("[data-i18n-placeholder]")[0].placeholder, "Language");
+  assert.equal(root.querySelectorAll("[data-i18n-title]")[0].title, "RAG Operations Console");
   applyTranslations(root);
   assert.equal(root.querySelectorAll("[data-i18n]")[0].textContent, "Overview");
+});
+
+test("initLocale resolves the first locale and updates document language", async () => {
+  const fresh = await importFreshI18n("init-locale");
+  const documentElement = { lang: "zh-CN" };
+  globalThis.location = { search: "?lang=en" };
+  globalThis.localStorage = { getItem: () => "zh-CN" };
+  globalThis.document = { documentElement };
+  try {
+    assert.equal(fresh.initLocale(), "en");
+    assert.equal(fresh.getLocale(), "en");
+    assert.equal(documentElement.lang, "en");
+  } finally {
+    delete globalThis.localStorage;
+    delete globalThis.location;
+    delete globalThis.document;
+    setLocale("zh-CN", { persist: false });
+  }
 });
 
 test("formatError maps status and detail with passthrough fallback", () => {

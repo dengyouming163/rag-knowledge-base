@@ -33,6 +33,22 @@ function storage() {
   }
 }
 
+function readStoredLocale() {
+  try {
+    return storage()?.getItem(STORAGE_KEY) ?? null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function writeStoredLocale(value) {
+  try {
+    storage()?.setItem(STORAGE_KEY, value);
+  } catch (_error) {
+    // Storage is best-effort; locale changes must continue without it.
+  }
+}
+
 function warnUnsupported(value) {
   if (warned) return;
   warned = true;
@@ -42,14 +58,17 @@ function warnUnsupported(value) {
 export function normalizeLocale(value) {
   const raw = String(value ?? "").trim().toLowerCase();
   if (!raw) return null;
-  if (raw === "zh" || raw.startsWith("zh-")) return "zh-CN";
-  if (raw === "en" || raw.startsWith("en-")) return "en";
+  for (const { code } of LOCALES) {
+    const normalizedCode = code.toLowerCase();
+    const base = normalizedCode.split("-")[0];
+    if (raw === normalizedCode || raw === base || raw.startsWith(`${base}-`)) return code;
+  }
   return null;
 }
 
 export function resolveLocale({
   query = new URLSearchParams(globalThis.location?.search ?? "").get("lang"),
-  stored = storage()?.getItem(STORAGE_KEY),
+  stored = readStoredLocale(),
   fallback = DEFAULT_LOCALE,
 } = {}) {
   for (const candidate of [query, stored]) {
@@ -67,7 +86,7 @@ export function getLocale() {
 export function setLocale(code, { persist = true, updateDocument = true } = {}) {
   const normalized = normalizeLocale(code) ?? DEFAULT_LOCALE;
   currentLocale = normalized;
-  if (persist) storage()?.setItem(STORAGE_KEY, normalized);
+  if (persist) writeStoredLocale(normalized);
   if (updateDocument && globalThis.document?.documentElement) {
     globalThis.document.documentElement.lang = normalized;
   }
@@ -82,11 +101,11 @@ export function initLocale() {
 
 export function t(key, params = {}) {
   const dictionary = DICTIONARIES.get(currentLocale) ?? DICTIONARIES.get(DEFAULT_LOCALE);
-  let value = dictionary?.[key] ?? en[key] ?? key;
-  for (const [name, replacement] of Object.entries(params)) {
-    value = value.split(`{${name}}`).join(String(replacement));
-  }
-  return value;
+  let value = dictionary && Object.hasOwn(dictionary, key) ? dictionary[key] : undefined;
+  if (value === undefined) value = Object.hasOwn(en, key) ? en[key] : key;
+  return value.replace(/\{(\w+)\}/g, (match, name) => (
+    name in params ? String(params[name]) : match
+  ));
 }
 
 export const translate = t;
