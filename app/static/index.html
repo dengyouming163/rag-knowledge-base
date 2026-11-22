@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>RAG Operations Console</title>
+  <title data-i18n="app.title">RAG Operations Console</title>
   <link rel="stylesheet" href="/ui/css/workbench.css">
 </head>
 <body>
@@ -21,13 +21,13 @@
       <nav class="wb-nav" aria-label="Workspace modules">
         <p class="wb-nav-label">WORKSPACE</p>
         <ul class="wb-nav-list">
-          <li><button class="wb-nav-link is-active" type="button" data-nav="overview" aria-current="page" aria-controls="view-overview"><span class="wb-nav-index">01</span><span>Overview</span></button></li>
-          <li><button class="wb-nav-link" type="button" data-nav="lab" aria-controls="view-lab"><span class="wb-nav-index">02</span><span>Query Lab</span></button></li>
-          <li><button class="wb-nav-link" type="button" data-nav="traces" aria-controls="view-traces"><span class="wb-nav-index">03</span><span>Traces</span></button></li>
-          <li><button class="wb-nav-link" type="button" data-nav="ingestion" aria-controls="view-ingestion"><span class="wb-nav-index">04</span><span>Ingestion</span></button></li>
-          <li><button class="wb-nav-link" type="button" data-nav="evaluation" aria-controls="view-evaluation"><span class="wb-nav-index">05</span><span>Evaluation</span></button></li>
-          <li><button class="wb-nav-link" type="button" data-nav="access" aria-controls="view-access"><span class="wb-nav-index">06</span><span>Access Control</span></button></li>
-          <li><button class="wb-nav-link" type="button" data-nav="audit" aria-controls="view-audit"><span class="wb-nav-index">07</span><span>Audit Log</span></button></li>
+          <li><button class="wb-nav-link is-active" type="button" data-nav="overview" aria-current="page" aria-controls="view-overview"><span class="wb-nav-index">01</span><span data-i18n="nav.overview">Overview</span></button></li>
+          <li><button class="wb-nav-link" type="button" data-nav="lab" aria-controls="view-lab"><span class="wb-nav-index">02</span><span data-i18n="nav.lab">Query Lab</span></button></li>
+          <li><button class="wb-nav-link" type="button" data-nav="traces" aria-controls="view-traces"><span class="wb-nav-index">03</span><span data-i18n="nav.traces">Traces</span></button></li>
+          <li><button class="wb-nav-link" type="button" data-nav="ingestion" aria-controls="view-ingestion"><span class="wb-nav-index">04</span><span data-i18n="nav.ingestion">Ingestion</span></button></li>
+          <li><button class="wb-nav-link" type="button" data-nav="evaluation" aria-controls="view-evaluation"><span class="wb-nav-index">05</span><span data-i18n="nav.evaluation">Evaluation</span></button></li>
+          <li><button class="wb-nav-link" type="button" data-nav="access" aria-controls="view-access"><span class="wb-nav-index">06</span><span data-i18n="nav.access">Access Control</span></button></li>
+          <li><button class="wb-nav-link" type="button" data-nav="audit" aria-controls="view-audit"><span class="wb-nav-index">07</span><span data-i18n="nav.audit">Audit Log</span></button></li>
         </ul>
       </nav>
 
@@ -68,6 +68,13 @@
           <button id="scope-refresh" class="wb-refresh" type="submit">Refresh</button>
         </form>
         <output id="app-status" class="wb-app-status" role="status" aria-live="polite">Ready</output>
+        <label class="wb-locale" for="locale-select">
+          <span data-i18n="topbar.language">Language</span>
+          <select id="locale-select" name="locale" autocomplete="off" data-i18n-aria-label="topbar.language">
+            <option value="zh-CN">中文</option>
+            <option value="en">English</option>
+          </select>
+        </label>
       </header>
 
       <main id="wb-main" class="wb-main">

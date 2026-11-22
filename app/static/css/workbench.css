@@ -361,6 +361,31 @@ select {
   white-space: nowrap;
 }
 
+.wb-locale {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  gap: 6px;
+  color: var(--wb-text-secondary);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.wb-locale select {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--wb-border-strong);
+  border-radius: 4px;
+  background: var(--wb-surface);
+  color: var(--wb-text);
+  font-family: var(--wb-font-sans);
+  font-size: 11px;
+}
+
+.wb-locale select:focus {
+  border-color: var(--wb-accent);
+}
+
 .wb-main {
   width: 100%;
   max-width: 1600px;

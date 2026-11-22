@@ -32,7 +32,7 @@ def test_ui_has_one_seven_module_workbuddy_shell_with_overview_visible(
 ) -> None:
     html = client.get("/ui/").text
 
-    assert "<title>RAG Operations Console</title>" in html
+    assert '<title data-i18n="app.title">RAG Operations Console</title>' in html
     assert re.findall(r'data-nav="([^"]+)"', html) == list(NAV)
     assert re.findall(r'data-view="([^"]+)"', html) == list(NAV)
     for name in NAV:
@@ -149,7 +149,7 @@ def test_ui_and_all_static_assets_load_from_any_working_directory(
     response = client.get(path)
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
-    assert "<title>RAG Operations Console</title>" in response.text
+    assert '<title data-i18n="app.title">RAG Operations Console</title>' in response.text
     assert 'href="/ui/css/workbench.css"' in response.text
 
     assets = [
@@ -164,3 +164,17 @@ def test_ui_and_all_static_assets_load_from_any_working_directory(
         asset_response = client.get(asset)
         assert asset_response.status_code == 200, asset
         assert asset_response.content, asset
+
+
+def test_ui_ships_locale_assets_and_switcher(client: TestClient) -> None:
+    html = client.get("/ui/").text
+    assert 'id="locale-select"' in html
+    assert 'data-i18n="app.title"' in html
+    for asset in (
+        "/ui/js/i18n/index.mjs",
+        "/ui/js/i18n/zh-CN.mjs",
+        "/ui/js/i18n/en.mjs",
+    ):
+        response = client.get(asset)
+        assert response.status_code == 200, asset
+        assert "javascript" in response.headers["content-type"]

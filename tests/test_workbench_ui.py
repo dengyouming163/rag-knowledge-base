@@ -53,7 +53,7 @@ def workbench_page():
         thread.start()
         try:
             page = browser.new_page()
-            yield page, f"http://127.0.0.1:{server.server_port}/ui/"
+            yield page, f"http://127.0.0.1:{server.server_port}/ui/?lang=en"
         finally:
             browser.close()
             server.shutdown()
@@ -72,7 +72,7 @@ def test_workbench_shell(client: TestClient) -> None:
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
     html = response.text
-    assert "<title>RAG Operations Console</title>" in html
+    assert '<title data-i18n="app.title">RAG Operations Console</title>' in html
     assert 'class="wb-sidebar"' in html
     assert 'class="wb-topbar"' in html
     assert 'class="wx-rail"' not in html
@@ -2734,3 +2734,53 @@ def test_access_audit_bfcache_restore_and_subsequent_pagehide_cleanup(workbench_
     page.locator("#audit-load").click()
     assert page.evaluate("window.__task15BfcacheAuditSignals.length") == 1
     _fulfill_json(pending_audit.pop(0), {"audit": []})
+
+
+def test_workbench_defaults_to_chinese_and_switches_to_english(workbench_page) -> None:
+    page, url = workbench_page
+    base = url.split("?")[0]
+    page.goto(base)
+
+    assert page.locator('[data-nav="overview"] span').last.inner_text() == "概览"
+    assert page.evaluate("document.documentElement.lang") == "zh-CN"
+
+    page.select_option("#locale-select", "en")
+    page.wait_for_function("document.documentElement.lang === 'en'")
+
+    assert page.locator('[data-nav="overview"] span').last.inner_text() == "Overview"
+    assert page.evaluate("localStorage.getItem('workbuddy.locale')") == "en"
+    assert "lang=en" in page.url
+
+
+def test_workbench_url_language_overrides_stored_preference(workbench_page) -> None:
+    page, url = workbench_page
+    base = url.split("?")[0]
+    page.goto(base)
+    page.evaluate("localStorage.setItem('workbuddy.locale', 'zh-CN')")
+
+    page.goto(url)
+    assert page.locator('[data-nav="overview"] span').last.inner_text() == "Overview"
+    assert page.evaluate("localStorage.getItem('workbuddy.locale')") == "zh-CN"
+
+
+def test_workbench_locale_switch_reloads_active_view(workbench_page) -> None:
+    page, url = workbench_page
+    page.route(
+        "**/v1/ops/summary*",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"observability": {"window": "24h"}}),
+        ),
+    )
+    page.route(
+        "**/v1/ops/metrics/timeseries*",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps({"series": []})
+        ),
+    )
+    page.goto(url.split("?")[0])
+    page.wait_for_timeout(300)
+
+    with page.expect_response(lambda response: "/v1/ops/summary" in response.url):
+        page.select_option("#locale-select", "en")

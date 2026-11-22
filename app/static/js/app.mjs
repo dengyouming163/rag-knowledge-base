@@ -1,4 +1,5 @@
 import { ScopeGuard } from "./core.mjs";
+import { applyTranslations, getLocale, initLocale, LOCALES, setLocale, t } from "./i18n/index.mjs";
 import { createOverview } from "./views/overview.mjs";
 import { createLab } from "./views/lab.mjs";
 import { createTraces } from "./views/traces.mjs";
@@ -104,6 +105,30 @@ function setStatus(message) {
   if (status) status.textContent = message;
 }
 
+function syncLocaleSelect() {
+  const select = document.getElementById("locale-select");
+  if (select) select.value = getLocale();
+}
+
+function appendLangToUrl(code) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("lang", code);
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function onLocaleChange(event) {
+  const next = setLocale(event.target.value);
+  appendLangToUrl(next);
+  applyTranslations(document);
+  syncLocaleSelect();
+  const view = viewFromHash(window.location.hash);
+  const snapshot = scopeGuard.snapshot();
+  setStatus(t("topbar.languageChanged", { language: LOCALES.find((item) => item.code === next)?.label ?? next }));
+  window.dispatchEvent(new CustomEvent("workbuddy:refresh", {
+    detail: { scope: activeScope, view, ...snapshot },
+  }));
+}
+
 function applyScope() {
   const scope = readScope();
   if (activeScope && JSON.stringify(scope) === JSON.stringify(activeScope)) return false;
@@ -113,7 +138,7 @@ function applyScope() {
   clearViewState();
   activeScope = scope;
   const snapshot = scopeGuard.snapshot();
-  setStatus("Scope changed; previous view data cleared.");
+  setStatus(t("app.scopeChanged"));
   window.dispatchEvent(new CustomEvent("workbuddy:scopechange", {
     detail: { scope, previousScope, ...snapshot },
   }));
@@ -153,6 +178,9 @@ function handlePageHide(event) {
 }
 
 function initializeWorkbench() {
+  initLocale();
+  applyTranslations(document);
+  syncLocaleSelect();
   activeScope = readScope();
   overviewController = createOverview({
     root: document.getElementById("view-overview"),
@@ -210,6 +238,7 @@ function initializeWorkbench() {
 
   window.addEventListener("hashchange", restoreRoute);
   window.addEventListener("pagehide", handlePageHide);
+  document.getElementById("locale-select")?.addEventListener("change", onLocaleChange);
 
   for (const id of ["scope-tenant", "scope-kb", "scope-user", "scope-window"]) {
     document.getElementById(id)?.addEventListener("change", applyScope);
@@ -222,7 +251,7 @@ function initializeWorkbench() {
     if (!scopeChanged) scopeGuard.invalidate();
     const view = viewFromHash(window.location.hash);
     const snapshot = scopeGuard.snapshot();
-    setStatus(`Refresh requested for ${view}.`);
+    setStatus(t("app.refreshRequested", { view }));
     window.dispatchEvent(new CustomEvent("workbuddy:refresh", {
       detail: { scope: activeScope, view, ...snapshot },
     }));
