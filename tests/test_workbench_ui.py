@@ -2985,3 +2985,84 @@ def test_workbench_evaluation_uses_chinese_dynamic_copy(workbench_page) -> None:
     page.locator("#evaluation-load").click()
     page.locator("#evaluation-runs-status").filter(has_text="运行历史不可用").wait_for()
     assert "Run history unavailable" not in page.locator("#evaluation-runs-status").inner_text()
+
+
+def test_workbench_access_uses_chinese_dynamic_copy(workbench_page) -> None:
+    page, url = workbench_page
+    page.set_default_timeout(7000)
+    base = url.split("?")[0]
+    page.route("**/v1/identity", lambda route: _fulfill_json(route, _task14_identity()))
+    page.route(
+        "**/v1/ops/permissions?*",
+        lambda route: _fulfill_json(route, _task14_permissions()),
+    )
+    page.set_viewport_size({"width": 1440, "height": 1000})
+    page.goto(base)
+    page.locator('[data-nav="access"]').click()
+    page.wait_for_function("window.location.hash === '#/access'")
+
+    assert page.locator("#access-identity-status").inner_text() == "加载访问状态或刷新以查看身份信息。"
+    assert page.locator("#access-kb-permission-status").inner_text() == "知识库权限与身份信息分开加载。"
+    assert page.locator("#access-permission-status").inner_text() == "身份与知识库权限尚未加载。"
+    assert page.locator("#access-compare-status").inner_text() == "对比身份前请先加载权限。"
+
+    page.locator("#access-load").click()
+    page.locator('[data-access-field="tenant"]').filter(has_text="demo").wait_for()
+    assert page.locator("#access-identity-status").inner_text() == "已独立加载身份信息。"
+    assert page.locator("#access-kb-permission-status").inner_text() == "已独立加载知识库权限。"
+    assert page.locator("#access-permission-status").inner_text() == "当前租户、用户与知识库已启用管理员操作。"
+    assert page.locator('[data-access-field="role"]').inner_text() == "admin"
+    assert "租户 demo" in page.locator('[data-access-layer="tenant"]').inner_text()
+    assert "知识库 kb_after_sale" in page.locator('[data-access-layer="kb"]').inner_text()
+    assert "用户 demo_user" in page.locator('[data-access-layer="user"]').inner_text()
+    assert "Identity and knowledge-base permissions" not in page.locator("#view-access").inner_text()
+
+
+def test_workbench_audit_uses_chinese_dynamic_copy(workbench_page) -> None:
+    page, url = workbench_page
+    page.set_default_timeout(7000)
+    base = url.split("?")[0]
+    audit_state = {"records": [
+        {
+            "id": 2, "created_at": "2026-11-20T10:00:00Z", "actor": "new_actor",
+            "action": "identity_compare", "target": "kb_after_sale", "result": "allowed",
+            "reason": "new reason",
+        },
+        {
+            "id": 1, "created_at": "2026-11-20T09:00:00Z", "actor": "old_actor",
+            "action": "job_retry", "target": "job:11", "result": "denied",
+            "reason": "admin required",
+        },
+    ]}
+
+    page.route(
+        "**/v1/ops/audit?*",
+        lambda route: _fulfill_json(route, {"audit": audit_state["records"]}),
+    )
+    page.set_viewport_size({"width": 1440, "height": 1000})
+    page.goto(f"{base}#/audit")
+
+    assert page.locator("#view-audit h1").inner_text() == "审计日志"
+    assert page.locator("#audit-load").inner_text() == "加载审计记录"
+    assert page.locator("#audit-status").inner_text() == "加载审计记录或刷新以查看时间线。"
+    assert (
+        page.locator("#audit-timeline").get_attribute("aria-label")
+        == "运维审计时间线，最早的事件在前"
+    )
+
+    page.locator("#audit-load").click()
+    page.locator("#audit-status").filter(has_text="正在加载审计记录").wait_for()
+    items = page.locator("[data-audit-item]")
+    items.first.wait_for(state="visible")
+    assert items.count() == 2
+    assert page.locator("#audit-status").inner_text() == "2 条审计记录 · 最早记录在前。"
+    first = items.nth(0)
+    assert first.locator("dt").all_inner_texts() == ["操作人", "操作", "目标", "结果", "原因"]
+    assert first.locator('[data-audit-field="actor"]').inner_text() == "old_actor"
+    assert first.locator('[data-audit-field="result"]').inner_text() == "denied"
+    assert "audit records" not in page.locator("#audit-status").inner_text()
+
+    audit_state["records"] = []
+    page.locator("#audit-load").click()
+    page.locator("#audit-status").filter(has_text="当前作用域没有审计记录").wait_for()
+    assert items.count() == 0

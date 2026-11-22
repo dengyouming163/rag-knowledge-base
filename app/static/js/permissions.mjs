@@ -1,14 +1,8 @@
 import { apiJson } from "./api.mjs";
+import { formatError, t } from "./i18n/index.mjs";
 
 function scopeKey(scope = {}) {
   return JSON.stringify([scope.tenant, scope.kb, scope.user]);
-}
-
-function errorMessage(error) {
-  const detail = error?.body?.detail;
-  if (typeof detail === "string") return detail;
-  if (typeof detail?.message === "string") return detail.message;
-  return error instanceof Error && error.message ? error.message : "Request failed";
 }
 
 function roleOf(snapshot) {
@@ -16,17 +10,17 @@ function roleOf(snapshot) {
 }
 
 export function permissionReason({ identity, permissions, identityError, permissionError, loading } = {}) {
-  if (loading) return "Checking identity and knowledge-base permissions…";
-  if (identityError) return `Identity unavailable: ${identityError}. Actions remain disabled until identity can be verified.`;
-  if (permissionError) return `Knowledge-base permissions unavailable: ${permissionError}. Actions remain disabled for this knowledge base.`;
-  if (!identity || !permissions) return "Identity and knowledge-base permissions have not been loaded.";
+  if (loading) return t("permissions.checking");
+  if (identityError) return t("permissions.identityUnavailable", { error: identityError });
+  if (permissionError) return t("permissions.permissionUnavailable", { error: permissionError });
+  if (!identity || !permissions) return t("permissions.notLoaded");
   if (identity.is_admin !== true || permissions.is_admin !== true) {
-    return `Administrator role required (current role: ${roleOf(identity)}).`;
+    return t("permissions.adminRequired", { role: roleOf(identity) });
   }
   if (identity.ops?.actions_enabled !== true || identity.ops?.can_trigger !== true) {
-    return "Operations actions are disabled by OPS_ENABLE_ACTIONS.";
+    return t("permissions.actionsDisabled");
   }
-  return "Administrator actions are enabled for the current tenant, user, and knowledge base.";
+  return t("permissions.actionsEnabled");
 }
 
 export function createPermissions({
@@ -179,7 +173,7 @@ export function createPermissions({
       })
       .catch((error) => {
         if (!current(operationSnapshot) || cache !== cacheSnapshot) return;
-        cacheSnapshot.identityError = errorMessage(error);
+        cacheSnapshot.identityError = formatError(error);
       })
       .finally(() => {
         if (current(operationSnapshot) && cache === cacheSnapshot) {
@@ -195,7 +189,7 @@ export function createPermissions({
       })
       .catch((error) => {
         if (!current(operationSnapshot) || cache !== cacheSnapshot) return;
-        cacheSnapshot.permissionError = errorMessage(error);
+        cacheSnapshot.permissionError = formatError(error);
       })
       .finally(() => {
         if (current(operationSnapshot) && cache === cacheSnapshot) {
@@ -231,7 +225,7 @@ export function createPermissions({
     canCompare() { return state().canCompare; },
     actionReason() { return state().reason; },
     retryReason(job) {
-      if (job?.status !== "failed") return "Only failed jobs can be retried.";
+      if (job?.status !== "failed") return t("permissions.retryOnlyFailed");
       return state().reason;
     },
     compareReason() { return state().reason; },

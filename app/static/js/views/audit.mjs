@@ -1,14 +1,8 @@
 import { apiJson } from "../api.mjs";
+import { formatError, t } from "../i18n/index.mjs";
 
 function scopeKey(scope = {}) {
   return JSON.stringify([scope.tenant, scope.kb, scope.user, scope.window]);
-}
-
-function errorMessage(error) {
-  const detail = error?.body?.detail;
-  if (typeof detail === "string") return detail;
-  if (typeof detail?.message === "string") return detail.message;
-  return error instanceof Error && error.message ? error.message : "Request failed";
 }
 
 function display(value) {
@@ -70,7 +64,7 @@ export function createAudit({
       const fields = makeElement("dl", "wb-audit-fields");
       for (const field of ["actor", "action", "target", "result", "reason"]) {
         const wrapper = makeElement("div");
-        wrapper.appendChild(makeElement("dt", "", field));
+        wrapper.appendChild(makeElement("dt", "", t(`audit.field.${field}`)));
         const value = makeElement("dd", "", display(record?.[field]));
         value.dataset.auditField = field;
         wrapper.appendChild(value);
@@ -94,7 +88,7 @@ export function createAudit({
     operation = null;
     previous.unlink();
     previous.controller.abort();
-    if (!destroyed) setText("#audit-status", "Audit request cancelled. Load audit records to retry.");
+    if (!destroyed) setText("#audit-status", t("audit.cancelled"));
   }
 
   function beginAudit(context) {
@@ -125,7 +119,7 @@ export function createAudit({
     const candidate = beginAudit(context);
     if (!candidate) return false;
     byId("audit-timeline")?.replaceChildren();
-    setText("#audit-status", "Loading audit records…");
+    setText("#audit-status", t("audit.loading"));
     try {
       const data = await api("/v1/ops/audit?limit=50", {
         scope: context.scope,
@@ -147,13 +141,13 @@ export function createAudit({
       renderRecords(records);
       setText(
         "#audit-status",
-        records.length ? `${records.length} audit records · oldest first.` : "No audit records in this scope.",
+        records.length ? t("audit.summary", { count: records.length }) : t("audit.empty"),
       );
       return true;
     } catch (error) {
       if (!operationIsCurrent(candidate)) return false;
       byId("audit-timeline")?.replaceChildren();
-      setText("#audit-status", `Audit unavailable: ${errorMessage(error)}`);
+      setText("#audit-status", t("audit.unavailable", { error: formatError(error) }));
       return false;
     } finally {
       finishAudit(candidate);
@@ -204,7 +198,7 @@ export function createAudit({
     cancelAudit();
     currentContext = null;
     byId("audit-timeline")?.replaceChildren();
-    setText("#audit-status", "Load audit records or refresh to inspect the timeline.");
+    setText("#audit-status", t("audit.status"));
   }
 
   root.addEventListener("click", onRootClick);

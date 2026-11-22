@@ -1,14 +1,8 @@
 import { apiJson } from "../api.mjs";
+import { formatError, t } from "../i18n/index.mjs";
 
 function scopeKey(scope = {}) {
   return JSON.stringify([scope.tenant, scope.kb, scope.user, scope.window]);
-}
-
-function errorMessage(error) {
-  const detail = error?.body?.detail;
-  if (typeof detail === "string") return detail;
-  if (typeof detail?.message === "string") return detail.message;
-  return error instanceof Error && error.message ? error.message : "Request failed";
 }
 
 function display(value) {
@@ -80,23 +74,33 @@ export function createAccess({
       heading.appendChild(makeElement("h3", "", display(row?.user)));
       heading.appendChild(makeElement("span", "", display(row?.role)));
       card.appendChild(heading);
-      card.appendChild(makeElement("p", "wb-compare-user-meta", `Tags: ${listDisplay(row?.tags)}`));
-      const hits = makeElement("p", "wb-compare-hits-line", "Hits: ");
+      card.appendChild(makeElement(
+        "p",
+        "wb-compare-user-meta",
+        t("access.compare.tags", { tags: listDisplay(row?.tags) }),
+      ));
+      const hits = makeElement("p", "wb-compare-hits-line", t("access.compare.hits"));
       hits.appendChild(makeElement("strong", "", display(row?.hits)));
       hits.querySelector("strong").dataset.compareHits = "";
       card.appendChild(hits);
       const evidence = makeElement(
         "p",
         "wb-compare-user-meta",
-        `Top score: ${display(row?.top_score)} · Latency: ${display(row?.latency_ms)} ms`,
+        t("access.compare.evidence", {
+          score: display(row?.top_score),
+          latency: display(row?.latency_ms),
+        }),
       );
       card.appendChild(evidence);
       const chunkIds = Array.isArray(row?.visible_chunk_ids) ? row.visible_chunk_ids : [];
       if (!chunkIds.length) {
-        card.appendChild(makeElement("p", "wb-compare-empty", "No visible chunks."));
+        card.appendChild(makeElement("p", "wb-compare-empty", t("access.compare.noChunks")));
       } else {
         const list = makeElement("ul", "wb-compare-chunks");
-        list.setAttribute("aria-label", `Visible chunk IDs for ${display(row?.user)}`);
+        list.setAttribute(
+          "aria-label",
+          t("access.compare.chunkListAria", { user: display(row?.user) }),
+        );
         for (const chunkId of chunkIds) {
           const item = makeElement("li");
           const code = makeElement("code", "", chunkId);
@@ -124,13 +128,13 @@ export function createAccess({
     const identity = state.identity;
     const kbPermissions = state.permissions;
     if (state.identityError) {
-      setText("#access-identity-status", `Identity unavailable: ${state.identityError}`);
+      setText("#access-identity-status", t("access.identityUnavailable", { error: state.identityError }));
     } else if (identity) {
-      setText("#access-identity-status", "Identity loaded independently.");
+      setText("#access-identity-status", t("access.identityLoaded"));
     } else if (state.identityLoading) {
-      setText("#access-identity-status", "Loading identity…");
+      setText("#access-identity-status", t("access.identityLoading"));
     } else {
-      setText("#access-identity-status", "Load access state or refresh to inspect identity.");
+      setText("#access-identity-status", t("access.identityStatus"));
     }
     const identityFields = {
       tenant: display(identity?.tenant),
@@ -144,13 +148,16 @@ export function createAccess({
     }
 
     if (state.permissionError) {
-      setText("#access-kb-permission-status", `Knowledge-base permissions unavailable: ${state.permissionError}`);
+      setText(
+        "#access-kb-permission-status",
+        t("access.kbPermissionUnavailable", { error: state.permissionError }),
+      );
     } else if (kbPermissions) {
-      setText("#access-kb-permission-status", "Knowledge-base permissions loaded independently.");
+      setText("#access-kb-permission-status", t("access.kbPermissionLoaded"));
     } else if (state.permissionLoading) {
-      setText("#access-kb-permission-status", "Loading knowledge-base permissions…");
+      setText("#access-kb-permission-status", t("access.kbPermissionLoading"));
     } else {
-      setText("#access-kb-permission-status", "Knowledge-base permissions load separately from identity.");
+      setText("#access-kb-permission-status", t("access.kbPermissionStatus"));
     }
     const kbFields = {
       kb: display(kbPermissions?.kb?.id),
@@ -163,21 +170,36 @@ export function createAccess({
     }
     setText("#access-permission-reason", display(kbPermissions?.reason));
 
-    const tenantDetail = `Tenant ${display(identity?.tenant ?? kbPermissions?.tenant)} · tenant scope ${display(identity?.isolation?.tenant_scope)} · KB tenant match ${display(kbPermissions?.kb?.tenant_match)}`;
-    const kbDetail = `KB ${display(kbPermissions?.kb?.id)} · decision ${display(kbPermissions?.decision)} · scoped chunks ${display(kbPermissions?.rls?.scoped_count)} · bare connection chunks ${display(kbPermissions?.rls?.bare_count)} · RLS enabled ${display(kbPermissions?.rls?.enabled ?? identity?.isolation?.rls?.enabled)}`;
-    const userDetail = `User ${display(identity?.user ?? kbPermissions?.user)} · role ${display(identity?.role ?? kbPermissions?.role)} · ACL ${display(kbPermissions?.acl?.mode ?? identity?.isolation?.acl)} · tags ${listDisplay(kbPermissions?.acl?.user_tags ?? identity?.tags)}`;
+    const tenantDetail = t("access.layer.tenantDetail", {
+      tenant: display(identity?.tenant ?? kbPermissions?.tenant),
+      scope: display(identity?.isolation?.tenant_scope),
+      match: display(kbPermissions?.kb?.tenant_match),
+    });
+    const kbDetail = t("access.layer.kbDetail", {
+      kb: display(kbPermissions?.kb?.id),
+      decision: display(kbPermissions?.decision),
+      scoped: display(kbPermissions?.rls?.scoped_count),
+      bare: display(kbPermissions?.rls?.bare_count),
+      enabled: display(kbPermissions?.rls?.enabled ?? identity?.isolation?.rls?.enabled),
+    });
+    const userDetail = t("access.layer.userDetail", {
+      user: display(identity?.user ?? kbPermissions?.user),
+      role: display(identity?.role ?? kbPermissions?.role),
+      acl: display(kbPermissions?.acl?.mode ?? identity?.isolation?.acl),
+      tags: listDisplay(kbPermissions?.acl?.user_tags ?? identity?.tags),
+    });
     setText('[data-access-layer="tenant"] [data-access-layer-detail]', tenantDetail);
     setText('[data-access-layer="kb"] [data-access-layer-detail]', kbDetail);
     setText('[data-access-layer="user"] [data-access-layer-detail]', userDetail);
 
-    const reason = permissions?.compareReason?.() ?? "Action availability is verified by the server.";
+    const reason = permissions?.compareReason?.() ?? t("access.actionAvailability");
     setText("#access-permission-status", reason);
     const submit = byId("access-compare-submit");
     if (submit) {
       submit.disabled = Boolean(compareOperation) || (permissions ? !permissions.canCompare() : false);
       submit.title = compareOperation
-        ? "Identity comparison is in progress."
-        : submit.disabled ? reason : "Compare visibility for the supplied users";
+        ? t("access.compare.inProgress")
+        : submit.disabled ? reason : t("access.compare.submitTitle");
     }
   }
 
@@ -194,7 +216,7 @@ export function createAccess({
     operation.unlink();
     operation.controller.abort();
     if (!destroyed) {
-      setText("#access-compare-status", "Comparison cancelled. Submit the form to retry.");
+      setText("#access-compare-status", t("access.compare.cancelled"));
       renderPermissionState();
     }
   }
@@ -248,19 +270,19 @@ export function createAccess({
   function validComparisonInput() {
     const query = byId("access-compare-query")?.value.trim() ?? "";
     if (query.length < 1 || query.length > 500) {
-      return showValidationError("access-compare-query", "Query must contain 1–500 characters after trimming.");
+      return showValidationError("access-compare-query", t("access.validation.query"));
     }
     const userIds = (byId("access-compare-user-ids")?.value ?? "")
       .split(",")
       .map((value) => value.trim())
       .filter(Boolean);
     if (userIds.length < 1 || userIds.length > 3) {
-      return showValidationError("access-compare-user-ids", "Enter 1–3 comma-separated user IDs.");
+      return showValidationError("access-compare-user-ids", t("access.validation.userIds"));
     }
     const rawTopK = byId("access-compare-top-k")?.value ?? "";
     const topK = Number(rawTopK);
     if (!rawTopK || !Number.isInteger(topK) || topK < 1 || topK > 10) {
-      return showValidationError("access-compare-top-k", "Top K must be an integer from 1 to 10.");
+      return showValidationError("access-compare-top-k", t("access.validation.topK"));
     }
     clearValidation();
     return { query, user_ids: userIds, top_k: topK };
@@ -278,7 +300,7 @@ export function createAccess({
     const operation = beginComparison(context);
     if (!operation) return false;
     byId("access-compare-results")?.replaceChildren();
-    setText("#access-compare-status", "Comparing identities…");
+    setText("#access-compare-status", t("access.compare.comparing"));
     renderPermissionState();
     try {
       const data = await api(`/v1/ops/kbs/${encodeURIComponent(context.scope.kb)}/identity-compare`, {
@@ -292,13 +314,18 @@ export function createAccess({
       renderComparison(rows);
       setText(
         "#access-compare-status",
-        rows.length ? `${rows.length} users compared; results are grouped by user.` : "No comparison rows returned.",
+        rows.length
+          ? t("access.compare.summary", { count: rows.length })
+          : t("access.compare.empty"),
       );
       return true;
     } catch (error) {
       if (!operationIsCurrent(operation)) return false;
       byId("access-compare-results")?.replaceChildren();
-      setText("#access-compare-status", `Comparison unavailable: ${errorMessage(error)}`);
+      setText(
+        "#access-compare-status",
+        t("access.compare.unavailable", { error: formatError(error) }),
+      );
       return false;
     } finally {
       if (finishComparison(operation) && contextIsCurrent(operation.context)) renderPermissionState();
@@ -368,11 +395,11 @@ export function createAccess({
     byId("access-compare-form")?.reset();
     clearValidation();
     byId("access-compare-results")?.replaceChildren();
-    setText("#access-compare-status", "Load permissions before comparing identities.");
+    setText("#access-compare-status", t("access.compareStatus"));
     renderPermissionState();
-    setText("#access-identity-status", "Scope changed. Refresh to inspect identity.");
-    setText("#access-kb-permission-status", "Scope changed. Refresh to inspect knowledge-base permissions.");
-    setText("#access-permission-status", "Permissions are checked when access state loads.");
+    setText("#access-identity-status", t("access.identityScopeChanged"));
+    setText("#access-kb-permission-status", t("access.kbScopeChanged"));
+    setText("#access-permission-status", t("access.permissionStatus"));
   }
 
   root.addEventListener("click", onRootClick);
