@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { ApiError } from "../../app/static/js/api.mjs";
 import { ScopeGuard } from "../../app/static/js/core.mjs";
 import {
   buildTimingModel,
@@ -920,20 +921,42 @@ test("cancelled detail loading settles both detail and Timing and ignores stale 
 test("detail HTTP and network failures settle Timing with the same readable failure", async (t) => {
   const { root, view, context } = createFixture(t, {
     api: async (path) => {
-      if (path.includes("trace-404")) throw new Error("HTTP 404: trace not found");
+      if (path.includes("trace-404")) {
+        throw new ApiError("HTTP 404: trace not found", { status: 404, body: { detail: "trace not found" } });
+      }
       throw new Error("network offline");
     },
   });
 
   await view.selectTrace("trace-404", { context: context(), updateHash: false });
-  assert.match(root.text("#trace-detail-status"), /unavailable.*404/i);
-  assert.match(root.text("#trace-timing-status"), /unavailable.*404/i);
+  assert.match(root.text("#trace-detail-status"), /unavailable.*Not found/i);
+  assert.match(root.text("#trace-timing-status"), /unavailable.*Not found/i);
   assert.doesNotMatch(root.text("#trace-timing-status"), /Loading timing/i);
 
   await view.selectTrace("trace-network", { context: context(), updateHash: false });
-  assert.match(root.text("#trace-detail-status"), /unavailable.*network offline/i);
-  assert.match(root.text("#trace-timing-status"), /unavailable.*network offline/i);
+  assert.match(root.text("#trace-detail-status"), /unavailable.*Request failed/i);
+  assert.match(root.text("#trace-timing-status"), /unavailable.*Request failed/i);
   assert.doesNotMatch(root.text("#trace-timing-status"), /Loading timing/i);
+});
+
+test("traces dynamic copy follows the active locale", async (t) => {
+  setLocale("zh-CN", { persist: false });
+  try {
+    const fixture = createFixture(t);
+    await fixture.view.loadTraces(fixture.context());
+    assert.equal(fixture.root.text("#trace-list-status"), "已加载 1 条追踪。");
+
+    await fixture.view.selectTrace("trace-a", { context: fixture.context(), updateHash: false });
+    assert.equal(fixture.root.text("#trace-detail-status"), "追踪 trace-a 已加载。");
+    assert.match(fixture.root.text("#trace-timing-status"), /^总计 100\.0 ms/);
+    assert.equal(fixture.root.querySelector('[data-trace-summary="citation"]').textContent, "是");
+
+    const model = buildTimingModel(detailFixture());
+    assert.equal(model.spans[0].label, "改写");
+    assert.match(model.status, /^总计/);
+  } finally {
+    setLocale("en", { persist: false });
+  }
 });
 
 test("an obsolete list finally cannot settle the replacement operation", async (t) => {

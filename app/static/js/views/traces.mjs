@@ -1,4 +1,5 @@
 import { apiJson } from "../api.mjs";
+import { formatError, t } from "../i18n/index.mjs";
 
 const TRACE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/;
 const INSPECTOR_TABS = ["summary", "timing", "raw"];
@@ -11,19 +12,27 @@ const STAGE_NAMES = {
   answer: "llm",
   llm: "llm",
 };
+const STAGE_LABEL_KEYS = {
+  rewrite: "traces.stageRewrite",
+  retrieval: "traces.stageRetrieval",
+  rerank: "traces.stageRerank",
+  llm: "traces.stageLlm",
+};
 const SUMMARY_FIELDS = [
   "trace_id", "kb_id", "occurred_at", "operation", "mode", "model", "outcome",
   "hits", "citation", "rerank", "prompt_tokens", "completion_tokens", "total_tokens", "errors",
 ];
 
+function stageLabel(stage, sourceStage) {
+  if (stage === "other") return t("traces.stageOther", { stage: sourceStage });
+  if (stage === "unaccounted") return t("traces.stageUnaccounted");
+  return t(STAGE_LABEL_KEYS[stage] ?? "traces.stageOther", { stage: sourceStage });
+}
+
 function finiteNonNegative(value) {
   if (value === null || value === undefined || value === "") return null;
   const numeric = Number(value);
   return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
-}
-
-function errorMessage(error) {
-  return error instanceof Error && error.message ? error.message : "Request failed";
 }
 
 function isAbort(error) {
@@ -32,7 +41,7 @@ function isAbort(error) {
 
 function formatMs(value) {
   const numeric = finiteNonNegative(value);
-  return numeric === null ? "Not recorded" : `${numeric.toFixed(1)} ms`;
+  return numeric === null ? t("traces.notRecorded") : `${numeric.toFixed(1)} ms`;
 }
 
 function formatTokens(item) {
@@ -86,8 +95,8 @@ export function buildTimingModel(detail = {}) {
     return {
       stage,
       sourceStage,
-      label: stage === "other" ? `other · ${sourceStage}` : stage,
-      status: String(span?.status || "Not recorded"),
+      label: stageLabel(stage, sourceStage),
+      status: String(span?.status || t("traces.notRecorded")),
       startMs,
       durationMs,
       left: proportion(startMs),
@@ -110,8 +119,8 @@ export function buildTimingModel(detail = {}) {
     spans.push({
       stage: "unaccounted",
       sourceStage: "unaccounted",
-      label: "unaccounted",
-      status: "Not a named stage",
+      label: stageLabel("unaccounted", "unaccounted"),
+      status: t("traces.spanNotNamed"),
       startMs,
       durationMs,
       left: proportion(startMs),
@@ -140,12 +149,12 @@ export function buildTimingModel(detail = {}) {
   }
 
   let status;
-  if (!metric) status = "Timing unavailable: metric summary was not recorded.";
-  else if (totalMs === null) status = "Total duration was not recorded; proportional timing is unavailable.";
-  else if (totalMs === 0) status = "Zero-duration trace · 0.0 ms; proportional timing is unavailable.";
-  else if (proportionOverflow) status = `Total ${formatMs(totalMs)} · proportion unavailable because a timing sum or ratio exceeded the finite range.`;
-  else if (!spans.length) status = `Total ${formatMs(totalMs)} · no stage spans were recorded.`;
-  else status = `Total ${formatMs(totalMs)} · bars are normalized to total_ms.`;
+  if (!metric) status = t("traces.timingMissingMetric");
+  else if (totalMs === null) status = t("traces.timingMissingTotal");
+  else if (totalMs === 0) status = t("traces.timingZero");
+  else if (proportionOverflow) status = t("traces.timingOverflow", { total: formatMs(totalMs) });
+  else if (!spans.length) status = t("traces.timingNoSpans", { total: formatMs(totalMs) });
+  else status = t("traces.timingNormalized", { total: formatMs(totalMs) });
   return { totalMs, proportional, zeroDuration: totalMs === 0, spans, status };
 }
 
@@ -214,14 +223,14 @@ export function createTraces({
       limit: value("trace-limit") || "20",
     };
     if (filters.min_ms !== "" && finiteNonNegative(filters.min_ms) === null) {
-      throw new Error("Minimum total must be a finite, non-negative number.");
+      throw new Error(t("traces.validationMinTotal"));
     }
     const limit = Number(filters.limit);
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
-      throw new Error("Page size must be an integer from 1 to 100.");
+      throw new Error(t("traces.validationPageSize"));
     }
     if (filters.trace_id && !TRACE_ID_PATTERN.test(filters.trace_id)) {
-      throw new Error("Trace ID contains unsupported characters.");
+      throw new Error(t("traces.validationTraceId"));
     }
     filters.limit = limit;
     return filters;
@@ -244,12 +253,12 @@ export function createTraces({
     operation.controller.abort();
     if (destroyed) return;
     if (kind === "list") {
-      setText("#trace-list-status", "Trace list request cancelled. Refresh to retry.");
+      setText("#trace-list-status", t("traces.listCancelled"));
       const loadMore = byId("trace-load-more");
       if (loadMore) loadMore.disabled = false;
     } else {
-      setText("#trace-detail-status", "Trace detail loading cancelled. Select the trace to retry.");
-      setText("#trace-timing-status", "Timing loading cancelled. Select the trace to retry.");
+      setText("#trace-detail-status", t("traces.detailCancelled"));
+      setText("#trace-timing-status", t("traces.timingCancelled"));
     }
   }
 
@@ -284,7 +293,7 @@ export function createTraces({
   }
 
   function stageSummary(row) {
-    if (!Array.isArray(row?.stage_spans) || !row.stage_spans.length) return "Not recorded";
+    if (!Array.isArray(row?.stage_spans) || !row.stage_spans.length) return t("traces.notRecorded");
     return row.stage_spans.map((span, index) => String(span?.stage || `other-${index + 1}`)).join(" · ");
   }
 
@@ -308,7 +317,7 @@ export function createTraces({
       const cell = makeElement(
         "td",
         "wb-trace-empty",
-        listLoaded ? "No traces match these filters." : "No traces loaded.",
+        listLoaded ? t("traces.noMatchingTraces") : t("traces.noTraces"),
       );
       cell.setAttribute("colspan", "8");
       row.appendChild(cell);
@@ -318,12 +327,12 @@ export function createTraces({
         const row = makeElement("tr", "wb-trace-row");
         row.dataset.traceId = traceId;
         if (traceId === selectedTraceId) row.classList.add("is-selected");
-        row.appendChild(makeElement("td", "wb-timestamp", item?.occurred_at || "Not recorded"));
+        row.appendChild(makeElement("td", "wb-timestamp", item?.occurred_at || t("traces.notRecorded")));
         const traceCell = makeElement("td");
         const button = makeElement("button", "wb-trace-id", traceId);
         button.type = "button";
         button.dataset.traceSelect = traceId;
-        button.setAttribute("aria-label", `Inspect trace ${traceId}`);
+        button.setAttribute("aria-label", t("traces.inspectTraceAria", { traceId }));
         if (traceId === selectedTraceId) {
           button.setAttribute("aria-current", "true");
           button.classList.add("is-selected");
@@ -331,11 +340,11 @@ export function createTraces({
         }
         traceCell.appendChild(button);
         row.appendChild(traceCell);
-        row.appendChild(makeElement("td", "", item?.operation || "Not recorded"));
-        row.appendChild(makeElement("td", `wb-trace-outcome wb-trace-outcome-${item?.outcome || "missing"}`, item?.outcome || "Not recorded"));
+        row.appendChild(makeElement("td", "", item?.operation || t("traces.notRecorded")));
+        row.appendChild(makeElement("td", `wb-trace-outcome wb-trace-outcome-${item?.outcome || "missing"}`, item?.outcome || t("traces.notRecorded")));
         row.appendChild(makeElement("td", "wb-trace-stages", stageSummary(item)));
         row.appendChild(makeElement("td", "wb-numeric", formatMs(item?.total_ms)));
-        row.appendChild(makeElement("td", "wb-numeric", item?.hits ?? "Not recorded"));
+        row.appendChild(makeElement("td", "wb-numeric", item?.hits ?? t("traces.notRecorded")));
         row.appendChild(makeElement("td", "wb-numeric", formatTokens(item)));
         rows.push(row);
       }
@@ -351,42 +360,42 @@ export function createTraces({
     setText('[data-trace-summary="trace_id"]', selectedTraceId || "—");
     setText('[data-trace-summary="kb_id"]', currentContext?.scope?.kb || "—");
     setText("#trace-detail-status", selectedTraceId
-      ? `Loading trace ${selectedTraceId}…`
-      : "Select a trace to inspect diagnostic evidence.");
+      ? t("traces.detailLoading", { traceId: selectedTraceId })
+      : t("traces.detailInitialStatus"));
     const missing = byId("trace-missing");
     if (missing) {
       missing.hidden = true;
       missing.textContent = "";
     }
     setText("#trace-timing-status", selectedTraceId
-      ? "Loading timing evidence…"
-      : "Timing appears after a trace is selected.");
+      ? t("traces.timingLoading")
+      : t("traces.timingInitialStatus"));
     byId("trace-timing-spans")?.replaceChildren();
     setText("#trace-raw", "");
-    setText("#trace-copy-status", "Copy uses your browser clipboard permission.");
+    setText("#trace-copy-status", t("traces.copyStatus"));
   }
 
   function missingText(detail) {
     const missing = Array.isArray(detail?.missing) ? detail.missing : [];
     const messages = [];
     if (missing.includes("metric")) {
-      messages.push("Missing metric: the Postgres summary was not recorded; summary and timing fields are unavailable.");
+      messages.push(t("traces.missingMetric"));
     }
     if (missing.includes("events")) {
-      messages.push("Missing events: no scoped JSONL events were recorded; Raw contains only available evidence.");
+      messages.push(t("traces.missingEvents"));
     }
     for (const name of missing.filter((name) => !["metric", "events"].includes(name))) {
-      messages.push(`Missing ${name}: this evidence source was not recorded.`);
+      messages.push(t("traces.missingOther", { name }));
     }
     return messages.join(" ");
   }
 
   function summaryValue(value, metricPresent) {
     if (value !== null && value !== undefined && value !== "") {
-      if (typeof value === "boolean") return value ? "Yes" : "No";
+      if (typeof value === "boolean") return value ? t("traces.yes") : t("traces.no");
       return String(value);
     }
-    return metricPresent ? "Not recorded" : "Missing: metric summary was not recorded.";
+    return metricPresent ? t("traces.notRecorded") : t("traces.missingMetricSummary");
   }
 
   function renderSummary(detail) {
@@ -430,7 +439,9 @@ export function createTraces({
       row.dataset.traceStage = span.stage;
       const heading = makeElement("div", "wb-trace-span-heading");
       heading.appendChild(makeElement("span", "wb-trace-span-label", span.label));
-      const percentage = span.percentage === null ? "proportion unavailable" : `${span.percentage.toFixed(1)}%`;
+      const percentage = span.percentage === null
+        ? t("traces.proportionUnavailable")
+        : `${span.percentage.toFixed(1)}%`;
       heading.appendChild(makeElement("span", "wb-numeric", `${formatMs(span.durationMs)} · ${percentage}`));
       row.appendChild(heading);
       const track = makeElement("div", "wb-trace-span-track");
@@ -447,7 +458,11 @@ export function createTraces({
       row.appendChild(makeElement(
         "p",
         "wb-trace-span-meta",
-        `start ${formatMs(span.startMs)} · ${span.status} · source ${span.sourceStage}`,
+        t("traces.spanMeta", {
+          start: formatMs(span.startMs),
+          status: span.status,
+          source: span.sourceStage,
+        }),
       ));
       return row;
     });
@@ -466,8 +481,8 @@ export function createTraces({
       missing.hidden = !reason;
     }
     setText("#trace-detail-status", reason
-      ? `Trace ${selectedTraceId} loaded with missing evidence.`
-      : `Trace ${selectedTraceId} loaded.`);
+      ? t("traces.detailLoadedMissing", { traceId: selectedTraceId })
+      : t("traces.detailLoaded", { traceId: selectedTraceId }));
   }
 
   async function loadList(context = currentContext, append = false) {
@@ -476,9 +491,9 @@ export function createTraces({
     let filters;
     try {
       filters = append ? appliedFilters : readFilters();
-      if (!context?.scope?.kb) throw new Error("Knowledge base is required.");
+      if (!context?.scope?.kb) throw new Error(t("traces.kbRequired"));
     } catch (error) {
-      setText("#trace-list-status", errorMessage(error));
+      setText("#trace-list-status", error.message);
       return undefined;
     }
     const operation = beginOperation("list", context);
@@ -487,7 +502,7 @@ export function createTraces({
     const scrollTop = byId("trace-table-scroll")?.scrollTop ?? 0;
     const loadMore = byId("trace-load-more");
     if (loadMore) loadMore.disabled = true;
-    setText("#trace-list-status", append ? "Loading older traces…" : "Loading traces…");
+    setText("#trace-list-status", append ? t("traces.loadingOlderTraces") : t("traces.loadingTraces"));
 
     try {
       const body = await api(buildTraceListUrl(context.scope, filters, cursor), {
@@ -507,8 +522,13 @@ export function createTraces({
       listLoaded = true;
       renderRows(scrollTop);
       setText("#trace-list-status", items.size
-        ? `${items.size} trace${items.size === 1 ? "" : "s"} loaded${append ? " including older results" : ""}.`
-        : "No traces match these filters.");
+        ? t(
+          append
+            ? (items.size === 1 ? "traces.loadedOneOlder" : "traces.loadedManyOlder")
+            : (items.size === 1 ? "traces.loadedOne" : "traces.loadedMany"),
+          { count: items.size },
+        )
+        : t("traces.noMatchingTraces"));
       if (loadMore) loadMore.hidden = !nextCursor;
       return body;
     } catch (error) {
@@ -516,7 +536,7 @@ export function createTraces({
         if (append) nextCursor = cursor;
         else nextCursor = null;
         if (loadMore) loadMore.hidden = !nextCursor;
-        setText("#trace-list-status", `Trace list unavailable: ${errorMessage(error)}`);
+        setText("#trace-list-status", t("traces.listUnavailable", { error: formatError(error) }));
       }
       return undefined;
     } finally {
@@ -638,8 +658,8 @@ export function createTraces({
       return detail;
     } catch (error) {
       if (operationIsCurrent(operation) && !isAbort(error)) {
-        setText("#trace-detail-status", `Trace detail unavailable: ${errorMessage(error)}`);
-        setText("#trace-timing-status", `Timing unavailable: ${errorMessage(error)}`);
+        setText("#trace-detail-status", t("traces.detailUnavailable", { error: formatError(error) }));
+        setText("#trace-timing-status", t("traces.timingUnavailable", { error: formatError(error) }));
       }
       return undefined;
     } finally {
@@ -683,7 +703,7 @@ export function createTraces({
     if (destroyed) return false;
     const raw = byId("trace-raw")?.textContent ?? "";
     if (!raw || !selectedDetail) {
-      setText("#trace-copy-status", "No Raw JSON is available to copy.");
+      setText("#trace-copy-status", t("traces.copyNoRaw"));
       return false;
     }
     const copyContext = currentContext;
@@ -698,14 +718,15 @@ export function createTraces({
       && (!guard || guard.isCurrent(copyContext));
     try {
       const targetClipboard = clipboard ?? globalThis.navigator?.clipboard;
-      if (!targetClipboard?.writeText) throw new Error("Clipboard API is unavailable");
+      if (!targetClipboard?.writeText) throw new Error(t("traces.copyUnavailable"));
       await targetClipboard.writeText(raw);
       if (!copyIsCurrent()) return false;
-      setText("#trace-copy-status", "Copied Raw JSON to the clipboard.");
+      setText("#trace-copy-status", t("traces.copyCopied"));
       return true;
     } catch (error) {
       if (copyIsCurrent()) {
-        setText("#trace-copy-status", `Copy failed: ${errorMessage(error)}. Select and copy the Raw JSON manually.`);
+        const reason = error instanceof Error && error.message ? error.message : t("errors.requestFailed");
+        setText("#trace-copy-status", t("traces.copyFailed", { error: reason }));
       }
       return false;
     }
@@ -895,7 +916,7 @@ export function createTraces({
     if (viewIsTraces()) window?.history?.replaceState(null, "", "#/traces");
     clearDetail();
     renderRows(0);
-    setText("#trace-list-status", "Apply filters or refresh to load traces.");
+    setText("#trace-list-status", t("traces.listInitialStatus"));
     const loadMoreButton = byId("trace-load-more");
     if (loadMoreButton) {
       loadMoreButton.hidden = true;

@@ -897,7 +897,7 @@ def test_trace_cancelled_requests_settle_and_ignore_abort_insensitive_responses(
 
     page.evaluate("window.location.hash = '#/traces/trace-404'")
     page.locator("#trace-detail-status").filter(has_text="unavailable").wait_for()
-    assert "404" in page.locator("#trace-timing-status").inner_text()
+    assert "Not found" in page.locator("#trace-timing-status").inner_text()
     assert "Loading timing" not in page.locator("#trace-timing-status").inner_text()
     page.evaluate("window.location.hash = '#/traces/trace-network'")
     page.locator("#trace-detail-status").filter(has_text="unavailable").wait_for()
