@@ -2741,13 +2741,17 @@ def test_workbench_defaults_to_chinese_and_switches_to_english(workbench_page) -
     base = url.split("?")[0]
     page.goto(base)
 
-    assert page.locator('[data-nav="overview"] span').last.inner_text() == "概览"
+    chinese_labels = ("概览", "查询实验室", "调用追踪", "入库任务", "评测与演练", "访问控制", "审计日志")
+    for name, label in zip(NAV, chinese_labels):
+        assert page.locator(f'[data-nav="{name}"] span').last.inner_text() == label
     assert page.evaluate("document.documentElement.lang") == "zh-CN"
 
     page.select_option("#locale-select", "en")
     page.wait_for_function("document.documentElement.lang === 'en'")
 
-    assert page.locator('[data-nav="overview"] span').last.inner_text() == "Overview"
+    english_labels = ("Overview", "Query Lab", "Traces", "Ingestion", "Evaluation", "Access Control", "Audit Log")
+    for name, label in zip(NAV, english_labels):
+        assert page.locator(f'[data-nav="{name}"] span').last.inner_text() == label
     assert page.evaluate("localStorage.getItem('workbuddy.locale')") == "en"
     assert "lang=en" in page.url
 
@@ -2780,7 +2784,24 @@ def test_workbench_locale_switch_reloads_active_view(workbench_page) -> None:
         ),
     )
     page.goto(url.split("?")[0])
-    page.wait_for_timeout(300)
 
     with page.expect_response(lambda response: "/v1/ops/summary" in response.url):
         page.select_option("#locale-select", "en")
+
+
+def test_workbench_locale_switch_reloads_access_identity_and_permissions(workbench_page) -> None:
+    page, url = workbench_page
+    page.set_default_timeout(7000)
+    page.route("**/v1/identity", lambda route: _fulfill_json(route, _task14_identity()))
+    page.route(
+        "**/v1/ops/permissions?*",
+        lambda route: _fulfill_json(route, _task14_permissions()),
+    )
+    page.goto(f"{url}#/access")
+    page.locator("#access-load").click()
+    page.locator('[data-access-field="tenant"]').filter(has_text="demo").wait_for()
+    page.locator("#access-permission-reason").filter(has_text="allowed").wait_for()
+
+    with page.expect_response(lambda response: response.url.endswith("/v1/identity")):
+        with page.expect_response(lambda response: "/v1/ops/permissions?" in response.url):
+            page.select_option("#locale-select", "zh-CN")

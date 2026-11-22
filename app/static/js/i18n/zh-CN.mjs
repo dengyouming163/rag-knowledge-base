@@ -1,6 +1,12 @@
 export default {
   "app.title": "RAG 运维控制台",
   "nav.overview": "概览",
+  "nav.lab": "查询实验室",
+  "nav.traces": "调用追踪",
+  "nav.ingestion": "入库任务",
+  "nav.evaluation": "评测与演练",
+  "nav.access": "访问控制",
+  "nav.audit": "审计日志",
   "topbar.language": "界面语言",
   "app.scopeChanged": "作用域已变更，旧视图数据已清除。",
   "app.refreshRequested": "已请求刷新 {view}。",

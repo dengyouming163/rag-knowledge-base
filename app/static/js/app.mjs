@@ -122,6 +122,7 @@ function onLocaleChange(event) {
   applyTranslations(document);
   syncLocaleSelect();
   const view = viewFromHash(window.location.hash);
+  scopeGuard.invalidate();
   const snapshot = scopeGuard.snapshot();
   setStatus(t("topbar.languageChanged", { language: LOCALES.find((item) => item.code === next)?.label ?? next }));
   window.dispatchEvent(new CustomEvent("workbuddy:refresh", {

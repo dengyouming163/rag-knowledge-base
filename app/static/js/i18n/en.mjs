@@ -1,6 +1,12 @@
 export default {
   "app.title": "RAG Operations Console",
   "nav.overview": "Overview",
+  "nav.lab": "Query Lab",
+  "nav.traces": "Traces",
+  "nav.ingestion": "Ingestion",
+  "nav.evaluation": "Evaluation",
+  "nav.access": "Access Control",
+  "nav.audit": "Audit Log",
   "topbar.language": "Language",
   "app.scopeChanged": "Scope changed; previous view data cleared.",
   "app.refreshRequested": "Refresh requested for {view}.",
