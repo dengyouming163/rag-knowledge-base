@@ -198,6 +198,16 @@ test("applyTranslations updates text and attributes idempotently", () => {
   assert.equal(root.querySelectorAll("[data-i18n]")[0].textContent, "Overview");
 });
 
+test("applyTranslations keeps original text when a key is missing", () => {
+  setLocale("en", { persist: false });
+  const element = { textContent: "Query Lab", getAttribute: () => "nav.unknown" };
+  const root = {
+    querySelectorAll: (selector) => (selector === "[data-i18n]" ? [element] : []),
+  };
+  applyTranslations(root);
+  assert.equal(element.textContent, "Query Lab");
+});
+
 test("initLocale resolves the first locale and updates document language", async () => {
   const fresh = await importFreshI18n("init-locale");
   const documentElement = { lang: "zh-CN" };

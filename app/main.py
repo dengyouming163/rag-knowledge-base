@@ -49,6 +49,15 @@ def create_app() -> FastAPI:
         name="ui",
     )
 
+    @app.middleware("http")
+    async def ui_no_cache(request: Request, call_next):
+        # 控制台没有构建步骤，静态文件随源码更新；强制浏览器每次回源校验，
+        # 避免旧的字典/视图模块被缓存后界面显示原始 i18n key。
+        response = await call_next(request)
+        if request.url.path.startswith("/ui"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
     @app.exception_handler(MissingTenantFilterError)
     async def missing_scope_handler(request: Request, exc: MissingTenantFilterError):
         # 这是代码 bug（忘了传租户），不是用户错误：必须 500 并留下日志

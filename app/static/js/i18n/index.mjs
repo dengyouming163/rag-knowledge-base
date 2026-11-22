@@ -117,6 +117,8 @@ export function applyTranslations(root = globalThis.document) {
       const key = element.getAttribute(marker);
       if (!key) continue;
       const value = t(key);
+      // 字典缺失时 t() 会原样返回 key，不要把 nav.lab 这类内部标识渲染到界面上。
+      if (value === key) continue;
       if (target === "textContent") element.textContent = value;
       else element.setAttribute(target, value);
     }
