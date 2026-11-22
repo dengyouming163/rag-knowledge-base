@@ -1,4 +1,5 @@
 import { apiJson } from "../api.mjs";
+import { formatError, t } from "../i18n/index.mjs";
 
 const METRICS = [
   "recall_at_k",
@@ -12,13 +13,6 @@ const TERMINAL_STATUSES = new Set(["succeeded", "completed", "failed"]);
 
 function scopeKey(scope = {}) {
   return JSON.stringify([scope.tenant, scope.kb, scope.user, scope.window]);
-}
-
-function errorMessage(error) {
-  const detail = error?.body?.detail;
-  if (typeof detail === "string") return detail;
-  if (typeof detail?.message === "string") return detail.message;
-  return error instanceof Error && error.message ? error.message : "Request failed";
 }
 
 function validRunId(value) {
@@ -104,14 +98,14 @@ export function createEvaluation({
 
   function syncPermissions() {
     if (destroyed) return;
-    const reason = permissions?.actionReason() ?? "Action availability is verified by the server.";
+    const reason = permissions?.actionReason() ?? t("evaluation.actionAvailability");
     setText("#evaluation-permission-status", reason);
     const busy = Boolean(operations.trigger || poll);
     root.querySelectorAll("[data-kind]").forEach((button) => {
       button.disabled = busy || (permissions ? !permissions.canActions() : false);
       button.title = button.disabled && !busy && permissions
         ? reason
-        : `Start ${button.dataset.kind} run`;
+        : t("evaluation.startRunTitle", { kind: button.dataset.kind });
     });
   }
 
@@ -136,7 +130,7 @@ export function createEvaluation({
     const rows = [];
     if (!runs.length) {
       const row = makeElement("tr");
-      const cell = makeElement("td", "wb-ops-empty", "No evaluation runs in this scope.");
+      const cell = makeElement("td", "wb-ops-empty", t("evaluation.noRunsInScope"));
       cell.colSpan = 7;
       row.appendChild(cell);
       rows.push(row);
@@ -150,7 +144,7 @@ export function createEvaluation({
       const select = makeElement("button", "wb-ops-select", `#${id}`);
       select.type = "button";
       select.dataset.runSelect = id;
-      select.setAttribute("aria-label", `Inspect ${run.kind || "evaluation"} run ${id}`);
+      select.setAttribute("aria-label", t("evaluation.inspectRunAria", { kind: run.kind || "evaluation", id }));
       if (id === selectedRunId) select.setAttribute("aria-current", "true");
       selectCell.appendChild(select);
       row.appendChild(selectCell);
@@ -195,13 +189,13 @@ export function createEvaluation({
     setText(
       "#evaluation-delta-context",
       previous
-        ? `Delta = current − nearest earlier successful ${selectedRun.kind} run #${validRunId(previous.id)}.`
-        : "No nearest earlier successful run of the same kind is available for delta comparison.",
+        ? t("evaluation.deltaComparable", { kind: selectedRun.kind, id: validRunId(previous.id) })
+        : t("evaluation.deltaUnavailable"),
     );
     syncPermissions();
   }
 
-  function clearDetail(message = "Select a run to inspect its detail independently.") {
+  function clearDetail(message = t("evaluation.detailStatus")) {
     selectedRunId = null;
     selectedRun = null;
     renderRuns();
@@ -222,9 +216,9 @@ export function createEvaluation({
     operation.unlink();
     operation.controller.abort();
     if (destroyed) return;
-    if (kind === "history") setText("#evaluation-runs-status", "Run history request cancelled. Load runs to retry.");
-    if (kind === "detail") setText("#evaluation-detail-status", "Run detail request cancelled. Select the run to retry.");
-    if (kind === "trigger") setText("#evaluation-action-status", "Run trigger cancelled; no outcome is assumed.");
+    if (kind === "history") setText("#evaluation-runs-status", t("evaluation.historyCancelled"));
+    if (kind === "detail") setText("#evaluation-detail-status", t("evaluation.detailCancelled"));
+    if (kind === "trigger") setText("#evaluation-action-status", t("evaluation.triggerCancelled"));
     syncPermissions();
   }
 
@@ -278,7 +272,7 @@ export function createEvaluation({
   async function loadRuns(context = currentContext) {
     const operation = beginOperation("history", context);
     if (!operation) return false;
-    setText("#evaluation-runs-status", "Loading evaluation history…");
+    setText("#evaluation-runs-status", t("evaluation.loadingHistory"));
     const query = new URLSearchParams({ kb_id: context.scope.kb, limit: "20" });
     try {
       const data = await api(`/v1/ops/runs?${query.toString()}`, {
@@ -292,11 +286,11 @@ export function createEvaluation({
       }
       renderRuns();
       renderDetail();
-      setText("#evaluation-runs-status", `${runs.length} runs · newest history first.`);
+      setText("#evaluation-runs-status", t("evaluation.runsSummary", { count: runs.length }));
       return true;
     } catch (error) {
       if (!operationIsCurrent(operation)) return false;
-      setText("#evaluation-runs-status", `Run history unavailable: ${errorMessage(error)}`);
+      setText("#evaluation-runs-status", t("evaluation.historyUnavailable", { error: formatError(error) }));
       return false;
     } finally {
       if (finishOperation(operation) && contextIsCurrent(operation.context)) syncPermissions();
@@ -320,7 +314,7 @@ export function createEvaluation({
     if (triggered && (poll?.runId !== id || scopeKey(poll.context?.scope) !== scopeKey(context?.scope))) return false;
     const operation = beginOperation("detail", context);
     if (!operation) return false;
-    setText("#evaluation-detail-status", `Loading run #${id} detail…`);
+    setText("#evaluation-detail-status", t("evaluation.loadingDetail", { id }));
     try {
       const data = await api(`/v1/ops/runs/${encodeURIComponent(id)}`, {
         scope: context.scope,
@@ -332,13 +326,13 @@ export function createEvaluation({
       renderRuns();
       renderDetail();
       const status = selectedRun.status || "unknown";
-      setText("#evaluation-detail-status", `Loaded run #${id} · ${status}.`);
+      setText("#evaluation-detail-status", t("evaluation.detailLoaded", { id, status }));
       if (triggered && poll?.runId === id) {
         if (TERMINAL_STATUSES.has(status)) {
           stopPolling({ abort: false });
-          setText("#evaluation-action-status", `Run #${id} reached terminal status: ${status}.`);
+          setText("#evaluation-action-status", t("evaluation.terminal", { id, status }));
         } else {
-          setText("#evaluation-action-status", `Run #${id} is ${status}; polling actual run detail…`);
+          setText("#evaluation-action-status", t("evaluation.polling", { id, status }));
         }
       }
       return true;
@@ -347,11 +341,11 @@ export function createEvaluation({
       if (triggered) stopPolling();
       if (error?.status === 404) {
         runs = runs.filter((run) => validRunId(run.id) !== id);
-        clearDetail(`Run #${id} is no longer visible.`);
-        if (triggered) setText("#evaluation-action-status", `Run #${id} is no longer visible.`);
+        clearDetail(t("evaluation.runGone", { id }));
+        if (triggered) setText("#evaluation-action-status", t("evaluation.runGone", { id }));
       } else {
-        setText("#evaluation-detail-status", `Run detail unavailable: ${errorMessage(error)}`);
-        if (triggered) setText("#evaluation-action-status", `Run #${id} detail failed: ${errorMessage(error)}`);
+        setText("#evaluation-detail-status", t("evaluation.detailUnavailable", { error: formatError(error) }));
+        if (triggered) setText("#evaluation-action-status", t("evaluation.detailFailed", { id, error: formatError(error) }));
       }
       return false;
     } finally {
@@ -390,7 +384,7 @@ export function createEvaluation({
     const operation = beginOperation("trigger", context);
     if (!operation) return false;
     syncPermissions();
-    setText("#evaluation-action-status", `Starting ${kind} run…`);
+    setText("#evaluation-action-status", t("evaluation.starting", { kind }));
     try {
       const { data, status } = await api(`/v1/ops/kbs/${encodeURIComponent(context.scope.kb)}/runs`, {
         method: "POST",
@@ -401,12 +395,12 @@ export function createEvaluation({
       });
       if (!operationIsCurrent(operation)) return false;
       if (status !== 202) {
-        setText("#evaluation-action-status", `Run trigger failed: Expected HTTP 202, received HTTP ${status}.`);
+        setText("#evaluation-action-status", t("evaluation.triggerWrongStatus", { status }));
         return false;
       }
       const id = validRunId(data?.run_id);
       if (!id) {
-        setText("#evaluation-action-status", "The trigger response did not include a valid run id; no run detail was requested.");
+        setText("#evaluation-action-status", t("evaluation.invalidRunId"));
         return false;
       }
       selectedRunId = id;
@@ -415,15 +409,17 @@ export function createEvaluation({
       renderDetail();
       finishOperation(operation);
       poll = { runId: id, context };
-      setText("#evaluation-action-status", `Run #${id} accepted; loading actual run detail…`);
+      setText("#evaluation-action-status", t("evaluation.accepted", { id }));
       syncPermissions();
       return await loadDetail(id, context, { triggered: true });
     } catch (error) {
       if (!operationIsCurrent(operation)) return false;
       if (error?.status === 409) {
-        setText("#evaluation-action-status", `Run conflict: ${errorMessage(error)}`);
+        const detail = error.body?.detail;
+        const message = typeof detail?.message === "string" ? detail.message : formatError(error);
+        setText("#evaluation-action-status", t("evaluation.conflict", { error: message }));
       } else {
-        setText("#evaluation-action-status", `Run trigger failed: ${errorMessage(error)}`);
+        setText("#evaluation-action-status", t("evaluation.triggerFailed", { error: formatError(error) }));
       }
       return false;
     } finally {
@@ -534,10 +530,10 @@ export function createEvaluation({
     selectedRun = null;
     renderRuns();
     renderDetail();
-    setText("#evaluation-runs-status", "Load runs or refresh to inspect evaluation history.");
-    setText("#evaluation-detail-status", "Select a run to inspect its detail independently.");
+    setText("#evaluation-runs-status", t("evaluation.runsStatus"));
+    setText("#evaluation-detail-status", t("evaluation.detailStatus"));
     setText("#evaluation-action-status", "");
-    setText("#evaluation-permission-status", "Permissions are checked when runs load.");
+    setText("#evaluation-permission-status", t("evaluation.permissionStatus"));
   }
 
   root.addEventListener("click", onRootClick);
