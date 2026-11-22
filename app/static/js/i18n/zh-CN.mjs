@@ -11,7 +11,7 @@ export default {
   "app.scopeChanged": "作用域已变更，旧视图数据已清除。",
   "app.refreshRequested": "已请求刷新 {view}。",
   "topbar.languageChanged": "界面语言已切换为 {language}。",
-  "shell.brandAriaLabel": "WorkBuddy 概览",
+  "shell.brandAriaLabel": "WorkRAG 概览",
   "shell.brandSubtitle": "RAG 运维",
   "shell.workspaceModulesAriaLabel": "工作区模块",
   "shell.workspace": "工作区",

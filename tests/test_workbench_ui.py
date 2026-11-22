@@ -2860,7 +2860,7 @@ def test_workbench_chinese_copy_covers_shell_and_overview(workbench_page) -> Non
     page, url = workbench_page
     page.goto(url.split("?")[0])
 
-    assert page.locator(".wb-brand strong").inner_text() == "WorkBuddy"
+    assert page.locator(".wb-brand strong").inner_text() == "WorkRAG"
     assert page.locator(".wb-brand-copy span").inner_text() == "RAG 运维"
     assert page.locator('[data-nav="lab"] span').last.inner_text() == "查询实验室"
     assert page.locator("#view-overview h1").inner_text() == "概览"

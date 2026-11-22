@@ -11,7 +11,7 @@ export default {
   "app.scopeChanged": "Scope changed; previous view data cleared.",
   "app.refreshRequested": "Refresh requested for {view}.",
   "topbar.languageChanged": "Interface language set to {language}.",
-  "shell.brandAriaLabel": "WorkBuddy overview",
+  "shell.brandAriaLabel": "WorkRAG overview",
   "shell.brandSubtitle": "RAG Operations",
   "shell.workspaceModulesAriaLabel": "Workspace modules",
   "shell.workspace": "WORKSPACE",
