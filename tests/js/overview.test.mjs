@@ -310,6 +310,26 @@ test("costStatus distinguishes unconfigured, partial, and complete estimates", (
   assert.equal(costStatus({ pricing_configured: true, pricing_complete: true }), "Complete estimate");
 });
 
+test("overview dynamic copy uses Chinese after a locale switch and refresh", async (t) => {
+  setLocale("zh-CN", { persist: false });
+  t.after(() => setLocale("en", { persist: false }));
+  const { root, view, snapshot } = createFixture(t);
+
+  await view.loadOverview(snapshot());
+
+  assert.equal(root.text("[data-overview-summary-status]"), "更新于 2026-11-20T12:00:00.000Z");
+  assert.equal(root.text("[data-overview-trends-status]"), "更新于 2026-11-20T12:00:00.000Z");
+  assert.equal(metric(root, "queue", "unit"), "排队中");
+  assert.equal(metric(root, "workers", "unit"), "个工作进程");
+  assert.equal(metric(root, "queue", "window"), "快照");
+  assert.equal(metric(root, "workers", "window"), "快照");
+  assert.match(metric(root, "cost", "note"), /部分估算/);
+  assert.match(metric(root, "e2e_p95", "note"), /样本量低/);
+  const requestsTrend = root.querySelector('[data-overview-trend-svg="requests"]').innerHTML;
+  assert.match(requestsTrend, /<title>请求数<\/title>/);
+  assert.match(requestsTrend, /aria-label="请求数趋势"/);
+});
+
 test("loadOverview starts summary and trends in parallel and isolates panel failure", async (t) => {
   const summary = deferred();
   const trends = deferred();

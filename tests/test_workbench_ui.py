@@ -2789,6 +2789,37 @@ def test_workbench_locale_switch_reloads_active_view(workbench_page) -> None:
         page.select_option("#locale-select", "en")
 
 
+def test_workbench_overview_refresh_uses_chinese_dynamic_copy(workbench_page) -> None:
+    page, url = workbench_page
+    page.set_default_timeout(7000)
+    page.route(
+        "**/v1/ops/summary*",
+        lambda route: _fulfill_json(route, {
+            "observability": {"window": "24h"},
+            "queue": {"queued": 3},
+            "workers": [{"status": "online"}, {"status": "offline"}],
+        }),
+    )
+    page.route(
+        "**/v1/ops/metrics/timeseries*",
+        lambda route: _fulfill_json(route, {"series": []}),
+    )
+    page.goto(url)
+    page.locator("#scope-refresh").click()
+    page.locator('[data-overview-summary-status][data-state="success"]').wait_for()
+    assert page.locator('[data-overview-unit="queue"]').inner_text() == "queued"
+    assert page.locator('[data-overview-unit="workers"]').inner_text() == "workers"
+
+    page.select_option("#locale-select", "zh-CN")
+    page.locator('[data-overview-unit="queue"]').filter(has_text="排队中").wait_for()
+
+    assert page.locator('[data-overview-unit="workers"]').inner_text() == "个工作进程"
+    assert page.locator('[data-overview-window="queue"]').inner_text() == "快照"
+    assert page.locator('[data-overview-window="workers"]').inner_text() == "快照"
+    assert page.locator('[data-overview-summary-status]').inner_text().startswith("更新于 ")
+    assert page.locator('[data-overview-trends-status]').inner_text().startswith("更新于 ")
+
+
 def test_workbench_locale_switch_reloads_access_identity_and_permissions(workbench_page) -> None:
     page, url = workbench_page
     page.set_default_timeout(7000)

@@ -1,14 +1,18 @@
 import { apiJson } from "../api.mjs";
 import { escapeHtml, formatMetric } from "../core.mjs";
+import { formatError, t } from "../i18n/index.mjs";
 
 const REFRESH_INTERVAL_MS = 15000;
 const LOW_SAMPLE_THRESHOLD = 30;
-const TRENDS = [
-  { key: "requests", label: "Requests", unit: "req" },
-  { key: "e2e_p95_ms", label: "E2E p95", unit: "ms" },
-  { key: "retrieval_p95_ms", label: "Retrieve p95", unit: "ms" },
-  { key: "llm_p95_ms", label: "LLM p95", unit: "ms" },
-];
+
+function trendDefinitions() {
+  return [
+    { key: "requests", label: t("overview.trend.requests"), unit: "req" },
+    { key: "e2e_p95_ms", label: t("overview.trend.e2e"), unit: "ms" },
+    { key: "retrieval_p95_ms", label: t("overview.trend.retrieval"), unit: "ms" },
+    { key: "llm_p95_ms", label: t("overview.trend.llm"), unit: "ms" },
+  ];
+}
 const METRIC_NAMES = [
   "requests", "avg_qpm", "client_errors", "server_errors", "e2e_p95",
   "retrieval_p95", "llm_p95", "zero_hit", "refusal", "citation",
@@ -25,17 +29,17 @@ function percentage(value) {
 }
 
 export function costStatus(tokens = {}) {
-  if (!tokens.pricing_configured) return "Not configured";
-  return tokens.pricing_complete ? "Complete estimate" : "Partial estimate";
+  if (!tokens.pricing_configured) return t("overview.cost.notConfigured");
+  return t(tokens.pricing_complete ? "overview.cost.complete" : "overview.cost.partial");
 }
 
-export function renderTrend(series, { key = "requests", label = "Requests", unit = "" } = {}) {
+export function renderTrend(series, { key = "requests", label = t("overview.trend.requests"), unit = "" } = {}) {
   const points = (Array.isArray(series) ? series : [])
     .map((point) => ({ ts: String(point?.ts ?? ""), value: finiteNumber(point?.[key]) }));
   const validPoints = points.filter((point) => point.value !== null);
 
   if (!validPoints.length) {
-    return `<div class="wb-overview-empty" data-trend-empty>No trend data for ${escapeHtml(label)}.</div>`;
+    return `<div class="wb-overview-empty" data-trend-empty>${escapeHtml(t("overview.trend.empty", { label }))}</div>`;
   }
 
   const width = 640;
@@ -64,7 +68,7 @@ export function renderTrend(series, { key = "requests", label = "Requests", unit
     y: point.value === null ? null : coordinate(top + (maximum - normalizedValues[index]) * plotHeight / (maximum - minimum)),
   }));
   if (!coordinates.every((point) => Number.isFinite(point.x) && (point.y === null || Number.isFinite(point.y)))) {
-    return `<div class="wb-overview-empty" data-trend-empty>No trend data for ${escapeHtml(label)}.</div>`;
+    return `<div class="wb-overview-empty" data-trend-empty>${escapeHtml(t("overview.trend.empty", { label }))}</div>`;
   }
   const path = coordinates.flatMap((point, index) => point.y === null ? [] : [
     `${index === 0 || coordinates[index - 1].y === null ? "M" : "L"} ${point.x} ${point.y}`,
@@ -74,9 +78,17 @@ export function renderTrend(series, { key = "requests", label = "Requests", unit
   )).join("");
   const firstTimestamp = escapeHtml(points[0].ts);
   const lastTimestamp = escapeHtml(points.at(-1).ts);
-  const description = `${label} trend. Time range: ${points[0].ts} to ${points.at(-1).ts}. Valid samples: ${validPoints.length} of ${points.length}. Value range: ${formatMetric(dataMinimum, unit, 1)} to ${formatMetric(dataMaximum, unit, 1)}.`;
+  const description = t("overview.trend.description", {
+    label,
+    start: points[0].ts,
+    end: points.at(-1).ts,
+    valid: validPoints.length,
+    total: points.length,
+    minimum: formatMetric(dataMinimum, unit, 1),
+    maximum: formatMetric(dataMaximum, unit, 1),
+  });
 
-  return `<svg class="wb-overview-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(label)} trend" tabindex="0">
+  return `<svg class="wb-overview-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(t("overview.trend.ariaLabel", { label }))}" tabindex="0">
     <title>${escapeHtml(label)}</title>
     <desc>${escapeHtml(description)}</desc>
     <line class="wb-overview-axis" x1="${left}" y1="${height - bottom}" x2="${width - right}" y2="${height - bottom}"></line>
@@ -130,8 +142,8 @@ function metricDefinitions(summary) {
       samples: rag.operations,
       note: summary?.observability?.tokens ? costStatus(tokens) : "",
     },
-    queue: { value: queue.queued, unit: "queued", digits: 0, snapshot: true },
-    workers: { value: workers, unit: "workers", digits: 0, snapshot: true },
+    queue: { value: queue.queued, unit: t("overview.queueUnit"), digits: 0, snapshot: true },
+    workers: { value: workers, unit: t("overview.workersUnit"), digits: 0, snapshot: true },
   };
 }
 
@@ -145,7 +157,8 @@ function endpoint(path, scope) {
 }
 
 function errorMessage(error) {
-  return error instanceof Error && error.message ? error.message : "Request failed";
+  if (error?.name === "ApiError") return formatError(error);
+  return error instanceof Error && error.message ? error.message : formatError(error);
 }
 
 export function createOverview({
@@ -201,10 +214,10 @@ export function createOverview({
       const definition = definitions[name];
       const samples = finiteNumber(definition.samples);
       const lowSample = !definition.snapshot && samples !== null && samples >= 0 && samples < LOW_SAMPLE_THRESHOLD;
-      const notes = [definition.note, lowSample ? "Low sample · interpret carefully" : ""].filter(Boolean);
+      const notes = [definition.note, lowSample ? t("overview.lowSample") : ""].filter(Boolean);
       setText(`[data-overview-value="${name}"]`, formatMetric(definition.value, "", definition.digits));
       setText(`[data-overview-unit="${name}"]`, definition.unit);
-      setText(`[data-overview-window="${name}"]`, definition.snapshot ? "Snapshot" : window);
+      setText(`[data-overview-window="${name}"]`, definition.snapshot ? t("overview.snapshot") : window);
       setText(`[data-overview-samples="${name}"]`, definition.snapshot ? "—" : formatMetric(definition.samples, "", 0));
       setText(`[data-overview-note="${name}"]`, notes.join(" · "));
       const note = root.querySelector(`[data-overview-note="${name}"]`);
@@ -214,7 +227,7 @@ export function createOverview({
 
   function renderTrends(data) {
     const series = Array.isArray(data?.series) ? data.series : [];
-    for (const trend of TRENDS) {
+    for (const trend of trendDefinitions()) {
       const container = root.querySelector(`[data-overview-trend-svg="${trend.key}"]`);
       if (container) container.innerHTML = renderTrend(series, trend);
     }
@@ -226,8 +239,8 @@ export function createOverview({
     trendsCache = null;
     renderSummary(null);
     renderTrends(null);
-    setPanelStatus("summary", "Awaiting refresh.", "idle");
-    setPanelStatus("trends", "Awaiting refresh.", "idle");
+    setPanelStatus("summary", t("overview.awaitingRefresh"), "idle");
+    setPanelStatus("trends", t("overview.awaitingRefresh"), "idle");
   }
 
   function clear() {
@@ -252,7 +265,7 @@ export function createOverview({
     flights[panel] = null;
     flight.dispose();
     flight.controller.abort();
-    if (pause) setPanelStatus(panel, "Refresh paused.", "idle");
+    if (pause) setPanelStatus(panel, t("overview.refreshPaused"), "idle");
   }
 
   function cancelPanels({ pause = false } = {}) {
@@ -293,7 +306,7 @@ export function createOverview({
   async function loadSummary(context, version, signal) {
     const cached = summaryCache?.key === currentScopeKey ? summaryCache : null;
     if (cached) renderSummary(cached.data, context.scope.window);
-    setPanelStatus("summary", cached ? "Refreshing summary…" : "Loading summary…", "loading");
+    setPanelStatus("summary", t(cached ? "overview.refreshingSummary" : "overview.loadingSummary"), "loading");
     try {
       const data = await api(endpoint("/v1/ops/summary", context.scope), {
         scope: context.scope,
@@ -303,7 +316,7 @@ export function createOverview({
       const updatedAt = now().toISOString();
       summaryCache = { key: currentScopeKey, data, updatedAt };
       renderSummary(data, context.scope.window);
-      setPanelStatus("summary", `Updated ${updatedAt}`, "success");
+      setPanelStatus("summary", t("overview.updated", { time: updatedAt }), "success");
     } catch (error) {
       if (!canRender(context, version)) return;
       const staleAt = now().toISOString();
@@ -311,13 +324,13 @@ export function createOverview({
         renderSummary(cached.data, context.scope.window);
         setPanelStatus(
           "summary",
-          `stale-at ${staleAt} · Last success ${cached.updatedAt} · ${errorMessage(error)}`,
+          t("overview.stale", { time: staleAt, lastSuccess: cached.updatedAt, error: errorMessage(error) }),
           "stale",
           { "stale-at": staleAt, "last-success-at": cached.updatedAt },
         );
       } else {
         renderSummary(null, context.scope.window);
-        setPanelStatus("summary", `Summary unavailable: ${errorMessage(error)}`, "error");
+        setPanelStatus("summary", t("overview.summaryUnavailable", { error: errorMessage(error) }), "error");
       }
     }
   }
@@ -325,7 +338,7 @@ export function createOverview({
   async function loadTrends(context, version, signal) {
     const cached = trendsCache?.key === currentScopeKey ? trendsCache : null;
     if (cached) renderTrends(cached.data);
-    setPanelStatus("trends", cached ? "Refreshing trends…" : "Loading trends…", "loading");
+    setPanelStatus("trends", t(cached ? "overview.refreshingTrends" : "overview.loadingTrends"), "loading");
     try {
       const data = await api(endpoint("/v1/ops/metrics/timeseries", context.scope), {
         scope: context.scope,
@@ -335,7 +348,7 @@ export function createOverview({
       const updatedAt = now().toISOString();
       trendsCache = { key: currentScopeKey, data, updatedAt };
       renderTrends(data);
-      setPanelStatus("trends", `Updated ${updatedAt}`, "success");
+      setPanelStatus("trends", t("overview.updated", { time: updatedAt }), "success");
     } catch (error) {
       if (!canRender(context, version)) return;
       const staleAt = now().toISOString();
@@ -343,13 +356,13 @@ export function createOverview({
         renderTrends(cached.data);
         setPanelStatus(
           "trends",
-          `stale-at ${staleAt} · Last success ${cached.updatedAt} · ${errorMessage(error)}`,
+          t("overview.stale", { time: staleAt, lastSuccess: cached.updatedAt, error: errorMessage(error) }),
           "stale",
           { "stale-at": staleAt, "last-success-at": cached.updatedAt },
         );
       } else {
         renderTrends(null);
-        setPanelStatus("trends", `Trends unavailable: ${errorMessage(error)}`, "error");
+        setPanelStatus("trends", t("overview.trendsUnavailable", { error: errorMessage(error) }), "error");
       }
     }
   }
