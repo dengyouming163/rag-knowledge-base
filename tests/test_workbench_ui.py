@@ -2805,3 +2805,15 @@ def test_workbench_locale_switch_reloads_access_identity_and_permissions(workben
     with page.expect_response(lambda response: response.url.endswith("/v1/identity")):
         with page.expect_response(lambda response: "/v1/ops/permissions?" in response.url):
             page.select_option("#locale-select", "zh-CN")
+
+
+def test_workbench_chinese_copy_covers_shell_and_overview(workbench_page) -> None:
+    page, url = workbench_page
+    page.goto(url.split("?")[0])
+
+    assert page.locator(".wb-brand strong").inner_text() == "WorkBuddy"
+    assert page.locator(".wb-brand-copy span").inner_text() == "RAG 运维"
+    assert page.locator('[data-nav="lab"] span').last.inner_text() == "查询实验室"
+    assert page.locator("#view-overview h1").inner_text() == "概览"
+    assert page.locator('[data-overview-card="requests"] h2').inner_text() == "请求数"
+    assert page.locator("#scope-refresh").inner_text() == "刷新"
