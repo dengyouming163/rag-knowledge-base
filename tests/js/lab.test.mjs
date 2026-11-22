@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 
 import { ScopeGuard } from "../../app/static/js/core.mjs";
 import { createLab } from "../../app/static/js/views/lab.mjs";
+import { setLocale } from "../../app/static/js/i18n/index.mjs";
 
+setLocale("en", { persist: false });
 
 class FakeElement extends EventTarget {
   constructor(owner = null) {

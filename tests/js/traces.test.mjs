@@ -7,7 +7,9 @@ import {
   buildTraceListUrl,
   createTraces,
 } from "../../app/static/js/views/traces.mjs";
+import { setLocale } from "../../app/static/js/i18n/index.mjs";
 
+setLocale("en", { persist: false });
 
 class FakeElement {
   constructor(tagName = "div", ownerDocument = null) {

@@ -4,7 +4,9 @@ import assert from "node:assert/strict";
 import { escapeHtml, formatMetric, ScopeGuard } from "../../app/static/js/core.mjs";
 import { ApiError, apiJson, scopeHeaders } from "../../app/static/js/api.mjs";
 import { viewFromHash } from "../../app/static/js/app.mjs";
+import { setLocale } from "../../app/static/js/i18n/index.mjs";
 
+setLocale("en", { persist: false });
 
 test("escapeHtml escapes markup, quotes, ampersands, and apostrophes", () => {
   assert.equal(
