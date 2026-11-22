@@ -2817,3 +2817,5 @@ def test_workbench_chinese_copy_covers_shell_and_overview(workbench_page) -> Non
     assert page.locator("#view-overview h1").inner_text() == "概览"
     assert page.locator('[data-overview-card="requests"] h2').inner_text() == "请求数"
     assert page.locator("#scope-refresh").inner_text() == "刷新"
+    assert page.locator('[data-lab-tab="search"]').inner_text() == "检索"
+    assert page.locator("#search-button").inner_text() == "执行检索"
