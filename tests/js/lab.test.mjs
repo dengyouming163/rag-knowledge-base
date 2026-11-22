@@ -229,6 +229,79 @@ function chatOptions(root) {
 }
 
 
+test("Lab dynamic copy follows Chinese across clear, search, and chat", async (t) => {
+  const pendingSearch = deferred();
+  const fixture = createFixture(t, {
+    api: () => pendingSearch.promise,
+    fetchImpl: async () => sseStream([
+      `event: hits\ndata: ${JSON.stringify({ chunks: ["chunk-1"] })}\n\n`,
+      `data: ${JSON.stringify({ delta: "回答 [chunk-1]" })}\n\ndata: [DONE]\n\n`,
+    ]),
+  });
+  const { root, lab, context } = fixture;
+  setLocale("en", { persist: false });
+  lab.clear();
+  assert.equal(root.text("#search-button"), "Run search");
+
+  setLocale("zh-CN", { persist: false });
+  t.after(() => setLocale("en", { persist: false }));
+  lab.clear();
+
+  assert.equal(root.text("#search-button"), "执行检索");
+  assert.equal(root.text("#chat-button"), "开始流式问答");
+  assert.equal(root.text("#upload-button"), "上传并跟踪任务");
+  assert.equal(root.text("#search-status"), "等待检索查询。");
+  assert.equal(root.text("#chat-status"), "等待提问。");
+  assert.equal(root.text("#upload-status"), "等待选择文档。");
+  assert.equal(root.text("#citation-status"), "暂无可展开的引用。");
+
+  const searching = lab.search(context(), {
+    query: "退货政策", topK: 5, mode: "hybrid", audience: "public",
+  });
+  assert.equal(root.text("#search-button"), "正在检索…");
+  assert.equal(root.text("#search-status"), "正在检索当前作用域…");
+  pendingSearch.resolve({
+    data: { mode: "hybrid", hits: [searchHit()] },
+    response: { headers: new Headers() },
+  });
+  await searching;
+
+  assert.equal(root.text("#search-button"), "执行检索");
+  assert.equal(root.text("#search-status"), "检索完成 · 1 条命中 · hybrid");
+  const chat = await lab.startChat(context(), {
+    question: "如何退货？", topK: 5, audience: "public",
+  });
+
+  assert.equal(chat.done, true);
+  assert.equal(root.text("#chat-button"), "开始流式问答");
+  assert.equal(root.text("#chat-status"), "回答完成 · 已收到 [DONE] · 1 条引用");
+  assert.equal(root.text("#citation-status"), "1 条引用可用；请选择一条查看来源。");
+  assert.match(root.querySelector("#answer").innerHTML, /title="展开引用 chunk-1"/);
+});
+
+test("Lab HTTP errors use shared Chinese error mapping", async (t) => {
+  setLocale("zh-CN", { persist: false });
+  t.after(() => setLocale("en", { persist: false }));
+  const fixture = createFixture(t, {
+    fetchImpl: async () => ({
+      ok: false,
+      status: 404,
+      statusText: "Not Found",
+      headers: { get: () => null },
+      json: async () => ({ detail: "Knowledge base not found" }),
+    }),
+  });
+  const { root, lab, context } = fixture;
+
+  const result = await lab.startChat(context(), {
+    question: "问题", topK: 5, audience: "public",
+  });
+
+  assert.equal(result.done, false);
+  assert.equal(root.text("#chat-status"), "流式问答失败：知识库不存在；请重试。");
+  assert.equal(root.text("#chat-button"), "开始流式问答");
+});
+
 test("Search sends only the retrieval contract, caches hits, escapes content, and links its trace", async (t) => {
   const calls = [];
   const hit = searchHit({

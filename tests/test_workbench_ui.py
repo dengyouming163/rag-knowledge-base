@@ -2820,6 +2820,24 @@ def test_workbench_overview_refresh_uses_chinese_dynamic_copy(workbench_page) ->
     assert page.locator('[data-overview-trends-status]').inner_text().startswith("更新于 ")
 
 
+def test_workbench_lab_clear_after_locale_switch_uses_chinese_dynamic_copy(workbench_page) -> None:
+    page, url = workbench_page
+    page.goto(f"{url}#/lab/search")
+    page.locator("#scope-refresh").click()
+    assert page.locator("#search-button").inner_text() == "Run search"
+    assert page.locator("#search-status").inner_text() == "Awaiting a retrieval query."
+
+    page.select_option("#locale-select", "zh-CN")
+
+    assert page.locator("#search-button").inner_text() == "执行检索"
+    assert page.locator("#chat-button").text_content() == "开始流式问答"
+    assert page.locator("#upload-button").text_content() == "上传并跟踪任务"
+    assert page.locator("#search-status").inner_text() == "等待检索查询。"
+    assert page.locator("#chat-status").text_content() == "等待提问。"
+    assert page.locator("#upload-status").text_content() == "等待选择文档。"
+    assert page.locator("#citation-status").text_content() == "暂无可展开的引用。"
+
+
 def test_workbench_locale_switch_reloads_access_identity_and_permissions(workbench_page) -> None:
     page, url = workbench_page
     page.set_default_timeout(7000)

@@ -1,17 +1,22 @@
-import { scopeHeaders } from "../api.mjs";
+import { ApiError, scopeHeaders } from "../api.mjs";
 import { escapeHtml } from "../core.mjs";
+import { formatError, t } from "../i18n/index.mjs";
 
 const POLL_INTERVAL_MS = 900;
 const TERMINAL_JOB_STATES = new Set(["succeeded", "failed"]);
 const LAB_TABS = new Set(["search", "chat", "ingest"]);
-const BUTTON_LABELS = {
-  search: "Run search",
-  chat: "Start streaming chat",
-  upload: "Upload and track job",
-};
+
+function buttonLabels() {
+  return {
+    search: { idle: t("lab.search.run"), busy: t("lab.search.busy") },
+    chat: { idle: t("lab.chat.run"), busy: t("lab.chat.busy") },
+    upload: { idle: t("lab.upload.run"), busy: t("lab.upload.busy") },
+  };
+}
 
 function errorMessage(error) {
-  return error instanceof Error && error.message ? error.message : "Request failed";
+  if (error?.name === "ApiError") return formatError(error);
+  return error instanceof Error && error.message ? error.message : formatError(error);
 }
 
 function isAbort(error) {
@@ -25,9 +30,10 @@ function unwrap(result) {
 }
 
 async function responseError(response) {
-  let message = response.statusText || "Request failed";
+  let body = null;
+  let message = response.statusText || t("errors.requestFailed");
   try {
-    const body = await response.json();
+    body = await response.json();
     if (typeof body?.detail === "string") message = body.detail;
     else if (Array.isArray(body?.detail)) message = body.detail.map((item) => item.msg || JSON.stringify(item)).join("; ");
     else if (typeof body?.message === "string") message = body.message;
@@ -35,7 +41,7 @@ async function responseError(response) {
   } catch (_error) {
     // Keep the HTTP status for non-JSON error responses.
   }
-  return new Error(`HTTP ${response.status}: ${message}`);
+  return new ApiError(`HTTP ${response.status}: ${message}`, { status: response.status, body });
 }
 
 function responseTrace(result) {
@@ -51,7 +57,7 @@ function renderAnswerHtml(answer, citations) {
     html += escapeHtml(answer.slice(cursor, match.index));
     const chunkId = match[1];
     if (citationIds.has(chunkId)) {
-      html += `<button type="button" class="wb-lab-inline-citation" data-citation="${escapeHtml(chunkId)}" title="Expand citation ${escapeHtml(chunkId)}">${escapeHtml(match[0])}</button>`;
+      html += `<button type="button" class="wb-lab-inline-citation" data-citation="${escapeHtml(chunkId)}" title="${escapeHtml(t("lab.citation.expand", { id: chunkId }))}">${escapeHtml(match[0])}</button>`;
     } else {
       html += escapeHtml(match[0]);
     }
@@ -117,9 +123,9 @@ export function createLab({
     const button = byId(`${kind}-button`);
     if (!button) return;
     button.disabled = disabled;
-    button.textContent = disabled
-      ? { search: "Searching…", chat: "Answering…", upload: "Processing…" }[kind]
-      : BUTTON_LABELS[kind];
+    const labels = buttonLabels()[kind];
+    if (!labels) return;
+    button.textContent = disabled ? labels.busy : labels.idle;
   };
 
   async function defaultApi(path, { scope: requestScope = {}, body, signal, ...options } = {}) {
@@ -219,7 +225,7 @@ export function createLab({
     for (const id of ["citation-heading", "citation-source", "citation-text", "citation-metadata"]) {
       setText(`#${id}`, "");
     }
-    setStatus("#citation-status", "No citations to expand.");
+    setStatus("#citation-status", t("lab.noCitations"));
   }
 
   function clearView() {
@@ -232,9 +238,9 @@ export function createLab({
     clearCitation();
     setTrace("#search-trace-link", "");
     setTrace("#chat-trace-link", "");
-    setStatus("#search-status", "Awaiting a retrieval query.");
-    setStatus("#chat-status", "Awaiting a question.");
-    setStatus("#upload-status", "Awaiting a document.");
+    setStatus("#search-status", t("lab.searchAwaiting"));
+    setStatus("#chat-status", t("lab.chatAwaiting"));
+    setStatus("#upload-status", t("lab.uploadAwaiting"));
     setText("#upload-error", "");
     const uploadError = byId("upload-error");
     if (uploadError) uploadError.hidden = true;
@@ -267,7 +273,7 @@ export function createLab({
     }
   }
 
-  function renderSearchHits(hits, emptyMessage = "No retrieval runs yet.") {
+  function renderSearchHits(hits, emptyMessage = t("lab.noRetrievalRuns")) {
     const container = byId("search-results");
     if (!container) return;
     const items = Array.isArray(hits) ? hits : [];
@@ -278,8 +284,8 @@ export function createLab({
     container.innerHTML = items.map((hit) => {
       const score = Number(hit?.score);
       return `<li><article class="wb-lab-hit">
-        <div class="wb-lab-hit-head"><code>${escapeHtml(hit?.chunk_id)}</code><span>score ${Number.isFinite(score) ? score.toFixed(6) : "—"}</span></div>
-        <p class="wb-lab-source">doc_id: ${escapeHtml(hit?.doc_id)}</p>
+        <div class="wb-lab-hit-head"><code>${escapeHtml(hit?.chunk_id)}</code><span>${escapeHtml(t("lab.search.score", { score: Number.isFinite(score) ? score.toFixed(6) : "—" }))}</span></div>
+        <p class="wb-lab-source">${escapeHtml(t("lab.search.document", { docId: hit?.doc_id ?? "" }))}</p>
         <p class="wb-lab-hit-text">${escapeHtml(hit?.text)}</p>
         <pre class="wb-lab-metadata">${escapeHtml(JSON.stringify(hit?.metadata ?? {}, null, 2))}</pre>
       </article></li>`;
@@ -288,9 +294,9 @@ export function createLab({
 
   function validateScope(context, includeUser = true) {
     if (!context?.scope?.tenant || !context?.scope?.kb) {
-      throw new Error("Tenant ID and knowledge base are required.");
+      throw new Error(t("lab.validation.tenantAndKb"));
     }
-    if (includeUser && !context.scope.user) throw new Error("User ID is required.");
+    if (includeUser && !context.scope.user) throw new Error(t("lab.validation.user"));
   }
 
   async function search(context = currentContext, input = {}) {
@@ -299,7 +305,7 @@ export function createLab({
     try {
       validateScope(context);
       query = String(input.query ?? byId("search-query")?.value ?? "").trim();
-      if (!query) throw new Error("Enter a retrieval query.");
+      if (!query) throw new Error(t("lab.validation.query"));
     } catch (error) {
       setStatus("#search-status", errorMessage(error), "error");
       return undefined;
@@ -310,8 +316,8 @@ export function createLab({
     const mode = String(input.mode ?? byId("search-mode")?.value ?? "hybrid");
     const audience = String(input.audience ?? byId("search-audience")?.value ?? "public");
     setButton("search", true);
-    renderSearchHits([], "Searching…");
-    setStatus("#search-status", "Searching the active scope…");
+    renderSearchHits([], t("lab.search.busy"));
+    setStatus("#search-status", t("lab.search.searching"));
     setTrace("#search-trace-link", "");
 
     try {
@@ -325,14 +331,14 @@ export function createLab({
       const body = unwrap(result) ?? {};
       const hits = Array.isArray(body.hits) ? body.hits : [];
       cacheHits(hits);
-      renderSearchHits(hits, "No matching chunks. Adjust the query, mode, or audience.");
-      setStatus("#search-status", `Search complete · ${hits.length} hits · ${body.mode || mode}`, hits.length ? "success" : "warning");
+      renderSearchHits(hits, t("lab.search.noMatches"));
+      setStatus("#search-status", t("lab.search.complete", { count: hits.length, mode: body.mode || mode }), hits.length ? "success" : "warning");
       setTrace("#search-trace-link", responseTrace(result));
       return hits;
     } catch (error) {
       if (isCurrent(operation) && !isAbort(error)) {
-        renderSearchHits([], "Search failed; no results are available.");
-        setStatus("#search-status", `Search failed: ${errorMessage(error)}`, "error");
+        renderSearchHits([], t("lab.search.failedEmpty"));
+        setStatus("#search-status", t("lab.search.failed", { error: errorMessage(error) }), "error");
       }
       return undefined;
     } finally {
@@ -364,22 +370,22 @@ export function createLab({
     setStatus(
       "#citation-status",
       chat.citations.length
-        ? `${chat.citations.length} citations available; select one to inspect its source.`
-        : "The hits frame did not provide citations.",
+        ? t("lab.citation.available", { count: chat.citations.length })
+        : t("lab.citation.missingFrame"),
       chat.citations.length ? "neutral" : "warning",
     );
   }
 
   function renderStreamMeta(payload) {
     const notes = [];
-    if (payload.rewritten) notes.push(`Rewritten: ${payload.rewritten}`);
+    if (payload.rewritten) notes.push(t("lab.stream.rewritten", { value: payload.rewritten }));
     const usage = formatObject(payload.usage);
     const timings = formatObject(payload.timings);
-    if (usage) notes.push(`Usage: ${usage}`);
-    if (timings) notes.push(`Timings: ${timings}`);
-    if (payload.rerank_degraded) notes.push("Rerank degraded");
-    if (payload.citation_ok === false) notes.push("Citation validation failed; verify the source");
-    if (payload.trace_id) notes.push(`Trace: ${payload.trace_id}`);
+    if (usage) notes.push(t("lab.stream.usage", { value: usage }));
+    if (timings) notes.push(t("lab.stream.timings", { value: timings }));
+    if (payload.rerank_degraded) notes.push(t("lab.stream.rerankDegraded"));
+    if (payload.citation_ok === false) notes.push(t("lab.stream.citationFailed"));
+    if (payload.trace_id) notes.push(t("lab.stream.trace", { traceId: payload.trace_id }));
     setText("#stream-meta", notes.join(" · "));
   }
 
@@ -402,9 +408,9 @@ export function createLab({
     try {
       payload = JSON.parse(rawData);
     } catch (_error) {
-      throw new Error("Unable to parse the server SSE data.");
+      throw new Error(t("lab.stream.parseError"));
     }
-    if (eventName === "error") throw new Error(payload?.message || "The server returned a streaming error.");
+    if (eventName === "error") throw new Error(payload?.message || t("lab.stream.serverError"));
     if (!isCurrent(chat)) return false;
     if (eventName === "hits") {
       chat.citations = [...new Set((Array.isArray(payload.chunks) ? payload.chunks : []).map(String).filter(Boolean))];
@@ -422,7 +428,7 @@ export function createLab({
   }
 
   async function consumeStream(response, chat) {
-    if (!response.body) throw new Error("The browser did not receive a readable response stream.");
+    if (!response.body) throw new Error(t("lab.stream.unavailable"));
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -448,7 +454,7 @@ export function createLab({
       buffer += decoder.decode();
       if (!receivedDone) drainFrames();
       if (!receivedDone && buffer.trim()) receivedDone = consumeFrame(chat, buffer);
-      if (!receivedDone) throw new Error("The stream ended before [DONE].");
+      if (!receivedDone) throw new Error(t("lab.stream.ended"));
       await reader.cancel().catch(() => undefined);
     } catch (error) {
       await reader.cancel().catch(() => undefined);
@@ -471,7 +477,7 @@ export function createLab({
     const options = chatInput(input);
     try {
       validateScope(context);
-      if (!options.question) throw new Error("Enter a question.");
+      if (!options.question) throw new Error(t("lab.validation.question"));
     } catch (error) {
       setStatus("#chat-status", errorMessage(error), "error");
       return { done: false, cancelled: false, citations: [] };
@@ -493,7 +499,7 @@ export function createLab({
     setTrace("#chat-trace-link", "");
     clearCitation();
     renderAnswer(operation);
-    setStatus("#chat-status", "Connecting to the streaming chat API…");
+    setStatus("#chat-status", t("lab.chat.connecting"));
     const streamFetch = fetchOverride ?? fetchImpl;
 
     try {
@@ -515,7 +521,7 @@ export function createLab({
       if (!response.ok) throw await responseError(response);
       if (!isCurrent(operation)) return { done: false, cancelled: true, citations: operation.citations };
       setTrace("#chat-trace-link", response.headers?.get("X-Trace-Id"));
-      setStatus("#chat-status", "Streaming response · receiving deltas…");
+      setStatus("#chat-status", t("lab.chat.streaming"));
       await consumeStream(response, operation);
       if (!isCurrent(operation)) return { done: false, cancelled: true, citations: operation.citations };
       operation.done = true;
@@ -524,11 +530,11 @@ export function createLab({
         { role: "assistant", content: operation.answer },
       );
       history = history.slice(-12);
-      setStatus("#chat-status", `Answer complete · [DONE] received · ${operation.citations.length} citations`, "success");
+      setStatus("#chat-status", t("lab.chat.complete", { count: operation.citations.length }), "success");
       return { done: true, cancelled: false, citations: [...operation.citations] };
     } catch (error) {
       const cancelled = isAbort(error) || !isCurrent(operation);
-      if (!cancelled) setStatus("#chat-status", `Streaming chat failed: ${errorMessage(error)}; try again.`, "error");
+      if (!cancelled) setStatus("#chat-status", t("lab.chat.failed", { error: errorMessage(error) }), "error");
       return { done: false, cancelled, citations: [...operation.citations] };
     } finally {
       if (operations.chat === operation) {
@@ -544,17 +550,20 @@ export function createLab({
     if (detail) detail.hidden = false;
     setText("#citation-heading", `[${hit.chunk_id}]`);
     const score = Number(hit.score);
-    setText("#citation-source", `doc_id: ${hit.doc_id} · score ${Number.isFinite(score) ? score.toFixed(6) : "—"}`);
+    setText("#citation-source", t("lab.citation.source", {
+      docId: hit.doc_id,
+      score: Number.isFinite(score) ? score.toFixed(6) : "—",
+    }));
     setText("#citation-text", String(hit.text ?? ""));
     setText("#citation-metadata", JSON.stringify(hit.metadata ?? {}, null, 2));
-    setStatus("#citation-status", `Expanded ${hit.chunk_id} with retrieval text and metadata.`, "success");
+    setStatus("#citation-status", t("lab.citation.expanded", { id: hit.chunk_id }), "success");
   }
 
   async function showCitation(chunkId) {
     if (destroyed) return undefined;
     const chat = chatState;
     if (!chat || !active || document?.visibilityState === "hidden") {
-      setStatus("#citation-status", "Source unavailable: complete a chat in the active scope first.", "warning");
+      setStatus("#citation-status", t("lab.citation.chatRequired"), "warning");
       return undefined;
     }
     const id = String(chunkId);
@@ -571,7 +580,7 @@ export function createLab({
       if (!operation) return undefined;
       const detail = byId("citation-detail");
       if (detail) detail.hidden = true;
-      setStatus("#citation-status", `Retrieving source text for ${id}…`);
+      setStatus("#citation-status", t("lab.citation.retrieving", { id }));
       try {
         const result = await request(`/v1/kbs/${encodeURIComponent(chat.context.scope.kb)}/search`, {
           method: "POST",
@@ -592,12 +601,12 @@ export function createLab({
           return hit;
         }
         if (detail) detail.hidden = true;
-        setStatus("#citation-status", `Source unavailable: retrieval did not return ${id}.`, "warning");
+        setStatus("#citation-status", t("lab.citation.missing", { id }), "warning");
         return undefined;
       } catch (error) {
         if (isCurrent(operation) && !isAbort(error)) {
           if (detail) detail.hidden = true;
-          setStatus("#citation-status", `Citation retrieval failed: ${errorMessage(error)}`, "error");
+          setStatus("#citation-status", t("lab.citation.failed", { error: errorMessage(error) }), "error");
         }
         return undefined;
       } finally {
@@ -635,8 +644,8 @@ export function createLab({
     file = file === undefined ? byId("upload-input")?.files?.[0] : file;
     try {
       validateScope(context, false);
-      if (!file) throw new Error("Select a document to upload.");
-      if (!/\.(pdf|md|txt)$/i.test(file.name)) throw new Error("Only .pdf, .md, and .txt files are supported.");
+      if (!file) throw new Error(t("lab.validation.document"));
+      if (!/\.(pdf|md|txt)$/i.test(file.name)) throw new Error(t("lab.validation.fileType"));
     } catch (error) {
       setStatus("#upload-status", errorMessage(error), "error");
       return undefined;
@@ -649,7 +658,7 @@ export function createLab({
     showUploadError("");
     renderUploadProgress(0);
     setButton("upload", true);
-    setStatus("#upload-status", `Uploading ${file.name}…`);
+    setStatus("#upload-status", t("lab.upload.uploading", { name: file.name }));
 
     try {
       const created = unwrap(await request(`/v1/kbs/${encodeURIComponent(context.scope.kb)}/documents`, {
@@ -661,7 +670,11 @@ export function createLab({
       if (!isCurrent(operation)) return undefined;
       operation.jobId = created.job_id;
       operation.duplicated = Boolean(created.duplicated);
-      setStatus("#upload-status", `Job #${created.job_id} created · document ${created.doc_id}${created.duplicated ? " · duplicated content reused" : ""}`);
+      setStatus("#upload-status", t("lab.upload.created", {
+        jobId: created.job_id,
+        docId: created.doc_id,
+        duplicated: created.duplicated ? ` · ${t("lab.upload.duplicated")}` : "",
+      }));
 
       while (isCurrent(operation)) {
         await waitForPoll(operation);
@@ -674,16 +687,23 @@ export function createLab({
         renderUploadProgress(job.progress);
         setStatus(
           "#upload-status",
-          `Status ${job.status} · job #${job.id} · document ${job.doc_id} · source ${job.source} · attempts ${job.attempts}${operation.duplicated ? " · duplicated content reused" : ""}`,
+          t("lab.upload.status", {
+            status: job.status,
+            id: job.id,
+            docId: job.doc_id,
+            source: job.source,
+            attempts: job.attempts,
+            duplicated: operation.duplicated ? ` · ${t("lab.upload.duplicated")}` : "",
+          }),
           job.status === "failed" ? "error" : job.status === "succeeded" ? "success" : "neutral",
         );
-        showUploadError(job.error ? `Job error: ${job.error}` : "");
+        showUploadError(job.error ? t("lab.upload.jobError", { error: job.error }) : "");
         if (TERMINAL_JOB_STATES.has(job.status)) return job;
       }
       return undefined;
     } catch (error) {
       if (isCurrent(operation) && !isAbort(error)) {
-        setStatus("#upload-status", "Upload or job polling failed; retry when ready.", "error");
+        setStatus("#upload-status", t("lab.upload.failed"), "error");
         showUploadError(errorMessage(error));
       }
       return undefined;
