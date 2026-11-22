@@ -135,6 +135,17 @@ test("t interpolates named parameters and keeps missing ones", () => {
   assert.equal(t("lab.search.complete", { count: 2 }), "检索完成 · 2 条命中 · {mode}");
 });
 
+test("t keeps inherited parameter names as missing placeholders", () => {
+  const original = zhCN["lab.search.complete"];
+  zhCN["lab.search.complete"] = "{constructor}";
+  setLocale("zh-CN", { persist: false });
+  try {
+    assert.equal(t("lab.search.complete", {}), "{constructor}");
+  } finally {
+    zhCN["lab.search.complete"] = original;
+  }
+});
+
 test("t does not reprocess placeholders inside replacement values", () => {
   setLocale("zh-CN", { persist: false });
   assert.equal(

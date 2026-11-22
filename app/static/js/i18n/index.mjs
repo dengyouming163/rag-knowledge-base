@@ -104,7 +104,7 @@ export function t(key, params = {}) {
   let value = dictionary && Object.hasOwn(dictionary, key) ? dictionary[key] : undefined;
   if (value === undefined) value = Object.hasOwn(en, key) ? en[key] : key;
   return value.replace(/\{(\w+)\}/g, (match, name) => (
-    name in params ? String(params[name]) : match
+    Object.hasOwn(params, name) ? String(params[name]) : match
   ));
 }
 
