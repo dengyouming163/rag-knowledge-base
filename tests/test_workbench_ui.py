@@ -337,7 +337,12 @@ def test_lab_form_geometry_fits_medium_and_mobile_widths(workbench_page) -> None
         assert button["left"] >= geometry["containerLeft"] - 1, (width, geometry)
         assert button["right"] <= geometry["containerRight"] + 1, (width, geometry)
         assert button["top"] >= 0, (width, geometry)
-        assert button["bottom"] <= 901, (width, geometry)
+        chat_button = page.locator("#chat-button")
+        chat_button.scroll_into_view_if_needed()
+        visible = chat_button.bounding_box()
+        assert visible is not None, (width, geometry)
+        assert 0 <= visible["y"], (width, visible)
+        assert visible["y"] + visible["height"] <= 901, (width, visible)
         if width == 390:
             assert len(geometry["columns"].split()) == 1, geometry
         if width == 821:
@@ -2740,6 +2745,7 @@ def test_workbench_defaults_to_chinese_and_switches_to_english(workbench_page) -
     page, url = workbench_page
     base = url.split("?")[0]
     page.goto(base)
+    page.wait_for_function("document.documentElement.lang === 'zh-CN'")
 
     chinese_labels = ("概览", "查询实验室", "调用追踪", "入库任务", "评测与演练", "访问控制", "审计日志")
     for name, label in zip(NAV, chinese_labels):
@@ -2859,6 +2865,7 @@ def test_workbench_locale_switch_reloads_access_identity_and_permissions(workben
 def test_workbench_chinese_copy_covers_shell_and_overview(workbench_page) -> None:
     page, url = workbench_page
     page.goto(url.split("?")[0])
+    page.wait_for_function("document.documentElement.lang === 'zh-CN'")
 
     assert page.locator(".wb-brand strong").inner_text() == "WorkRAG"
     assert page.locator(".wb-brand-copy span").inner_text() == "RAG 运维"

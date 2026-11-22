@@ -1587,7 +1587,6 @@ select {
 
   .wb-nav {
     padding: 0 12px 10px;
-    overflow-x: auto;
   }
 
   .wb-nav-label,
@@ -1597,8 +1596,8 @@ select {
 
   .wb-nav-list {
     flex-direction: row;
+    flex-wrap: wrap;
     gap: 4px;
-    width: max-content;
   }
 
   .wb-nav-link {
@@ -1610,7 +1609,7 @@ select {
   .wb-nav-link.is-active::before {
     top: auto;
     right: 10px;
-    bottom: -11px;
+    bottom: 2px;
     left: 10px;
     width: auto;
     height: 2px;
