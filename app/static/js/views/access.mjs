@@ -315,7 +315,9 @@ export function createAccess({
       setText(
         "#access-compare-status",
         rows.length
-          ? t("access.compare.summary", { count: rows.length })
+          ? t(rows.length === 1 ? "access.compare.summaryOne" : "access.compare.summary", {
+            count: rows.length,
+          })
           : t("access.compare.empty"),
       );
       return true;

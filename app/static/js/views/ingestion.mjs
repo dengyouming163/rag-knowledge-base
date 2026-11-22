@@ -231,7 +231,7 @@ export function createIngestion({
       const counts = data?.counts ?? {};
       setText(
         "#ingestion-jobs-status",
-        t("ingestion.jobsSummary", {
+        t(jobs.length === 1 ? "ingestion.jobsSummaryOne" : "ingestion.jobsSummary", {
           count: jobs.length,
           queued: counts.queued ?? "—",
           running: counts.running ?? "—",
@@ -282,7 +282,13 @@ export function createIngestion({
       } else {
         byId("ingestion-job-events")?.replaceChildren(...items);
       }
-      setText("#ingestion-job-events-status", t("ingestion.eventsSummary", { count: events.length, id }));
+      setText(
+        "#ingestion-job-events-status",
+        t(events.length === 1 ? "ingestion.eventsSummaryOne" : "ingestion.eventsSummary", {
+          count: events.length,
+          id,
+        }),
+      );
       return true;
     } catch (error) {
       if (!operationIsCurrent(operation) || selectedJobId !== id) return false;
