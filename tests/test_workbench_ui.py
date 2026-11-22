@@ -2825,3 +2825,5 @@ def test_workbench_chinese_copy_covers_shell_and_overview(workbench_page) -> Non
     assert page.locator("#ingestion-retry").text_content() == "重试失败任务"
     assert page.locator("#view-evaluation h1").inner_text() == "评测与演练"
     assert page.locator("#run-trigger-loadtest").inner_text() == "启动压测"
+    assert page.locator("#view-access h1").inner_text() == "访问控制"
+    assert page.locator("#view-audit h1").inner_text() == "审计日志"

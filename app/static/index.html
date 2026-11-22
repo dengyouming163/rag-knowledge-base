@@ -484,96 +484,96 @@
 
         <section id="view-access" data-view="access" hidden aria-labelledby="view-access-title">
           <header class="wb-view-header">
-            <div><span class="wb-view-kicker">MODULE / 06</span><h1 id="view-access-title">Access Control</h1></div>
-            <p>Inspect identity, permissions, and knowledge-base access.</p>
+            <div><span class="wb-view-kicker" data-i18n="access.kicker">MODULE / 06</span><h1 id="view-access-title" data-i18n="access.title">Access Control</h1></div>
+            <p data-i18n="access.subtitle">Inspect identity, permissions, and knowledge-base access.</p>
           </header>
           <div class="wb-view-body wb-ops-workspace wb-access" data-view-body>
             <div class="wb-ops-toolbar">
               <div class="wb-ops-toolbar-main">
-                <button id="access-load" class="wb-ops-action" type="button">Load access state</button>
-                <p class="wb-ops-note">Identity and knowledge-base permissions load independently; either result remains visible if the other request fails.</p>
+                <button id="access-load" class="wb-ops-action" type="button" data-i18n="access.loadAccessState">Load access state</button>
+                <p class="wb-ops-note" data-i18n="access.loadNote">Identity and knowledge-base permissions load independently; either result remains visible if the other request fails.</p>
               </div>
-              <p id="access-permission-status" class="wb-ops-permission" data-action-disabled-reason role="status" aria-live="polite">Permissions are checked when access state loads.</p>
+              <p id="access-permission-status" class="wb-ops-permission" data-action-disabled-reason role="status" aria-live="polite" data-i18n="access.permissionStatus">Permissions are checked when access state loads.</p>
             </div>
 
             <div class="wb-access-grid">
               <article class="wb-ops-panel" aria-labelledby="access-identity-title">
-                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">01 / IDENTITY</span><h2 id="access-identity-title">Current identity</h2></div><span>/v1/identity</span></div>
-                <p id="access-identity-status" class="wb-ops-status-line" role="status" aria-live="polite">Load access state or refresh to inspect identity.</p>
+                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index" data-i18n="access.identityIndex">01 / IDENTITY</span><h2 id="access-identity-title" data-i18n="access.identityTitle">Current identity</h2></div><span>/v1/identity</span></div>
+                <p id="access-identity-status" class="wb-ops-status-line" role="status" aria-live="polite" data-i18n="access.identityStatus">Load access state or refresh to inspect identity.</p>
                 <dl class="wb-ops-detail-list">
-                  <div><dt>Tenant</dt><dd data-access-field="tenant">—</dd></div>
-                  <div><dt>User</dt><dd data-access-field="user">—</dd></div>
-                  <div><dt>Role</dt><dd data-access-field="role">—</dd></div>
-                  <div><dt>Tags</dt><dd data-access-field="tags">—</dd></div>
-                  <div><dt>Tenant KBs</dt><dd data-access-field="kbs">—</dd></div>
+                  <div><dt data-i18n="access.tenant">Tenant</dt><dd data-access-field="tenant">—</dd></div>
+                  <div><dt data-i18n="access.user">User</dt><dd data-access-field="user">—</dd></div>
+                  <div><dt data-i18n="access.role">Role</dt><dd data-access-field="role">—</dd></div>
+                  <div><dt data-i18n="access.tags">Tags</dt><dd data-access-field="tags">—</dd></div>
+                  <div><dt data-i18n="access.tenantKbs">Tenant KBs</dt><dd data-access-field="kbs">—</dd></div>
                 </dl>
               </article>
 
               <article class="wb-ops-panel" aria-labelledby="access-kb-title">
-                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">02 / DECISION</span><h2 id="access-kb-title">KB scoped decision</h2></div><span>/v1/ops/permissions</span></div>
-                <p id="access-kb-permission-status" class="wb-ops-status-line" role="status" aria-live="polite">Knowledge-base permissions load separately from identity.</p>
+                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index" data-i18n="access.decisionIndex">02 / DECISION</span><h2 id="access-kb-title" data-i18n="access.kbTitle">KB scoped decision</h2></div><span>/v1/ops/permissions</span></div>
+                <p id="access-kb-permission-status" class="wb-ops-status-line" role="status" aria-live="polite" data-i18n="access.kbPermissionStatus">Knowledge-base permissions load separately from identity.</p>
                 <dl class="wb-ops-detail-list">
-                  <div><dt>KB</dt><dd data-access-kb-field="kb">—</dd></div>
-                  <div><dt>Decision</dt><dd data-access-kb-field="decision">—</dd></div>
-                  <div><dt>Scoped chunks</dt><dd data-access-kb-field="scoped_count">—</dd></div>
-                  <div><dt>Bare connection chunks</dt><dd data-access-kb-field="bare_count">—</dd></div>
+                  <div><dt data-i18n="access.kb">KB</dt><dd data-access-kb-field="kb">—</dd></div>
+                  <div><dt data-i18n="access.decision">Decision</dt><dd data-access-kb-field="decision">—</dd></div>
+                  <div><dt data-i18n="access.scopedChunks">Scoped chunks</dt><dd data-access-kb-field="scoped_count">—</dd></div>
+                  <div><dt data-i18n="access.bareConnectionChunks">Bare connection chunks</dt><dd data-access-kb-field="bare_count">—</dd></div>
                 </dl>
-                <p class="wb-access-reason"><strong>API reason</strong><span id="access-permission-reason">—</span></p>
+                <p class="wb-access-reason"><strong data-i18n="access.apiReason">API reason</strong><span id="access-permission-reason">—</span></p>
               </article>
             </div>
 
             <article class="wb-ops-panel wb-access-isolation" aria-labelledby="access-isolation-title">
-              <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">03 / BOUNDARIES</span><h2 id="access-isolation-title">Three isolation boundaries</h2></div><span>Only fields returned by the APIs are shown</span></div>
+              <div class="wb-ops-panel-heading"><div><span class="wb-ops-index" data-i18n="access.isolationIndex">03 / BOUNDARIES</span><h2 id="access-isolation-title" data-i18n="access.isolationTitle">Three isolation boundaries</h2></div><span data-i18n="access.onlyApiFields">Only fields returned by the APIs are shown</span></div>
               <div class="wb-access-layers">
-                <div class="wb-access-layer" data-access-layer="tenant"><h3>Tenant boundary</h3><p data-access-layer-detail>—</p></div>
-                <div class="wb-access-layer" data-access-layer="kb"><h3>KB boundary</h3><p data-access-layer-detail>—</p></div>
-                <div class="wb-access-layer" data-access-layer="user"><h3>User boundary</h3><p data-access-layer-detail>—</p></div>
+                <div class="wb-access-layer" data-access-layer="tenant"><h3 data-i18n="access.tenantBoundary">Tenant boundary</h3><p data-access-layer-detail>—</p></div>
+                <div class="wb-access-layer" data-access-layer="kb"><h3 data-i18n="access.kbBoundary">KB boundary</h3><p data-access-layer-detail>—</p></div>
+                <div class="wb-access-layer" data-access-layer="user"><h3 data-i18n="access.userBoundary">User boundary</h3><p data-access-layer-detail>—</p></div>
               </div>
             </article>
 
             <article class="wb-ops-panel wb-access-compare" aria-labelledby="access-compare-title">
-              <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">04 / COMPARE</span><h2 id="access-compare-title">Identity visibility comparison</h2></div><span>Administrator action; the server verifies permission again</span></div>
+              <div class="wb-ops-panel-heading"><div><span class="wb-ops-index" data-i18n="access.compareIndex">04 / COMPARE</span><h2 id="access-compare-title" data-i18n="access.compareTitle">Identity visibility comparison</h2></div><span data-i18n="access.adminAction">Administrator action; the server verifies permission again</span></div>
               <form id="access-compare-form" class="wb-access-compare-form" novalidate>
                 <div class="wb-access-field">
-                  <label for="access-compare-query">Query</label>
+                  <label for="access-compare-query" data-i18n="access.query">Query</label>
                   <textarea id="access-compare-query" minlength="1" maxlength="500" rows="2" required aria-describedby="access-compare-query-note access-compare-error"></textarea>
-                  <small id="access-compare-query-note">1–500 characters after trimming.</small>
+                  <small id="access-compare-query-note" data-i18n="access.queryNote">1–500 characters after trimming.</small>
                 </div>
                 <div class="wb-access-field">
-                  <label for="access-compare-user-ids">User IDs</label>
+                  <label for="access-compare-user-ids" data-i18n="access.userIds">User IDs</label>
                   <input id="access-compare-user-ids" value="guest,u_member,u_admin" required autocomplete="off" spellcheck="false" aria-describedby="access-compare-user-note access-compare-error">
-                  <small id="access-compare-user-note">1–3 comma-separated user IDs.</small>
+                  <small id="access-compare-user-note" data-i18n="access.userIdsNote">1–3 comma-separated user IDs.</small>
                 </div>
                 <div class="wb-access-field">
-                  <label for="access-compare-top-k">Top K</label>
+                  <label for="access-compare-top-k" data-i18n="access.topK">Top K</label>
                   <input id="access-compare-top-k" type="number" value="5" min="1" max="10" step="1" required aria-describedby="access-compare-top-k-note access-compare-error">
-                  <small id="access-compare-top-k-note">An integer from 1 to 10.</small>
+                  <small id="access-compare-top-k-note" data-i18n="access.topKNote">An integer from 1 to 10.</small>
                 </div>
-                <button id="access-compare-submit" class="wb-ops-action" type="submit" disabled aria-describedby="access-permission-status">Compare identities</button>
+                <button id="access-compare-submit" class="wb-ops-action" type="submit" disabled aria-describedby="access-permission-status" data-i18n="access.compareSubmit">Compare identities</button>
                 <p id="access-compare-error" class="wb-access-error" role="alert" hidden></p>
               </form>
-              <p id="access-compare-status" class="wb-ops-status-line" role="status" aria-live="polite">Load permissions before comparing identities.</p>
-              <div id="access-compare-results" class="wb-access-compare-results" aria-label="Per-user identity comparison results"></div>
+              <p id="access-compare-status" class="wb-ops-status-line" role="status" aria-live="polite" data-i18n="access.compareStatus">Load permissions before comparing identities.</p>
+              <div id="access-compare-results" class="wb-access-compare-results" aria-label="Per-user identity comparison results" data-i18n-aria-label="access.compareResultsAriaLabel"></div>
             </article>
           </div>
         </section>
 
         <section id="view-audit" data-view="audit" hidden aria-labelledby="view-audit-title">
           <header class="wb-view-header">
-            <div><span class="wb-view-kicker">MODULE / 07</span><h1 id="view-audit-title">Audit Log</h1></div>
-            <p>Review scoped operational actions and audit evidence.</p>
+            <div><span class="wb-view-kicker" data-i18n="audit.kicker">MODULE / 07</span><h1 id="view-audit-title" data-i18n="audit.title">Audit Log</h1></div>
+            <p data-i18n="audit.subtitle">Review scoped operational actions and audit evidence.</p>
           </header>
           <div class="wb-view-body wb-ops-workspace wb-audit" data-view-body>
             <div class="wb-ops-toolbar">
               <div class="wb-ops-toolbar-main">
-                <button id="audit-load" class="wb-ops-action" type="button">Load audit records</button>
-                <p class="wb-ops-note">The latest 50 records are requested from the API and presented in ascending time order. Missing fields remain unavailable.</p>
+                <button id="audit-load" class="wb-ops-action" type="button" data-i18n="audit.loadRecords">Load audit records</button>
+                <p class="wb-ops-note" data-i18n="audit.loadNote">The latest 50 records are requested from the API and presented in ascending time order. Missing fields remain unavailable.</p>
               </div>
             </div>
             <article class="wb-ops-panel wb-audit-panel" aria-labelledby="audit-timeline-title">
-              <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">01 / TIMELINE</span><h2 id="audit-timeline-title">Operational audit timeline</h2></div><span>Oldest first · arrow keys move between events</span></div>
-              <p id="audit-status" class="wb-ops-status-line" role="status" aria-live="polite">Load audit records or refresh to inspect the timeline.</p>
-              <ol id="audit-timeline" class="wb-audit-timeline" aria-label="Operational audit timeline, oldest first"></ol>
+              <div class="wb-ops-panel-heading"><div><span class="wb-ops-index" data-i18n="audit.timelineIndex">01 / TIMELINE</span><h2 id="audit-timeline-title" data-i18n="audit.timelineTitle">Operational audit timeline</h2></div><span data-i18n="audit.timelineHint">Oldest first · arrow keys move between events</span></div>
+              <p id="audit-status" class="wb-ops-status-line" role="status" aria-live="polite" data-i18n="audit.status">Load audit records or refresh to inspect the timeline.</p>
+              <ol id="audit-timeline" class="wb-audit-timeline" aria-label="Operational audit timeline, oldest first" data-i18n-aria-label="audit.timelineAriaLabel"></ol>
             </article>
           </div>
         </section>
