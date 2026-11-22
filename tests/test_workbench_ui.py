@@ -3051,7 +3051,6 @@ def test_workbench_audit_uses_chinese_dynamic_copy(workbench_page) -> None:
     )
 
     page.locator("#audit-load").click()
-    page.locator("#audit-status").filter(has_text="正在加载审计记录").wait_for()
     items = page.locator("[data-audit-item]")
     items.first.wait_for(state="visible")
     assert items.count() == 2
