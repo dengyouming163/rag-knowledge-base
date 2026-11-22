@@ -411,72 +411,72 @@
 
         <section id="view-evaluation" data-view="evaluation" hidden aria-labelledby="view-evaluation-title">
           <header class="wb-view-header">
-            <div><span class="wb-view-kicker">MODULE / 05</span><h1 id="view-evaluation-title">Evaluation</h1></div>
-            <p>Review quality runs and comparable evaluation results.</p>
+            <div><span class="wb-view-kicker" data-i18n="evaluation.kicker">MODULE / 05</span><h1 id="view-evaluation-title" data-i18n="evaluation.title">Evaluation</h1></div>
+            <p data-i18n="evaluation.subtitle">Review quality runs and comparable evaluation results.</p>
           </header>
           <div class="wb-view-body wb-ops-workspace" data-view-body>
             <div class="wb-ops-toolbar">
               <div class="wb-ops-toolbar-main">
-                <button id="evaluation-load" class="wb-ops-action" type="button">Load runs</button>
+                <button id="evaluation-load" class="wb-ops-action" type="button" data-i18n="evaluation.loadRuns">Load runs</button>
                 <div class="wb-ops-window">
-                  <label for="evaluation-window">Time window</label>
-                  <select id="evaluation-window" disabled aria-describedby="evaluation-window-note"><option>Global window</option></select>
+                  <label for="evaluation-window" data-i18n="evaluation.timeWindow">Time window</label>
+                  <select id="evaluation-window" disabled aria-describedby="evaluation-window-note"><option data-i18n="evaluation.globalWindow">Global window</option></select>
                 </div>
-                <p id="evaluation-window-note" class="wb-ops-note">Time-window filtering is not supported by run history; the latest 20 runs are shown.</p>
+                <p id="evaluation-window-note" class="wb-ops-note" data-i18n="evaluation.windowNote">Time-window filtering is not supported by run history; the latest 20 runs are shown.</p>
               </div>
-              <p id="evaluation-permission-status" class="wb-ops-permission" data-action-disabled-reason role="status" aria-live="polite">Permissions are checked when runs load.</p>
+              <p id="evaluation-permission-status" class="wb-ops-permission" data-action-disabled-reason role="status" aria-live="polite" data-i18n="evaluation.permissionStatus">Permissions are checked when runs load.</p>
             </div>
 
-            <div class="wb-run-triggers" aria-label="Start an evaluation or operations drill">
-              <div><span class="wb-ops-index">ACTIONS</span><h2>Start a run</h2><p>Each action creates a real queued run; status follows its server detail.</p></div>
+            <div class="wb-run-triggers" aria-label="Start an evaluation or operations drill" data-i18n-aria-label="evaluation.triggersAriaLabel">
+              <div><span class="wb-ops-index" data-i18n="evaluation.actionsIndex">ACTIONS</span><h2 data-i18n="evaluation.startRun">Start a run</h2><p data-i18n="evaluation.actionsDescription">Each action creates a real queued run; status follows its server detail.</p></div>
               <div class="wb-run-trigger-buttons">
-                <button id="run-trigger-eval-mock" class="wb-ops-action" type="button" data-kind="eval_mock" disabled>Evaluation</button>
-                <button id="run-trigger-loadtest" class="wb-ops-action wb-ops-action-secondary" type="button" data-kind="loadtest" disabled>Load test</button>
-                <button id="run-trigger-drill-parser" class="wb-ops-action wb-ops-action-secondary" type="button" data-kind="drill_parser" disabled>Parser drill</button>
-                <button id="run-trigger-drill-llm" class="wb-ops-action wb-ops-action-secondary" type="button" data-kind="drill_llm" disabled>LLM drill</button>
-                <button id="run-trigger-drill-queue" class="wb-ops-action wb-ops-action-secondary" type="button" data-kind="drill_queue" disabled>Queue drill</button>
+                <button id="run-trigger-eval-mock" class="wb-ops-action" type="button" data-kind="eval_mock" disabled data-i18n="evaluation.triggerEvaluation">Evaluation</button>
+                <button id="run-trigger-loadtest" class="wb-ops-action wb-ops-action-secondary" type="button" data-kind="loadtest" disabled data-i18n="evaluation.triggerLoadtest">Load test</button>
+                <button id="run-trigger-drill-parser" class="wb-ops-action wb-ops-action-secondary" type="button" data-kind="drill_parser" disabled data-i18n="evaluation.triggerParserDrill">Parser drill</button>
+                <button id="run-trigger-drill-llm" class="wb-ops-action wb-ops-action-secondary" type="button" data-kind="drill_llm" disabled data-i18n="evaluation.triggerLlmDrill">LLM drill</button>
+                <button id="run-trigger-drill-queue" class="wb-ops-action wb-ops-action-secondary" type="button" data-kind="drill_queue" disabled data-i18n="evaluation.triggerQueueDrill">Queue drill</button>
               </div>
             </div>
             <p id="evaluation-action-status" class="wb-ops-status-line wb-ops-action-status" role="status" aria-live="polite"></p>
 
             <div class="wb-ops-grid wb-evaluation-grid">
               <article class="wb-ops-panel wb-ops-history" aria-labelledby="evaluation-runs-title">
-                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">01 / HISTORY</span><h2 id="evaluation-runs-title">Run history</h2></div><span>Independent history state</span></div>
-                <p id="evaluation-runs-status" class="wb-ops-status-line" role="status" aria-live="polite">Load runs or refresh to inspect evaluation history.</p>
+                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index" data-i18n="evaluation.historyIndex">01 / HISTORY</span><h2 id="evaluation-runs-title" data-i18n="evaluation.historyTitle">Run history</h2></div><span data-i18n="evaluation.independentHistory">Independent history state</span></div>
+                <p id="evaluation-runs-status" class="wb-ops-status-line" role="status" aria-live="polite" data-i18n="evaluation.runsStatus">Load runs or refresh to inspect evaluation history.</p>
                 <div class="wb-ops-table-scroll">
                   <table class="wb-ops-table wb-evaluation-table">
-                    <caption class="wb-sr-only">Scoped evaluation and drill runs</caption>
-                    <thead><tr><th scope="col">Run</th><th scope="col">Kind</th><th scope="col">Status</th><th scope="col">Requested</th><th scope="col">Started</th><th scope="col">Finished</th><th scope="col">Exit</th></tr></thead>
-                    <tbody id="evaluation-run-rows"><tr><td colspan="7" class="wb-ops-empty">No evaluation runs loaded.</td></tr></tbody>
+                    <caption class="wb-sr-only" data-i18n="evaluation.tableCaption">Scoped evaluation and drill runs</caption>
+                    <thead><tr><th scope="col" data-i18n="evaluation.run">Run</th><th scope="col" data-i18n="evaluation.kind">Kind</th><th scope="col" data-i18n="evaluation.status">Status</th><th scope="col" data-i18n="evaluation.requested">Requested</th><th scope="col" data-i18n="evaluation.started">Started</th><th scope="col" data-i18n="evaluation.finished">Finished</th><th scope="col" data-i18n="evaluation.exit">Exit</th></tr></thead>
+                    <tbody id="evaluation-run-rows"><tr><td colspan="7" class="wb-ops-empty" data-i18n="evaluation.noRuns">No evaluation runs loaded.</td></tr></tbody>
                   </table>
                 </div>
               </article>
 
               <article id="evaluation-run-detail" class="wb-ops-panel wb-evaluation-detail" aria-labelledby="evaluation-detail-title">
-                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index">02 / DETAIL</span><h2 id="evaluation-detail-title">Run detail</h2></div><span>Independent detail state</span></div>
-                <p id="evaluation-detail-status" class="wb-ops-status-line" role="status" aria-live="polite">Select a run to inspect its detail independently.</p>
+                <div class="wb-ops-panel-heading"><div><span class="wb-ops-index" data-i18n="evaluation.detailIndex">02 / DETAIL</span><h2 id="evaluation-detail-title" data-i18n="evaluation.detailTitle">Run detail</h2></div><span data-i18n="evaluation.independentDetail">Independent detail state</span></div>
+                <p id="evaluation-detail-status" class="wb-ops-status-line" role="status" aria-live="polite" data-i18n="evaluation.detailStatus">Select a run to inspect its detail independently.</p>
                 <dl class="wb-ops-detail-list wb-run-fields">
-                  <div><dt>Kind</dt><dd data-run-field="kind">—</dd></div>
-                  <div><dt>Status</dt><dd data-run-field="status">—</dd></div>
-                  <div><dt>Requested</dt><dd data-run-field="requested_at">—</dd></div>
-                  <div><dt>Started</dt><dd data-run-field="started_at">—</dd></div>
-                  <div><dt>Finished</dt><dd data-run-field="finished_at">—</dd></div>
-                  <div><dt>Exit code</dt><dd data-run-field="exit_code">—</dd></div>
-                  <div><dt>Artifact path</dt><dd data-run-field="artifact_path">—</dd></div>
-                  <div><dt>Error</dt><dd data-run-field="error">—</dd></div>
+                  <div><dt data-i18n="evaluation.kind">Kind</dt><dd data-run-field="kind">—</dd></div>
+                  <div><dt data-i18n="evaluation.status">Status</dt><dd data-run-field="status">—</dd></div>
+                  <div><dt data-i18n="evaluation.requested">Requested</dt><dd data-run-field="requested_at">—</dd></div>
+                  <div><dt data-i18n="evaluation.started">Started</dt><dd data-run-field="started_at">—</dd></div>
+                  <div><dt data-i18n="evaluation.finished">Finished</dt><dd data-run-field="finished_at">—</dd></div>
+                  <div><dt data-i18n="evaluation.exitCode">Exit code</dt><dd data-run-field="exit_code">—</dd></div>
+                  <div><dt data-i18n="evaluation.artifactPath">Artifact path</dt><dd data-run-field="artifact_path">—</dd></div>
+                  <div><dt data-i18n="evaluation.error">Error</dt><dd data-run-field="error">—</dd></div>
                 </dl>
 
-                <div class="wb-run-metrics-heading"><h3>Quality metrics</h3><p id="evaluation-delta-context">No comparison loaded.</p></div>
+                <div class="wb-run-metrics-heading"><h3 data-i18n="evaluation.qualityMetrics">Quality metrics</h3><p id="evaluation-delta-context" data-i18n="evaluation.deltaContext">No comparison loaded.</p></div>
                 <div class="wb-run-metric-grid">
-                  <div class="wb-run-metric"><span>Recall@K</span><strong data-run-metric="recall_at_k">—</strong><small>Delta <output data-run-delta="recall_at_k">—</output></small></div>
-                  <div class="wb-run-metric"><span>MRR</span><strong data-run-metric="mrr">—</strong><small>Delta <output data-run-delta="mrr">—</output></small></div>
-                  <div class="wb-run-metric"><span>Hit rate</span><strong data-run-metric="hit_rate">—</strong><small>Delta <output data-run-delta="hit_rate">—</output></small></div>
-                  <div class="wb-run-metric"><span>Refusal accuracy</span><strong data-run-metric="refusal_accuracy">—</strong><small>Delta <output data-run-delta="refusal_accuracy">—</output></small></div>
-                  <div class="wb-run-metric"><span>Answer coverage</span><strong data-run-metric="answer_coverage">—</strong><small>Delta <output data-run-delta="answer_coverage">—</output></small></div>
-                  <div class="wb-run-metric"><span>Citation accuracy</span><strong data-run-metric="citation_accuracy">—</strong><small>Delta <output data-run-delta="citation_accuracy">—</output></small></div>
+                  <div class="wb-run-metric"><span data-i18n="evaluation.recallAtK">Recall@K</span><strong data-run-metric="recall_at_k">—</strong><small><span data-i18n="evaluation.delta">Delta</span> <output data-run-delta="recall_at_k">—</output></small></div>
+                  <div class="wb-run-metric"><span data-i18n="evaluation.mrr">MRR</span><strong data-run-metric="mrr">—</strong><small><span data-i18n="evaluation.delta">Delta</span> <output data-run-delta="mrr">—</output></small></div>
+                  <div class="wb-run-metric"><span data-i18n="evaluation.hitRate">Hit rate</span><strong data-run-metric="hit_rate">—</strong><small><span data-i18n="evaluation.delta">Delta</span> <output data-run-delta="hit_rate">—</output></small></div>
+                  <div class="wb-run-metric"><span data-i18n="evaluation.refusalAccuracy">Refusal accuracy</span><strong data-run-metric="refusal_accuracy">—</strong><small><span data-i18n="evaluation.delta">Delta</span> <output data-run-delta="refusal_accuracy">—</output></small></div>
+                  <div class="wb-run-metric"><span data-i18n="evaluation.answerCoverage">Answer coverage</span><strong data-run-metric="answer_coverage">—</strong><small><span data-i18n="evaluation.delta">Delta</span> <output data-run-delta="answer_coverage">—</output></small></div>
+                  <div class="wb-run-metric"><span data-i18n="evaluation.citationAccuracy">Citation accuracy</span><strong data-run-metric="citation_accuracy">—</strong><small><span data-i18n="evaluation.delta">Delta</span> <output data-run-delta="citation_accuracy">—</output></small></div>
                 </div>
-                <h3 class="wb-run-output-title">Output tail</h3>
-                <pre id="evaluation-run-output" class="wb-run-output" tabindex="0" aria-label="Run output tail">—</pre>
+                <h3 class="wb-run-output-title" data-i18n="evaluation.outputTail">Output tail</h3>
+                <pre id="evaluation-run-output" class="wb-run-output" tabindex="0" aria-label="Run output tail" data-i18n-aria-label="evaluation.outputAriaLabel">—</pre>
               </article>
             </div>
           </div>
