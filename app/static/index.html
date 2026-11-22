@@ -264,94 +264,94 @@
 
         <section id="view-traces" data-view="traces" hidden aria-labelledby="view-traces-title">
           <header class="wb-view-header">
-            <div><span class="wb-view-kicker">MODULE / 03</span><h1 id="view-traces-title">Traces</h1></div>
-            <p>Follow request execution and diagnostic evidence.</p>
+            <div><span class="wb-view-kicker" data-i18n="traces.kicker">MODULE / 03</span><h1 id="view-traces-title" data-i18n="traces.title">Traces</h1></div>
+            <p data-i18n="traces.subtitle">Follow request execution and diagnostic evidence.</p>
           </header>
           <div class="wb-view-body wb-traces" data-view-body>
-            <div class="wb-trace-mobile-tabs" role="tablist" aria-label="Trace workspace">
-              <button id="trace-mode-list" class="wb-trace-mode" type="button" role="tab" data-trace-mode="list" aria-selected="true" aria-controls="trace-list-panel">List</button>
-              <button id="trace-mode-detail" class="wb-trace-mode" type="button" role="tab" data-trace-mode="detail" aria-selected="false" aria-controls="trace-detail" tabindex="-1">Detail</button>
+            <div class="wb-trace-mobile-tabs" role="tablist" aria-label="Trace workspace" data-i18n-aria-label="traces.workspaceAriaLabel">
+              <button id="trace-mode-list" class="wb-trace-mode" type="button" role="tab" data-trace-mode="list" aria-selected="true" aria-controls="trace-list-panel" data-i18n="traces.listTab">List</button>
+              <button id="trace-mode-detail" class="wb-trace-mode" type="button" role="tab" data-trace-mode="detail" aria-selected="false" aria-controls="trace-detail" tabindex="-1" data-i18n="traces.detailTab">Detail</button>
             </div>
 
             <div class="wb-traces-layout">
               <aside class="wb-trace-filters" aria-labelledby="trace-filters-title">
                 <div class="wb-trace-section-heading">
-                  <span class="wb-trace-index">01 / FILTERS</span>
-                  <h2 id="trace-filters-title">Trace search</h2>
+                  <span class="wb-trace-index" data-i18n="traces.filtersIndex">01 / FILTERS</span>
+                  <h2 id="trace-filters-title" data-i18n="traces.filterTitle">Trace search</h2>
                 </div>
                 <form id="trace-filter-form" class="wb-trace-filter-form">
-                  <div class="wb-trace-field"><label for="trace-window">Window</label><select id="trace-window" name="window"><option value="1h">Last hour</option><option value="24h" selected>Last 24 hours</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option></select></div>
-                  <div class="wb-trace-field"><label for="trace-outcome">Outcome</label><select id="trace-outcome" name="outcome"><option value="">All outcomes</option><option value="succeeded">Succeeded</option><option value="refused">Refused</option><option value="error">Error</option><option value="cancelled">Cancelled</option></select></div>
-                  <div class="wb-trace-field"><label for="trace-operation">Operation</label><select id="trace-operation" name="operation"><option value="">All operations</option><option value="search">Search</option><option value="chat">Chat</option></select></div>
-                  <div class="wb-trace-field"><label for="trace-mode">Mode</label><input id="trace-mode" name="mode" maxlength="64" autocomplete="off" placeholder="Any mode"></div>
-                  <div class="wb-trace-field"><label for="trace-min-ms">Minimum total (ms)</label><input id="trace-min-ms" name="min_ms" type="number" min="0" step="any" placeholder="0"></div>
-                  <div class="wb-trace-field"><label for="trace-id">Exact Trace ID</label><input id="trace-id" name="trace_id" maxlength="160" pattern="[A-Za-z0-9][A-Za-z0-9_.:\-]{0,159}" autocomplete="off" spellcheck="false" placeholder="Optional exact match"></div>
-                  <div class="wb-trace-field"><label for="trace-limit">Page size</label><input id="trace-limit" name="limit" type="number" min="1" max="100" value="20" required></div>
-                  <button id="trace-apply" class="wb-trace-action" type="submit">Apply filters</button>
+                  <div class="wb-trace-field"><label for="trace-window" data-i18n="traces.window">Window</label><select id="trace-window" name="window"><option value="1h" data-i18n="traces.lastHour">Last hour</option><option value="24h" selected data-i18n="traces.last24Hours">Last 24 hours</option><option value="7d" data-i18n="traces.last7Days">Last 7 days</option><option value="30d" data-i18n="traces.last30Days">Last 30 days</option></select></div>
+                  <div class="wb-trace-field"><label for="trace-outcome" data-i18n="traces.outcome">Outcome</label><select id="trace-outcome" name="outcome"><option value="" data-i18n="traces.allOutcomes">All outcomes</option><option value="succeeded" data-i18n="traces.succeeded">Succeeded</option><option value="refused" data-i18n="traces.refused">Refused</option><option value="error" data-i18n="traces.error">Error</option><option value="cancelled" data-i18n="traces.cancelled">Cancelled</option></select></div>
+                  <div class="wb-trace-field"><label for="trace-operation" data-i18n="traces.operation">Operation</label><select id="trace-operation" name="operation"><option value="" data-i18n="traces.allOperations">All operations</option><option value="search" data-i18n="traces.search">Search</option><option value="chat" data-i18n="traces.chat">Chat</option></select></div>
+                  <div class="wb-trace-field"><label for="trace-mode" data-i18n="traces.mode">Mode</label><input id="trace-mode" name="mode" maxlength="64" autocomplete="off" placeholder="Any mode" data-i18n-placeholder="traces.anyModePlaceholder"></div>
+                  <div class="wb-trace-field"><label for="trace-min-ms" data-i18n="traces.minimumTotal">Minimum total (ms)</label><input id="trace-min-ms" name="min_ms" type="number" min="0" step="any" placeholder="0"></div>
+                  <div class="wb-trace-field"><label for="trace-id" data-i18n="traces.exactTraceId">Exact Trace ID</label><input id="trace-id" name="trace_id" maxlength="160" pattern="[A-Za-z0-9][A-Za-z0-9_.:\-]{0,159}" autocomplete="off" spellcheck="false" placeholder="Optional exact match" data-i18n-placeholder="traces.exactMatchPlaceholder"></div>
+                  <div class="wb-trace-field"><label for="trace-limit" data-i18n="traces.pageSize">Page size</label><input id="trace-limit" name="limit" type="number" min="1" max="100" value="20" required></div>
+                  <button id="trace-apply" class="wb-trace-action" type="submit" data-i18n="traces.applyFilters">Apply filters</button>
                 </form>
-                <p class="wb-trace-filter-note">Nothing loads until Apply, a trace action, or the global Refresh.</p>
+                <p class="wb-trace-filter-note" data-i18n="traces.filterNote">Nothing loads until Apply, a trace action, or the global Refresh.</p>
               </aside>
 
               <section id="trace-list-panel" class="wb-trace-list-panel" aria-labelledby="trace-list-title">
                 <div class="wb-trace-section-heading wb-trace-list-heading">
-                  <div><span class="wb-trace-index">02 / REQUESTS</span><h2 id="trace-list-title">Recent traces</h2></div>
-                  <span>Stable time / ID order</span>
+                  <div><span class="wb-trace-index" data-i18n="traces.requestsIndex">02 / REQUESTS</span><h2 id="trace-list-title" data-i18n="traces.recentTraces">Recent traces</h2></div>
+                  <span data-i18n="traces.stableOrder">Stable time / ID order</span>
                 </div>
-                <p id="trace-list-status" class="wb-trace-status" role="status" aria-live="polite">Apply filters or refresh to load traces.</p>
+                <p id="trace-list-status" class="wb-trace-status" role="status" aria-live="polite" data-i18n="traces.listInitialStatus">Apply filters or refresh to load traces.</p>
                 <div id="trace-table-scroll" class="wb-trace-table-scroll">
                   <table class="wb-trace-table">
-                    <caption class="wb-sr-only">Scoped request traces</caption>
-                    <thead><tr><th scope="col">Time</th><th scope="col">Trace</th><th scope="col">Operation</th><th scope="col">Outcome</th><th scope="col">Stages</th><th scope="col">Total</th><th scope="col">Hits</th><th scope="col">Token</th></tr></thead>
-                    <tbody id="trace-list-rows"><tr><td colspan="8" class="wb-trace-empty">No traces loaded.</td></tr></tbody>
+                    <caption class="wb-sr-only" data-i18n="traces.tableCaption">Scoped request traces</caption>
+                    <thead><tr><th scope="col" data-i18n="traces.time">Time</th><th scope="col" data-i18n="traces.trace">Trace</th><th scope="col" data-i18n="traces.operation">Operation</th><th scope="col" data-i18n="traces.outcome">Outcome</th><th scope="col" data-i18n="traces.stages">Stages</th><th scope="col" data-i18n="traces.total">Total</th><th scope="col" data-i18n="traces.hits">Hits</th><th scope="col" data-i18n="traces.token">Token</th></tr></thead>
+                    <tbody id="trace-list-rows"><tr><td colspan="8" class="wb-trace-empty" data-i18n="traces.noTraces">No traces loaded.</td></tr></tbody>
                   </table>
                 </div>
-                <button id="trace-load-more" class="wb-trace-load-more" type="button" hidden>Load more</button>
+                <button id="trace-load-more" class="wb-trace-load-more" type="button" hidden data-i18n="traces.loadMore">Load more</button>
               </section>
 
               <aside id="trace-detail" class="wb-trace-detail" data-trace-detail aria-labelledby="trace-detail-title" tabindex="-1">
                 <div class="wb-trace-section-heading wb-trace-detail-heading">
-                  <div><span class="wb-trace-index">03 / INSPECTOR</span><h2 id="trace-detail-title">Trace Inspector</h2></div>
-                  <button id="trace-drawer-close" class="wb-trace-drawer-close" type="button" data-trace-drawer-close aria-label="Close trace inspector">Close</button>
+                  <div><span class="wb-trace-index" data-i18n="traces.inspectorIndex">03 / INSPECTOR</span><h2 id="trace-detail-title" data-i18n="traces.inspectorTitle">Trace Inspector</h2></div>
+                  <button id="trace-drawer-close" class="wb-trace-drawer-close" type="button" data-trace-drawer-close aria-label="Close trace inspector" data-i18n="traces.close" data-i18n-aria-label="traces.closeAriaLabel">Close</button>
                 </div>
-                <p id="trace-detail-status" class="wb-trace-status" role="status" aria-live="polite">Select a trace to inspect diagnostic evidence.</p>
+                <p id="trace-detail-status" class="wb-trace-status" role="status" aria-live="polite" data-i18n="traces.detailInitialStatus">Select a trace to inspect diagnostic evidence.</p>
                 <p id="trace-missing" class="wb-trace-missing" role="note" hidden></p>
-                <div class="wb-trace-inspector-tabs" role="tablist" aria-label="Trace inspector views">
-                  <button id="trace-inspector-tab-summary" class="wb-trace-inspector-tab" type="button" role="tab" data-trace-tab="summary" aria-selected="true" aria-controls="trace-inspector-panel-summary">Summary</button>
-                  <button id="trace-inspector-tab-timing" class="wb-trace-inspector-tab" type="button" role="tab" data-trace-tab="timing" aria-selected="false" aria-controls="trace-inspector-panel-timing" tabindex="-1">Timing</button>
-                  <button id="trace-inspector-tab-raw" class="wb-trace-inspector-tab" type="button" role="tab" data-trace-tab="raw" aria-selected="false" aria-controls="trace-inspector-panel-raw" tabindex="-1">Raw</button>
+                <div class="wb-trace-inspector-tabs" role="tablist" aria-label="Trace inspector views" data-i18n-aria-label="traces.inspectorViewsAriaLabel">
+                  <button id="trace-inspector-tab-summary" class="wb-trace-inspector-tab" type="button" role="tab" data-trace-tab="summary" aria-selected="true" aria-controls="trace-inspector-panel-summary" data-i18n="traces.summaryTab">Summary</button>
+                  <button id="trace-inspector-tab-timing" class="wb-trace-inspector-tab" type="button" role="tab" data-trace-tab="timing" aria-selected="false" aria-controls="trace-inspector-panel-timing" tabindex="-1" data-i18n="traces.timingTab">Timing</button>
+                  <button id="trace-inspector-tab-raw" class="wb-trace-inspector-tab" type="button" role="tab" data-trace-tab="raw" aria-selected="false" aria-controls="trace-inspector-panel-raw" tabindex="-1" data-i18n="traces.rawTab">Raw</button>
                 </div>
 
                 <section id="trace-inspector-panel-summary" class="wb-trace-inspector-panel" role="tabpanel" data-trace-panel="summary" aria-labelledby="trace-inspector-tab-summary">
                   <dl class="wb-trace-summary">
-                    <div><dt>Trace ID</dt><dd data-trace-summary="trace_id">—</dd></div>
-                    <div><dt>Knowledge base</dt><dd data-trace-summary="kb_id">—</dd></div>
-                    <div><dt>Occurred at</dt><dd data-trace-summary="occurred_at">—</dd></div>
-                    <div><dt>Operation</dt><dd data-trace-summary="operation">—</dd></div>
-                    <div><dt>Mode</dt><dd data-trace-summary="mode">—</dd></div>
-                    <div><dt>Model</dt><dd data-trace-summary="model">—</dd></div>
-                    <div><dt>Outcome</dt><dd data-trace-summary="outcome">—</dd></div>
-                    <div><dt>Hits</dt><dd data-trace-summary="hits">—</dd></div>
-                    <div><dt>Citation valid</dt><dd data-trace-summary="citation">—</dd></div>
-                    <div><dt>Rerank degraded</dt><dd data-trace-summary="rerank">—</dd></div>
-                    <div><dt>Prompt tokens</dt><dd data-trace-summary="prompt_tokens">—</dd></div>
-                    <div><dt>Completion tokens</dt><dd data-trace-summary="completion_tokens">—</dd></div>
-                    <div><dt>Total tokens</dt><dd data-trace-summary="total_tokens">—</dd></div>
-                    <div><dt>Errors</dt><dd data-trace-summary="errors">—</dd></div>
+                    <div><dt data-i18n="traces.traceId">Trace ID</dt><dd data-trace-summary="trace_id">—</dd></div>
+                    <div><dt data-i18n="traces.knowledgeBase">Knowledge base</dt><dd data-trace-summary="kb_id">—</dd></div>
+                    <div><dt data-i18n="traces.occurredAt">Occurred at</dt><dd data-trace-summary="occurred_at">—</dd></div>
+                    <div><dt data-i18n="traces.operation">Operation</dt><dd data-trace-summary="operation">—</dd></div>
+                    <div><dt data-i18n="traces.mode">Mode</dt><dd data-trace-summary="mode">—</dd></div>
+                    <div><dt data-i18n="traces.model">Model</dt><dd data-trace-summary="model">—</dd></div>
+                    <div><dt data-i18n="traces.outcome">Outcome</dt><dd data-trace-summary="outcome">—</dd></div>
+                    <div><dt data-i18n="traces.hits">Hits</dt><dd data-trace-summary="hits">—</dd></div>
+                    <div><dt data-i18n="traces.citationValid">Citation valid</dt><dd data-trace-summary="citation">—</dd></div>
+                    <div><dt data-i18n="traces.rerankDegraded">Rerank degraded</dt><dd data-trace-summary="rerank">—</dd></div>
+                    <div><dt data-i18n="traces.promptTokens">Prompt tokens</dt><dd data-trace-summary="prompt_tokens">—</dd></div>
+                    <div><dt data-i18n="traces.completionTokens">Completion tokens</dt><dd data-trace-summary="completion_tokens">—</dd></div>
+                    <div><dt data-i18n="traces.totalTokens">Total tokens</dt><dd data-trace-summary="total_tokens">—</dd></div>
+                    <div><dt data-i18n="traces.errors">Errors</dt><dd data-trace-summary="errors">—</dd></div>
                   </dl>
                 </section>
 
                 <section id="trace-inspector-panel-timing" class="wb-trace-inspector-panel" role="tabpanel" data-trace-panel="timing" aria-labelledby="trace-inspector-tab-timing" hidden>
-                  <p id="trace-timing-status" class="wb-trace-timing-status">Timing appears after a trace is selected.</p>
-                  <div id="trace-timing-spans" class="wb-trace-timing-spans" aria-label="Trace stage timing"></div>
+                  <p id="trace-timing-status" class="wb-trace-timing-status" data-i18n="traces.timingInitialStatus">Timing appears after a trace is selected.</p>
+                  <div id="trace-timing-spans" class="wb-trace-timing-spans" aria-label="Trace stage timing" data-i18n-aria-label="traces.stageTimingAriaLabel"></div>
                 </section>
 
                 <section id="trace-inspector-panel-raw" class="wb-trace-inspector-panel" role="tabpanel" data-trace-panel="raw" aria-labelledby="trace-inspector-tab-raw" hidden>
-                  <div class="wb-trace-raw-toolbar"><button id="trace-copy" class="wb-trace-copy" type="button">Copy Raw JSON</button><p id="trace-copy-status" class="wb-trace-status" role="status" aria-live="polite">Copy uses your browser clipboard permission.</p></div>
-                  <pre id="trace-raw" class="wb-trace-raw" tabindex="0" aria-label="Raw trace JSON"></pre>
+                  <div class="wb-trace-raw-toolbar"><button id="trace-copy" class="wb-trace-copy" type="button" data-i18n="traces.copyRawJson">Copy Raw JSON</button><p id="trace-copy-status" class="wb-trace-status" role="status" aria-live="polite" data-i18n="traces.copyStatus">Copy uses your browser clipboard permission.</p></div>
+                  <pre id="trace-raw" class="wb-trace-raw" tabindex="0" aria-label="Raw trace JSON" data-i18n-aria-label="traces.rawJsonAriaLabel"></pre>
                 </section>
               </aside>
             </div>
-            <button id="trace-drawer-backdrop" class="wb-trace-drawer-backdrop" type="button" data-trace-drawer-close aria-label="Close trace inspector overlay" tabindex="-1" hidden></button>
+            <button id="trace-drawer-backdrop" class="wb-trace-drawer-backdrop" type="button" data-trace-drawer-close aria-label="Close trace inspector overlay" data-i18n-aria-label="traces.closeOverlayAriaLabel" tabindex="-1" hidden></button>
           </div>
         </section>
 

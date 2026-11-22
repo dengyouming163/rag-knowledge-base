@@ -389,7 +389,7 @@ def test_workbench_traces_contains_filters_table_inspector_and_responsive_contro
         assert f'id="{element_id}"' in traces
         assert html.count(f'id="{element_id}"') == 1
 
-    headings = re.findall(r'<th scope="col">([^<]+)</th>', traces)
+    headings = re.findall(r'<th scope="col"(?: data-i18n="[^"]+")?>([^<]+)</th>', traces)
     assert headings == ["Time", "Trace", "Operation", "Outcome", "Stages", "Total", "Hits", "Token"]
     for tab in ("summary", "timing", "raw"):
         assert f'data-trace-tab="{tab}"' in traces
@@ -2819,3 +2819,5 @@ def test_workbench_chinese_copy_covers_shell_and_overview(workbench_page) -> Non
     assert page.locator("#scope-refresh").inner_text() == "刷新"
     assert page.locator('[data-lab-tab="search"]').inner_text() == "检索"
     assert page.locator("#search-button").inner_text() == "执行检索"
+    assert page.locator("#view-traces h1").inner_text() == "调用追踪"
+    assert page.locator(".wb-trace-table thead th").first.inner_text() == "时间"
