@@ -302,6 +302,20 @@ test("Lab HTTP errors use shared Chinese error mapping", async (t) => {
   assert.equal(root.text("#chat-button"), "开始流式问答");
 });
 
+test("Lab validation keeps localized guidance instead of the unexpected-error fallback", async (t) => {
+  const fixture = createFixture(t);
+  const { root, lab, context } = fixture;
+
+  await lab.search(context(), { query: " " });
+  assert.equal(root.text("#search-status"), "Enter a retrieval query.");
+
+  await lab.startChat(context(), { question: " " });
+  assert.equal(root.text("#chat-status"), "Enter a question.");
+
+  await lab.upload(context(), new File(["x"], "bad.exe"));
+  assert.equal(root.text("#upload-status"), "Only .pdf, .md, and .txt files are supported.");
+});
+
 test("Search sends only the retrieval contract, caches hits, escapes content, and links its trace", async (t) => {
   const calls = [];
   const hit = searchHit({
@@ -434,7 +448,7 @@ test("Chat sends scope headers without tenant in the body and preserves CRLF fra
   await flush();
 });
 
-test("Chat surfaces escaped server errors, restores controls, and does not commit incomplete history", async (t) => {
+test("Chat handles server errors through shared copy, restores controls, and does not commit incomplete history", async (t) => {
   const fixture = createFixture(t, {
     fetchImpl: async () => sseStream([
       `data: ${JSON.stringify({ delta: "partial" })}\n\n`,
@@ -447,7 +461,7 @@ test("Chat surfaces escaped server errors, restores controls, and does not commi
   const result = await lab.startChat(context(), chatOptions(root));
 
   assert.equal(result.done, false);
-  assert.match(root.querySelector("#chat-status").textContent, /alert\(&quot;bad&quot;\)|alert\("bad"\)/);
+  assert.equal(root.querySelector("#chat-status").textContent, "Streaming chat failed: Request failed. Please try again.; try again.");
   assert.doesNotMatch(root.querySelector("#chat-status").innerHTML, /<script/);
   assert.equal(root.querySelector("#chat-button").disabled, false);
   let nextRequest;
@@ -475,7 +489,7 @@ test("Chat rejects a stream that ends before DONE and restores the submit button
   const result = await lab.startChat(context(), chatOptions(root));
 
   assert.equal(result.done, false);
-  assert.match(root.querySelector("#chat-status").textContent, /\[DONE\]/);
+  assert.equal(root.querySelector("#chat-status").textContent, "Streaming chat failed: Request failed. Please try again.; try again.");
   assert.equal(root.querySelector("#chat-button").disabled, false);
 });
 
@@ -603,7 +617,7 @@ test("Upload sends FormData and polls real job progress until success", async (t
   assert.equal(timers.callbacks.size, 0);
 });
 
-test("failed upload jobs and request failures escape errors and restore controls", async (t) => {
+test("failed upload jobs preserve job details and request failures use shared copy", async (t) => {
   const scenarios = [
     {
       name: "terminal job failure",
@@ -630,7 +644,12 @@ test("failed upload jobs and request failures escape errors and restore controls
       await pending;
       assert.equal(root.querySelector("#upload-button").disabled, false);
       assert.equal(root.querySelector("#upload-error").hidden, false);
-      assert.match(root.querySelector("#upload-error").textContent, /bad\(\)|alert/);
+      if (scenario.poll) {
+        assert.match(root.querySelector("#upload-error").textContent, /bad\(\)/);
+      } else {
+        assert.equal(root.querySelector("#upload-error").textContent, "Request failed. Please try again.");
+        assert.doesNotMatch(root.querySelector("#upload-error").textContent, /alert/);
+      }
       assert.doesNotMatch(root.querySelector("#upload-error").innerHTML, /<img|<script/);
     });
   }

@@ -14,11 +14,6 @@ function buttonLabels() {
   };
 }
 
-function errorMessage(error) {
-  if (error?.name === "ApiError") return formatError(error);
-  return error instanceof Error && error.message ? error.message : formatError(error);
-}
-
 function isAbort(error) {
   return error?.name === "AbortError";
 }
@@ -307,7 +302,7 @@ export function createLab({
       query = String(input.query ?? byId("search-query")?.value ?? "").trim();
       if (!query) throw new Error(t("lab.validation.query"));
     } catch (error) {
-      setStatus("#search-status", errorMessage(error), "error");
+      setStatus("#search-status", error.message, "error");
       return undefined;
     }
     const operation = beginOperation("search", context);
@@ -338,7 +333,7 @@ export function createLab({
     } catch (error) {
       if (isCurrent(operation) && !isAbort(error)) {
         renderSearchHits([], t("lab.search.failedEmpty"));
-        setStatus("#search-status", t("lab.search.failed", { error: errorMessage(error) }), "error");
+        setStatus("#search-status", t("lab.search.failed", { error: formatError(error) }), "error");
       }
       return undefined;
     } finally {
@@ -479,7 +474,7 @@ export function createLab({
       validateScope(context);
       if (!options.question) throw new Error(t("lab.validation.question"));
     } catch (error) {
-      setStatus("#chat-status", errorMessage(error), "error");
+      setStatus("#chat-status", error.message, "error");
       return { done: false, cancelled: false, citations: [] };
     }
     cancelOperation("citation");
@@ -534,7 +529,7 @@ export function createLab({
       return { done: true, cancelled: false, citations: [...operation.citations] };
     } catch (error) {
       const cancelled = isAbort(error) || !isCurrent(operation);
-      if (!cancelled) setStatus("#chat-status", t("lab.chat.failed", { error: errorMessage(error) }), "error");
+      if (!cancelled) setStatus("#chat-status", t("lab.chat.failed", { error: formatError(error) }), "error");
       return { done: false, cancelled, citations: [...operation.citations] };
     } finally {
       if (operations.chat === operation) {
@@ -606,7 +601,7 @@ export function createLab({
       } catch (error) {
         if (isCurrent(operation) && !isAbort(error)) {
           if (detail) detail.hidden = true;
-          setStatus("#citation-status", t("lab.citation.failed", { error: errorMessage(error) }), "error");
+          setStatus("#citation-status", t("lab.citation.failed", { error: formatError(error) }), "error");
         }
         return undefined;
       } finally {
@@ -647,7 +642,7 @@ export function createLab({
       if (!file) throw new Error(t("lab.validation.document"));
       if (!/\.(pdf|md|txt)$/i.test(file.name)) throw new Error(t("lab.validation.fileType"));
     } catch (error) {
-      setStatus("#upload-status", errorMessage(error), "error");
+      setStatus("#upload-status", error.message, "error");
       return undefined;
     }
     const operation = beginOperation("upload", context);
@@ -704,7 +699,7 @@ export function createLab({
     } catch (error) {
       if (isCurrent(operation) && !isAbort(error)) {
         setStatus("#upload-status", t("lab.upload.failed"), "error");
-        showUploadError(errorMessage(error));
+        showUploadError(formatError(error));
       }
       return undefined;
     } finally {

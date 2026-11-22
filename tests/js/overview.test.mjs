@@ -360,7 +360,7 @@ test("loadOverview starts summary and trends in parallel and isolates panel fail
   trends.resolve(timeseriesFixture());
   await loading;
 
-  assert.match(fixture.root.text("[data-overview-summary-status]"), /summary down/);
+  assert.equal(fixture.root.text("[data-overview-summary-status]"), "Summary unavailable: Request failed. Please try again.");
   assert.equal(metric(fixture.root, "requests"), "—");
   assert.match(fixture.root.text("[data-overview-trends-status]"), /Updated/);
   assert.match(fixture.root.querySelector('[data-overview-trend-svg="requests"]').innerHTML, /<svg/);

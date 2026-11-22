@@ -156,11 +156,6 @@ function endpoint(path, scope) {
   return `${path}?${query.toString()}`;
 }
 
-function errorMessage(error) {
-  if (error?.name === "ApiError") return formatError(error);
-  return error instanceof Error && error.message ? error.message : formatError(error);
-}
-
 export function createOverview({
   root,
   guard,
@@ -324,13 +319,13 @@ export function createOverview({
         renderSummary(cached.data, context.scope.window);
         setPanelStatus(
           "summary",
-          t("overview.stale", { time: staleAt, lastSuccess: cached.updatedAt, error: errorMessage(error) }),
+          t("overview.stale", { time: staleAt, lastSuccess: cached.updatedAt, error: formatError(error) }),
           "stale",
           { "stale-at": staleAt, "last-success-at": cached.updatedAt },
         );
       } else {
         renderSummary(null, context.scope.window);
-        setPanelStatus("summary", t("overview.summaryUnavailable", { error: errorMessage(error) }), "error");
+        setPanelStatus("summary", t("overview.summaryUnavailable", { error: formatError(error) }), "error");
       }
     }
   }
@@ -356,13 +351,13 @@ export function createOverview({
         renderTrends(cached.data);
         setPanelStatus(
           "trends",
-          t("overview.stale", { time: staleAt, lastSuccess: cached.updatedAt, error: errorMessage(error) }),
+          t("overview.stale", { time: staleAt, lastSuccess: cached.updatedAt, error: formatError(error) }),
           "stale",
           { "stale-at": staleAt, "last-success-at": cached.updatedAt },
         );
       } else {
         renderTrends(null);
-        setPanelStatus("trends", t("overview.trendsUnavailable", { error: errorMessage(error) }), "error");
+        setPanelStatus("trends", t("overview.trendsUnavailable", { error: formatError(error) }), "error");
       }
     }
   }
