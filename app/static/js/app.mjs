@@ -252,7 +252,7 @@ function initializeWorkbench() {
     if (!scopeChanged) scopeGuard.invalidate();
     const view = viewFromHash(window.location.hash);
     const snapshot = scopeGuard.snapshot();
-    setStatus(t("app.refreshRequested", { view }));
+    setStatus(t("app.refreshRequested", { view: t(`nav.${view}`) }));
     window.dispatchEvent(new CustomEvent("workbuddy:refresh", {
       detail: { scope: activeScope, view, ...snapshot },
     }));
