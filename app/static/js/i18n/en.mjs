@@ -338,6 +338,7 @@ export default {
   "ingestion.retryReloaded": "Retry accepted; reloaded job #{id} and events from the server.",
   "ingestion.retryPartial": "Retry accepted, but job #{id} could not be fully reloaded. Inspect the local errors above.",
   "ingestion.retryFailed": "Retry failed: {error}",
+  "ingestion.conflict": "A job is already running; refresh job status.",
   "evaluation.kicker": "MODULE / 05",
   "evaluation.title": "Evaluation",
   "evaluation.subtitle": "Review quality runs and comparable evaluation results.",

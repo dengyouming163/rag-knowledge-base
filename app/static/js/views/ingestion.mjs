@@ -348,7 +348,7 @@ export function createIngestion({
     } catch (error) {
       if (!operationIsCurrent(operation)) return false;
       if (error?.status === 409) {
-        setText("#ingestion-action-status", `已有运行中的任务；请刷新任务状态。${formatError(error)}`);
+        setText("#ingestion-action-status", `${t("ingestion.conflict")} ${formatError(error)}`);
       } else if (error?.status === 404) {
         jobs = jobs.filter((item) => validJobId(item.id) !== id);
         clearSelection(t("ingestion.jobGoneNotice"));

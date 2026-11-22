@@ -338,6 +338,7 @@ export default {
   "ingestion.retryReloaded": "重试已接受；已从服务端重新加载任务 #{id} 及其事件。",
   "ingestion.retryPartial": "重试已接受，但无法完整重新加载任务 #{id}；请检查上方的本地错误。",
   "ingestion.retryFailed": "重试失败：{error}",
+  "ingestion.conflict": "已有运行中的任务；请刷新任务状态。",
   "evaluation.kicker": "模块 / 05",
   "evaluation.title": "评测与演练",
   "evaluation.subtitle": "查看质量评测运行记录与可比较的评测结果。",

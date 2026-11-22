@@ -1156,7 +1156,7 @@ def test_ingestion_jobs_events_retry_permissions_and_partial_failures(workbench_
 
     job_state["retry"] = 409
     page.locator("#ingestion-retry").click()
-    page.locator("#ingestion-action-status").filter(has_text="已有运行中的任务").wait_for()
+    page.locator("#ingestion-action-status").filter(has_text="A job is already running").wait_for()
     assert page.locator("#ingestion-retry").is_enabled()
     job_state["retry"] = 403
     page.locator("#ingestion-retry").click()
@@ -2876,3 +2876,112 @@ def test_workbench_chinese_copy_covers_shell_and_overview(workbench_page) -> Non
     assert page.locator("#run-trigger-loadtest").inner_text() == "启动压测"
     assert page.locator("#view-access h1").inner_text() == "访问控制"
     assert page.locator("#view-audit h1").inner_text() == "审计日志"
+
+
+def test_workbench_ingestion_uses_chinese_dynamic_copy(workbench_page) -> None:
+    page, url = workbench_page
+    page.set_default_timeout(7000)
+    base = url.split("?")[0]
+    retry_state = {"status": 202}
+    _install_task14_permissions(page, {"identity": "admin", "permissions": "admin"})
+    page.route(
+        "**/v1/ops/jobs?*",
+        lambda route: _fulfill_json(route, {
+            "jobs": [_task14_job(11)],
+            "counts": {"queued": 0, "running": 0, "succeeded": 0, "failed": 1},
+        }),
+    )
+    page.route(
+        "**/v1/ops/jobs/*/events",
+        lambda route: _fulfill_json(route, {"job_id": 11, "events": [{
+            "id": 1, "job_id": 11, "stage": "parsing", "status": "failed",
+            "progress": 80, "created_at": "2026-11-20T08:00:03Z",
+        }]}),
+    )
+
+    def retry_route(route) -> None:
+        status = retry_state["status"]
+        _fulfill_json(
+            route,
+            {"job_id": 11, "status": "queued"} if status == 202 else {"detail": "job is not failed"},
+            status=status,
+        )
+
+    page.route("**/v1/ops/jobs/*/retry", retry_route)
+    page.set_viewport_size({"width": 1440, "height": 1000})
+    page.goto(f"{base}#/ingestion")
+
+    assert page.locator("#ingestion-jobs-status").inner_text() == "加载任务或刷新以查看入库情况。"
+    assert page.locator("#ingestion-retry").inner_text() == "重试失败任务"
+
+    page.locator("#ingestion-load").click()
+    page.locator('[data-job-select="11"]').wait_for(state="visible")
+    assert page.locator("#ingestion-jobs-status").inner_text() == "1 个任务 · 排队 0 · 运行中 0 · 失败 1"
+
+    page.locator('[data-job-select="11"]').click()
+    page.locator("#ingestion-job-events-status").filter(has_text="共 1 条事件").wait_for()
+    assert page.locator("#ingestion-job-events-status").inner_text() == "任务 #11 共 1 条事件。"
+    assert page.locator("#ingestion-retry").get_attribute("title") == "重试失败的入库任务 #11"
+
+    page.locator("#ingestion-retry").click()
+    page.locator("#ingestion-action-status").filter(has_text="重试已接受").wait_for()
+    assert "任务 #11" in page.locator("#ingestion-action-status").inner_text()
+
+    retry_state["status"] = 409
+    page.locator("#ingestion-retry").click()
+    page.locator("#ingestion-action-status").filter(has_text="已有运行中的任务").wait_for()
+    conflict = page.locator("#ingestion-action-status").inner_text()
+    assert conflict.startswith("已有运行中的任务；请刷新任务状态。")
+    assert "A job is already running" not in conflict
+
+
+def test_workbench_evaluation_uses_chinese_dynamic_copy(workbench_page) -> None:
+    page, url = workbench_page
+    page.set_default_timeout(7000)
+    base = url.split("?")[0]
+    run_state = {"history": "ok", "empty": False}
+    _install_task14_permissions(page, {"identity": "admin", "permissions": "admin"})
+
+    def runs_route(route) -> None:
+        if run_state["history"] == "error":
+            _fulfill_json(route, {"detail": "runs exploded"}, status=500)
+            return
+        runs = [] if run_state["empty"] else [_task14_run(30, base=0.8), _task14_run(27, base=0.6)]
+        _fulfill_json(route, {"runs": runs})
+
+    def detail_route(route) -> None:
+        run_id = int(urlparse(route.request.url).path.rsplit("/", 1)[-1])
+        _fulfill_json(route, _task14_run(run_id, base=0.8))
+
+    page.route("**/v1/ops/runs?*", runs_route)
+    page.route("**/v1/ops/runs/*", detail_route)
+    page.set_viewport_size({"width": 1440, "height": 1000})
+    page.goto(f"{base}#/evaluation")
+
+    assert page.locator("#evaluation-runs-status").inner_text() == "加载运行记录或刷新以查看评测历史。"
+    assert page.locator("#evaluation-detail-status").inner_text() == "选择一条运行记录以独立查看详情。"
+    assert page.locator("#run-trigger-loadtest").inner_text() == "启动压测"
+
+    run_state["empty"] = True
+    page.locator("#evaluation-load").click()
+    page.locator("#evaluation-run-rows .wb-ops-empty").filter(
+        has_text="当前作用域没有评测运行记录。"
+    ).wait_for()
+    assert page.locator("#evaluation-delta-context").inner_text() == "没有可用于差值对比的更早同类成功运行。"
+
+    run_state["empty"] = False
+    page.locator("#evaluation-load").click()
+    page.locator('[data-run-select="30"]').wait_for(state="visible")
+    assert page.locator("#evaluation-runs-status").inner_text() == "2 次运行 · 最新历史在前。"
+
+    page.locator('[data-run-select="30"]').click()
+    page.locator("#evaluation-detail-status").filter(has_text="已加载运行").wait_for()
+    assert page.locator("#evaluation-detail-status").inner_text() == "已加载运行 #30 · succeeded。"
+    delta_context = page.locator("#evaluation-delta-context").inner_text()
+    assert delta_context.startswith("差值 = 当前值")
+    assert "最近一次同类成功运行 eval_mock #27" in delta_context
+
+    run_state["history"] = "error"
+    page.locator("#evaluation-load").click()
+    page.locator("#evaluation-runs-status").filter(has_text="运行历史不可用").wait_for()
+    assert "Run history unavailable" not in page.locator("#evaluation-runs-status").inner_text()
