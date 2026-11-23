@@ -32,7 +32,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
         "sqlalchemy>=2.0" \
         "alembic>=1.13" \
         "psycopg[binary]>=3.1" \
-        "pgvector>=0.3"
+        "pgvector>=0.3" \
+        "boto3>=1.34"
 
 
 ARG BASE_IMAGE=docker.m.daocloud.io/library/python:3.13-slim
