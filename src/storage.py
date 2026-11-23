@@ -158,3 +158,18 @@ def build_storage() -> Storage:
     raise ValueError(
         f"未知的 STORAGE_BACKEND：{backend}（可选 local / s3）"
     )
+
+
+def describe_storage() -> dict[str, str | None]:
+    """只读环境变量返回当前存储后端描述，不做任何 I/O。
+
+    展示用，未知 backend 降级 local（与 build_storage 的严格报错不同），
+    保证存储视图即使配置异常也能渲染文档列表。
+    """
+    backend = os.environ.get("STORAGE_BACKEND", "local").strip().lower() or "local"
+    if backend not in {"local", "s3"}:
+        backend = "local"
+    bucket: str | None = None
+    if backend == "s3":
+        bucket = os.environ.get("S3_BUCKET", "").strip() or None
+    return {"backend": backend, "bucket": bucket}

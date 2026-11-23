@@ -147,3 +147,31 @@ def test_build_storage_rejects_unknown_backend(monkeypatch) -> None:
 
     with pytest.raises(ValueError, match="STORAGE_BACKEND"):
         build_storage()
+
+
+def test_describe_storage_local_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("STORAGE_BACKEND", raising=False)
+    monkeypatch.delenv("S3_BUCKET", raising=False)
+
+    from src import storage
+
+    assert storage.describe_storage() == {"backend": "local", "bucket": None}
+
+
+def test_describe_storage_s3_with_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("STORAGE_BACKEND", "s3")
+    monkeypatch.setenv("S3_BUCKET", "rag-kb")
+
+    from src import storage
+
+    assert storage.describe_storage() == {"backend": "s3", "bucket": "rag-kb"}
+
+
+def test_describe_storage_unknown_backend_downgrades(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("STORAGE_BACKEND", "weird")
+
+    from src import storage
+
+    assert storage.describe_storage()["backend"] == "local"
