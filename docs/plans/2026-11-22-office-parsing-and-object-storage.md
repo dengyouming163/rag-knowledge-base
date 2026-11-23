@@ -2091,6 +2091,12 @@ def test_worker_fails_missing_file_without_retry(
     assert job["finished_at"] is not None
 ```
 
+**补充约定：区分「文件不存在」与「存储故障」**
+
+- `FileNotFoundError`、S3 `NoSuchKey`/`404` → `NonRetryableIngestError`，1 次即失败
+- 其余存储异常（连接失败、超时、5xx）→ 保持可重试，沿用最多 3 次
+- 新增测试 `test_worker_retries_transient_storage_error`：`build_storage()` 返回的 storage 在 `get_bytes` 抛 `ConnectionError`，断言前两次 `worker_once` 后任务仍为 `pending`/`running` 且 `attempts` 递增，第 3 次后 `failed`
+
 **Step 8: 跑新增与受影响测试确认通过**
 
 ```powershell
