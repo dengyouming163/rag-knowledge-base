@@ -28,6 +28,7 @@
           <li><button class="wb-nav-link" type="button" data-nav="evaluation" aria-controls="view-evaluation"><span class="wb-nav-index">05</span><span data-i18n="nav.evaluation">Evaluation</span></button></li>
           <li><button class="wb-nav-link" type="button" data-nav="access" aria-controls="view-access"><span class="wb-nav-index">06</span><span data-i18n="nav.access">Access Control</span></button></li>
           <li><button class="wb-nav-link" type="button" data-nav="audit" aria-controls="view-audit"><span class="wb-nav-index">07</span><span data-i18n="nav.audit">Audit Log</span></button></li>
+          <li><button class="wb-nav-link" type="button" data-nav="storage" aria-controls="view-storage"><span class="wb-nav-index">08</span><span data-i18n="nav.storage">Storage</span></button></li>
         </ul>
       </nav>
 
@@ -576,6 +577,31 @@
               <ol id="audit-timeline" class="wb-audit-timeline" aria-label="Operational audit timeline, oldest first" data-i18n-aria-label="audit.timelineAriaLabel"></ol>
             </article>
           </div>
+        </section>
+
+        <section id="view-storage" data-view="storage" hidden aria-labelledby="view-storage-title">
+          <p class="wb-section-kicker" data-i18n="storage.kicker">Storage</p>
+          <h2 id="view-storage-title" class="wb-section-title" data-i18n="storage.title">Storage</h2>
+          <p class="wb-section-intro" data-i18n="storage.intro">Read-only view of uploaded documents and storage usage.</p>
+          <div class="wb-storage-stats" data-storage-stats></div>
+          <div class="wb-storage-toolbar">
+            <label><span data-i18n="storage.filterKb">KB</span>
+              <select data-storage-filter-kb></select></label>
+            <label><span data-i18n="storage.filterStatus">Status</span>
+              <select data-storage-filter-status></select></label>
+            <span class="wb-storage-readonly" data-i18n="storage.readonly">Read-only view · Upload in Lab</span>
+          </div>
+          <div class="wb-error" data-storage-error hidden></div>
+          <table class="wb-storage-table">
+            <thead><tr>
+              <th data-i18n="storage.colFilename">Filename</th>
+              <th data-i18n="storage.colKb">KB</th>
+              <th data-i18n="storage.colSize">Size</th>
+              <th data-i18n="storage.colStatus">Status</th>
+              <th data-i18n="storage.colCreatedAt">Uploaded</th>
+            </tr></thead>
+            <tbody data-storage-body></tbody>
+          </table>
         </section>
       </main>
     </div>

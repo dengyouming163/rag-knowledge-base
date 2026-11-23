@@ -8,8 +8,9 @@ import { createIngestion } from "./views/ingestion.mjs";
 import { createEvaluation } from "./views/evaluation.mjs";
 import { createAccess } from "./views/access.mjs";
 import { createAudit } from "./views/audit.mjs";
+import { createStorage } from "./views/storage.mjs";
 
-const VIEW_NAMES = ["overview", "lab", "traces", "ingestion", "evaluation", "access", "audit"];
+const VIEW_NAMES = ["overview", "lab", "traces", "ingestion", "evaluation", "access", "audit", "storage"];
 const scopeGuard = new ScopeGuard();
 let activeScope = null;
 let overviewController = null;
@@ -20,6 +21,7 @@ let ingestionController = null;
 let evaluationController = null;
 let accessController = null;
 let auditController = null;
+let storageController = null;
 
 function normalizeView(name) {
   return VIEW_NAMES.includes(name) ? name : "overview";
@@ -69,6 +71,7 @@ export function showView(name, root = globalThis.document) {
   evaluationController?.setActive(activeView === "evaluation");
   accessController?.setActive(activeView === "access");
   auditController?.setActive(activeView === "audit");
+  storageController?.setActive(activeView === "storage");
   return activeView;
 }
 
@@ -84,7 +87,7 @@ function readScope() {
 
 function clearViewState() {
   document.querySelectorAll("[data-view]").forEach((view) => {
-    if (["overview", "lab", "traces", "ingestion", "evaluation", "access", "audit"].includes(view.dataset.view)) return;
+    if (["overview", "lab", "traces", "ingestion", "evaluation", "access", "audit", "storage"].includes(view.dataset.view)) return;
     view.querySelectorAll("[data-view-body]").forEach((body) => body.replaceChildren());
     view.querySelectorAll(".is-selected").forEach((item) => item.classList.remove("is-selected"));
     view.querySelectorAll("[aria-selected]").forEach((item) => item.setAttribute("aria-selected", "false"));
@@ -97,6 +100,7 @@ function clearViewState() {
   evaluationController?.clear();
   accessController?.clear();
   auditController?.clear();
+  storageController?.clear();
   permissionsController?.clear();
 }
 
@@ -169,6 +173,7 @@ function destroyWorkbench() {
   evaluationController?.destroy?.();
   accessController?.destroy();
   auditController?.destroy();
+  storageController?.destroy?.();
   permissionsController?.destroy();
 }
 
@@ -221,6 +226,11 @@ function initializeWorkbench() {
   });
   auditController = createAudit({
     root: document.getElementById("view-audit"),
+    guard: scopeGuard,
+    scope: activeScope,
+  });
+  storageController = createStorage({
+    root: document.getElementById("view-storage"),
     guard: scopeGuard,
     scope: activeScope,
   });
