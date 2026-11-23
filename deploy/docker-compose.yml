@@ -109,8 +109,10 @@ services:
       retries: 3
 
   # 本地对象存储：仅 STORAGE_BACKEND=s3 时需要。API 9000、控制台 9001。
+  # 注意：官方 minio/minio 与 minio/mc 已在 2025-10 停止发布，这里改用 pgsty
+  # 社区 fork（Silo，基于 MinIO 技术，命令/入口完全兼容）。
   minio:
-    image: docker.m.daocloud.io/minio/minio:latest
+    image: pgsty/minio:latest
     container_name: rag-kb-minio
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
@@ -125,7 +127,7 @@ services:
 
   # 一次性建桶；minio 可能尚未就绪，用 alias 重试直到成功。
   minio-init:
-    image: docker.m.daocloud.io/minio/mc:latest
+    image: pgsty/mc:latest
     container_name: rag-kb-minio-init
     depends_on:
       minio:
