@@ -42,7 +42,7 @@
 |---|---|
 | 演示鉴权 | nginx 边车 Basic Auth + 限流；api/db/minio 不发布主机端口 |
 | 演示入口 | 独立端口 `18000` + HTTP，形如 `http://<host>:18000/ui/` |
-| AI 与语料 | 真实 LLM（DeepSeek）+ 真实 embedding（bge-m3）；预置售后政策 + 16 篇法律 docx |
+| AI 与语料 | 真实 LLM（DeepSeek）+ 真实 embedding（bge-m3，**通过 OpenAI 兼容 embeddings API 调用，不自建模型服务**）；预置售后政策 + 16 篇法律 docx |
 | 文档语言 | `README.md` 英文；`README.zh-CN.md` 中文镜像；`docs/` 英文重写 |
 | License | Apache-2.0 |
 
@@ -130,7 +130,9 @@ Internet :18000 → gateway(nginx: BasicAuth + limit_req)
 ### 5.3 部署步骤（脚本化 `scripts/deploy_demo.sh`）
 
 1. 传输代码：优先 `git clone` 仓库；无推送凭据时用 `git bundle` 上传。
-2. 生成 `.env`：DB/MiniIO 随机密码、演示基本认证凭据、`LLM_*`/`EMBED_*`（真实 Key）。
+2. 生成 `.env`：DB/MiniIO 随机密码、演示基本认证凭据、`LLM_*` 与 `EMBED_*`（真实 Key）。
+   - embedding 通过 API 调用：`EMBED_BASE_URL`（OpenAI 兼容端点）、`EMBED_MODEL=BAAI/bge-m3`、`EMBED_API_KEY`；
+     不部署本地 embedding 服务，维度固定 1024（与向量列一致）。
 3. `docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.demo.yml up -d --build`。
 4. `alembic upgrade head`（通过 api 容器执行）。
 5. 预置语料：创建 demo 租户/KB，上传售后政策与 16 篇法律 docx，等待 `ready`。
@@ -213,6 +215,7 @@ Internet :18000 → gateway(nginx: BasicAuth + limit_req)
 | 共享服务器误伤既有业务 | 独立 project/网络/卷/端口；绝不 `down` 其他项目；上线前用 `docker ps` 核对 |
 | 磁盘偏紧（28G） | 清理 build cache；镜像用 slim；限制日志 |
 | 真实 Key 被滥用 | Basic Auth + 限流 + 上传上限 |
+| 外部 embedding API 依赖（限流/欠费/超时） | 已有指数退避重试；入库失败进入重试/终态失败；文档标注“需外部 API”并在运维手册给出排查步骤 |
 | GitHub 推送无凭据 | 优先尝试推送；失败则用 bundle 部署，推送由用户提供 token 后完成 |
 | root 密码已在对话中出现 | 部署后建议立即改密并换 SSH key；`.env` 600 |
 | CI 依赖 Postgres | 使用 pgvector service 容器；数据库不可用时测试会 skip，CI 中强制要求可用 |
