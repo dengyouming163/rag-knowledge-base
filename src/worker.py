@@ -21,6 +21,7 @@ from .ingest_jobs import (
     mark_failed,
     mark_progress,
     mark_succeeded,
+    reclaim_stale_running,
 )
 from .storage import Storage, build_storage
 
@@ -35,6 +36,8 @@ def worker_once(
 ) -> int:
     """跑一轮：领到任务就执行并返回 1（无论成败）；没领到返回 0。"""
     worker_id = worker_id or os.environ.get("WORKER_ID", "worker-local")
+    # 先回收卡死在 running 的任务（进程崩溃/被 kill 时无人推进），再领新任务
+    reclaim_stale_running(engine)
     job = claim_next(engine)
     record_worker_heartbeat(
         engine,

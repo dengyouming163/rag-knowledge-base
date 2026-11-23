@@ -24,6 +24,7 @@ from src.ingest_jobs import (
     list_jobs,
     mark_failed,
     mark_succeeded,
+    reclaim_stale_running,
 )
 from src.parsers.pdf import ParserUnavailable, PdfParserClient
 from src.storage import LocalStorage
@@ -465,3 +466,41 @@ def test_worker_retries_ocr_only_parser_unavailable(
 
 def test_worker_once_returns_zero_when_idle(engine) -> None:
     assert worker_once(engine, embed_client=FakeEmbed()) == 0
+
+
+def test_fresh_running_job_is_not_reclaimed(engine) -> None:
+    job_id = enqueue(engine, TENANT, KB, doc_id="d_fresh")
+    claim_next(engine)
+    assert reclaim_stale_running(engine, lease_seconds=900) == 0
+    assert get_job(engine, TENANT, job_id)["status"] == "running"
+
+
+def test_stale_job_is_requeued_then_fails_after_max_attempts(engine) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO documents (id,tenant_id,kb_id,title,source_url,content_hash,status,meta) "
+                "VALUES ('d_lease',:t,:kb,'d_lease','','h_lease','pending','{}'::jsonb)"
+            ),
+            {"t": TENANT, "kb": KB},
+        )
+    job_id = enqueue(engine, TENANT, KB, doc_id="d_lease")
+    for expected in (1, 2, 3):
+        claimed = claim_next(engine)
+        assert claimed["id"] == job_id and claimed["attempts"] == expected
+        with engine.begin() as connection:
+            connection.execute(
+                text("UPDATE ingest_jobs SET updated_at = now() - interval '1 hour' WHERE id = :id"),
+                {"id": job_id},
+            )
+        assert reclaim_stale_running(engine, lease_seconds=900) == 1
+        job = get_job(engine, TENANT, job_id)
+        assert job["status"] == ("queued" if expected < 3 else "failed")
+    assert "lease" in job["error"]
+    with engine.begin() as connection:
+        assert (
+            connection.execute(
+                text("SELECT status FROM documents WHERE id = 'd_lease'")
+            ).scalar_one()
+            == "failed"
+        )

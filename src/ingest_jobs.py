@@ -16,6 +16,7 @@ ingest_jobs 未开启 RLS，普通事务即可；读取 chunks 等受 RLS 保护
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -28,6 +29,7 @@ from .storage import LocalStorage, Storage, build_storage
 
 STATUSES = ("queued", "running", "succeeded", "failed")
 MAX_ATTEMPTS = 3
+DEFAULT_JOB_LEASE_SECONDS = 900
 ALLOWED_SOURCE_SUFFIXES = {".pdf", ".md", ".txt", ".docx", ".pptx", ".xlsx"}
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 
@@ -220,6 +222,50 @@ def enqueue(
                 {"t": tenant_id, "kb": kb_id, "d": doc_id, "source": source},
             ).scalar_one()
         )
+
+
+def job_lease_seconds() -> int:
+    """允许用 JOB_LEASE_SECONDS 覆盖租约；非法值退回默认，避免配置错误导致误回收。"""
+    raw = os.environ.get("JOB_LEASE_SECONDS", "").strip()
+    if not raw:
+        return DEFAULT_JOB_LEASE_SECONDS
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_JOB_LEASE_SECONDS
+    return value if value > 0 else DEFAULT_JOB_LEASE_SECONDS
+
+
+def reclaim_stale_running(engine: Engine, *, lease_seconds: int | None = None) -> int:
+    """回收超过租约仍 running 的任务；attempts 已达 MAX_ATTEMPTS 则终态失败。"""
+    lease = job_lease_seconds() if lease_seconds is None else lease_seconds
+    with engine.begin() as connection:
+        rows = connection.execute(
+            text(
+                "UPDATE ingest_jobs SET "
+                "status = CASE WHEN attempts < :max THEN 'queued' ELSE 'failed' END, "
+                "progress = CASE WHEN attempts < :max THEN 0 ELSE progress END, "
+                "error = CASE WHEN attempts < :max THEN '' "
+                "ELSE 'lease expired after ' || :lease || ' seconds' END, "
+                "started_at = CASE WHEN attempts < :max THEN NULL ELSE started_at END, "
+                "finished_at = CASE WHEN attempts < :max THEN NULL ELSE now() END, "
+                "updated_at = now() "
+                "WHERE status = 'running' "
+                "AND updated_at < now() - make_interval(secs => :lease) "
+                "RETURNING id, tenant_id, doc_id, status"
+            ),
+            {"max": MAX_ATTEMPTS, "lease": lease},
+        ).mappings().all()
+        for row in rows:
+            if row["status"] == "failed":
+                connection.execute(
+                    text(
+                        "UPDATE documents SET status = 'failed', updated_at = now() "
+                        "WHERE id = :d AND tenant_id = :t AND status <> 'ready'"
+                    ),
+                    {"d": row["doc_id"], "t": row["tenant_id"]},
+                )
+    return len(rows)
 
 
 def claim_next(engine: Engine, *, worker: str = "w1") -> dict | None:
