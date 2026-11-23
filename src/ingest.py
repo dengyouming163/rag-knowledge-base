@@ -24,10 +24,21 @@ from sqlalchemy.engine import Engine
 
 from .bm25_store import BM25Store
 from .chunk import split_document
+from .parsers.office import (
+    OfficeParseError,
+    docx_to_markdown,
+    pptx_to_markdown,
+    xlsx_to_markdown,
+)
 from .parsers.pdf import ParserUnavailable, PdfParserClient, blocks_to_text
 from .store_pg import PgVectorStore
 
 _TEXT_SUFFIXES = {".md", ".txt"}
+_OFFICE_PARSERS = {
+    ".docx": docx_to_markdown,
+    ".pptx": pptx_to_markdown,
+    ".xlsx": xlsx_to_markdown,
+}
 
 StageCallback = Callable[[str, int, str], None]
 
@@ -59,6 +70,19 @@ def _extract_text(file_path: Path, parser: Any) -> str:
                 message = f"{message}；需要 OCR"
             raise NonRetryableIngestError(message) from exc
         return blocks_to_text(blocks)
+
+    if suffix in _OFFICE_PARSERS:
+        try:
+            extracted = _OFFICE_PARSERS[suffix](file_path.read_bytes())
+        except OfficeParseError as exc:
+            raise NonRetryableIngestError(str(exc)) from exc
+        if not extracted.strip():
+            # 空文档继续走流程会被标成 ready 却没有任何块，直接判不可重试失败
+            raise NonRetryableIngestError(
+                f"{suffix} 文档无可提取文本"
+                "（图片、图表和形状内文字不提取，可转 PDF 后走 OCR）"
+            )
+        return extracted
 
     if suffix in _TEXT_SUFFIXES:
         return file_path.read_text(encoding="utf-8")

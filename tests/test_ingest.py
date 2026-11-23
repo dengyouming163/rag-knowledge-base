@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import httpx
 import pytest
+from docx import Document
 from pypdf import PdfWriter
 from sqlalchemy import text
 
@@ -493,7 +494,7 @@ def test_embedding_failure_keeps_document_pending(engine, tmp_path) -> None:
 
 def test_unsupported_extension_raises_before_touching_database(tmp_path) -> None:
     """engine 传 None：后缀校验必须在建 store / 连库之前失败。"""
-    path = tmp_path / "policy.docx"
+    path = tmp_path / "policy.doc"
     path.write_bytes(b"whatever")
 
     with pytest.raises(ValueError, match="不支持"):
@@ -521,3 +522,64 @@ def test_empty_text_raises(tmp_path) -> None:
             path=path,
             embed_client=FakeEmbed(),
         )
+
+
+def _write_docx(path) -> None:
+    document = Document()
+    document.add_heading("售后政策", level=1)
+    document.add_heading("退款", level=2)
+    document.add_paragraph("支持七天无理由退款。")
+    document.save(path)
+
+
+def test_ingest_docx_end_to_end(engine, tmp_path) -> None:
+    path = tmp_path / "policy.docx"
+    _write_docx(path)
+
+    result = ingest_document(
+        engine,
+        tenant_id=TENANT,
+        kb_id=KB,
+        doc_id=DOC,
+        path=path,
+        embed_client=FakeEmbed(),
+    )
+
+    assert result["chunks"] >= 1
+    assert result["doc_status"] == "ready"
+    assert _doc_status(engine) == "ready"
+
+
+def test_corrupt_docx_raises_non_retryable_ingest_error(tmp_path) -> None:
+    path = tmp_path / "corrupt.docx"
+    path.write_bytes(b"not a docx")
+
+    with pytest.raises(NonRetryableIngestError) as exc_info:
+        ingest_document(
+            None,  # type: ignore[arg-type]
+            tenant_id=TENANT,
+            kb_id=KB,
+            doc_id=DOC,
+            path=path,
+            embed_client=FakeEmbed(),
+        )
+
+    assert "加密" in str(exc_info.value)
+    assert "损坏" in str(exc_info.value)
+
+
+def test_empty_docx_raises_non_retryable_with_no_text_message(tmp_path) -> None:
+    path = tmp_path / "empty.docx"
+    Document().save(path)
+
+    with pytest.raises(NonRetryableIngestError) as exc_info:
+        ingest_document(
+            None,  # type: ignore[arg-type]
+            tenant_id=TENANT,
+            kb_id=KB,
+            doc_id=DOC,
+            path=path,
+            embed_client=FakeEmbed(),
+        )
+
+    assert "无可提取文本" in str(exc_info.value)
