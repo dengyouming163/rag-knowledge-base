@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 
 
-NAV = ("overview", "lab", "traces", "ingestion", "evaluation", "access", "audit")
+NAV = ("overview", "lab", "traces", "ingestion", "evaluation", "access", "audit", "storage")
 STATIC_ROOT = Path(__file__).parents[1] / "app" / "static"
 
 

@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 
 
-NAV = ("overview", "lab", "traces", "ingestion", "evaluation", "access", "audit")
+NAV = ("overview", "lab", "traces", "ingestion", "evaluation", "access", "audit", "storage")
 VIEW_MODULES = {
     "overview": "createOverview",
     "lab": "createLab",
@@ -19,6 +19,7 @@ VIEW_MODULES = {
     "evaluation": "createEvaluation",
     "access": "createAccess",
     "audit": "createAudit",
+    "storage": "createStorage",
 }
 
 
@@ -27,7 +28,7 @@ def client() -> TestClient:
     return TestClient(create_app())
 
 
-def test_ui_has_one_seven_module_workbuddy_shell_with_overview_visible(
+def test_ui_has_one_eight_module_workbuddy_shell_with_overview_visible(
     client: TestClient,
 ) -> None:
     html = client.get("/ui/").text
@@ -104,6 +105,10 @@ def test_ui_loads_every_es_module_and_professional_panel(client: TestClient) -> 
             'data-access-layer="user"', 'id="access-compare-results"',
         ),
         "audit": ('id="audit-timeline"',),
+        "storage": (
+            'data-storage-stats', 'data-storage-body',
+            'data-storage-filter-kb', 'data-storage-filter-status',
+        ),
     }
     for name, markers in panels.items():
         assert f'<section id="view-{name}"' in html, name
