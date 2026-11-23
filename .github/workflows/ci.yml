@@ -1,0 +1,56 @@
+name: CI
+on:
+  push: {branches: [main]}
+  pull_request:
+permissions: {contents: read}
+concurrency: {group: "ci-${{ github.ref }}", cancel-in-progress: true}
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env: {POSTGRES_USER: kb, POSTGRES_PASSWORD: kb, POSTGRES_DB: kb}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U kb -d kb"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: "5432"
+      DB_USER: kb
+      DB_PASSWORD: kb
+      DB_NAME: kb
+      EMBED_MODE: mock
+      REFUSAL_MIN_SIMILARITY: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.13", cache: pip}
+      - run: pip install -e ".[test,dev]"
+      - run: alembic upgrade head
+      - run: ruff check .
+      - run: pytest -q --cov=app --cov=src --cov-report=term-missing
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "20"}
+      - run: >-
+          node --test tests/js/core.test.mjs tests/js/overview.test.mjs
+          tests/js/lab.test.mjs tests/js/traces.test.mjs tests/js/i18n.test.mjs
+          tests/js/storage.test.mjs
+
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.13", cache: pip}
+      - run: pip install -e .
+      - run: python scripts/run_eval.py --mock --compare eval/baseline.json

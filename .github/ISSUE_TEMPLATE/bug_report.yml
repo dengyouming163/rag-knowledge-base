@@ -1,0 +1,23 @@
+name: Bug report
+description: Report a reproducible defect
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes: {label: What happened?}
+    validations: {required: true}
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. docker compose -f deploy/docker-compose.yml up -d --build
+        2. POST /v1/kbs/kb_after_sale/documents ...
+    validations: {required: true}
+  - type: input
+    id: version
+    attributes: {label: Commit, placeholder: "git rev-parse --short HEAD"}
+    validations: {required: true}
+  - type: textarea
+    id: logs
+    attributes: {label: Logs, render: shell}
