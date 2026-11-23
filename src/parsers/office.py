@@ -13,6 +13,8 @@ from docx import Document
 from docx.oxml.ns import qn
 from docx.table import Table
 from docx.text.paragraph import Paragraph
+from pptx import Presentation
+from pptx.enum.shapes import MSO_SHAPE_TYPE
 
 from src.tables import rows_to_markdown
 
@@ -69,5 +71,58 @@ def docx_to_markdown(content: bytes) -> str:
         style_name = block.style.name if block.style is not None else ""
         prefix = _HEADING_STYLES.get(style_name)
         blocks.append(f"{prefix} {text}" if prefix else text)
+
+    return "\n\n".join(blocks).strip()
+
+
+def _pptx_table_markdown(table) -> str:
+    rows = [[cell.text.strip() for cell in row.cells] for row in table.rows]
+    return rows_to_markdown(rows)
+
+
+def _pptx_shape_blocks(shape) -> list[str]:
+    """组合形状递归展开；表格优先于文本框判断。"""
+    if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+        blocks: list[str] = []
+        for child in shape.shapes:
+            blocks.extend(_pptx_shape_blocks(child))
+        return blocks
+
+    if getattr(shape, "has_table", False):
+        table = _pptx_table_markdown(shape.table)
+        return [table] if table else []
+
+    if getattr(shape, "has_text_frame", False):
+        return [
+            text
+            for text in (paragraph.text.strip() for paragraph in shape.text_frame.paragraphs)
+            if text
+        ]
+    return []
+
+
+def pptx_to_markdown(content: bytes) -> str:
+    """pptx → Markdown；每页一个 `## 第 N 页 · 标题`，备注在 `### 备注` 下。"""
+    try:
+        presentation = Presentation(io.BytesIO(content))
+    except Exception as exc:  # noqa: BLE001
+        raise OfficeParseError("无法打开 .pptx 文件（可能已加密或损坏）") from exc
+
+    blocks: list[str] = []
+    for index, slide in enumerate(presentation.slides, start=1):
+        title_shape = slide.shapes.title
+        title = title_shape.text.strip() if title_shape is not None else ""
+        blocks.append(f"## 第 {index} 页 · {title}" if title else f"## 第 {index} 页")
+
+        for shape in slide.shapes:
+            if title_shape is not None and shape.shape_id == title_shape.shape_id:
+                continue
+            blocks.extend(_pptx_shape_blocks(shape))
+
+        if slide.has_notes_slide:
+            notes = slide.notes_slide.notes_text_frame.text.strip()
+            if notes:
+                blocks.append("### 备注")
+                blocks.append(notes)
 
     return "\n\n".join(blocks).strip()
