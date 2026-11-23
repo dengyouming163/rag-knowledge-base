@@ -171,6 +171,7 @@ export default {
   "lab.upload.status": "状态 {status} · 任务 #{id} · 文档 {docId} · 来源 {source} · 尝试次数 {attempts}{duplicated}",
   "lab.upload.jobError": "任务错误：{error}",
   "lab.upload.failed": "上传或任务轮询失败；请稍后重试。",
+  "lab.upload.batchDone": "批量上传完成：{succeeded}/{total} 个文件成功。",
   "traces.kicker": "模块 / 03",
   "traces.title": "调用追踪",
   "traces.subtitle": "跟踪请求执行过程与诊断证据。",

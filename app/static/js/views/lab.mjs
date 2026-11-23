@@ -636,24 +636,55 @@ export function createLab({
 
   async function upload(context = currentContext, file) {
     if (destroyed) return undefined;
-    file = file === undefined ? byId("upload-input")?.files?.[0] : file;
+    if (file === undefined) {
+      const files = Array.from(byId("upload-input")?.files ?? []);
+      return uploadFiles(context, files);
+    }
+    return uploadFiles(context, file ? [file] : []);
+  }
+
+  async function uploadFiles(context, files) {
     try {
       validateScope(context, false);
-      if (!file) throw new Error(t("lab.validation.document"));
-      if (!/\.(pdf|md|txt|docx|pptx|xlsx)$/i.test(file.name)) throw new Error(t("lab.validation.fileType"));
+      if (!files.length) throw new Error(t("lab.validation.document"));
+      for (const item of files) {
+        if (!/\.(pdf|md|txt|docx|pptx|xlsx)$/i.test(item.name)) throw new Error(t("lab.validation.fileType"));
+      }
     } catch (error) {
       setStatus("#upload-status", error.message, "error");
       return undefined;
     }
+    const total = files.length;
+    const results = [];
+    let succeeded = 0;
+    for (let index = 0; index < total; index += 1) {
+      const result = await uploadOne(context, files[index], { index: index + 1, total });
+      results.push(result);
+      if (result?.status === "succeeded") succeeded += 1;
+      // 作用域切换、页面隐藏或视图销毁会取消进行中的操作：停止剩余文件。
+      if (destroyed || !active || (guard && !guard.isCurrent(context))) break;
+    }
+    if (total > 1 && !destroyed) {
+      setStatus(
+        "#upload-status",
+        t("lab.upload.batchDone", { succeeded, total }),
+        succeeded === total ? "success" : "error",
+      );
+    }
+    return total === 1 ? results[0] : results;
+  }
+
+  async function uploadOne(context, file, { index = 1, total = 1 } = {}) {
     const operation = beginOperation("upload", context);
     if (!operation) return undefined;
     operation.duplicated = false;
     const form = new FormDataImpl();
     form.append("file", file);
+    const prefix = total > 1 ? `[${index}/${total}] ` : "";
     showUploadError("");
     renderUploadProgress(0);
     setButton("upload", true);
-    setStatus("#upload-status", t("lab.upload.uploading", { name: file.name }));
+    setStatus("#upload-status", prefix + t("lab.upload.uploading", { name: file.name }));
 
     try {
       const created = unwrap(await request(`/v1/kbs/${encodeURIComponent(context.scope.kb)}/documents`, {
@@ -665,7 +696,7 @@ export function createLab({
       if (!isCurrent(operation)) return undefined;
       operation.jobId = created.job_id;
       operation.duplicated = Boolean(created.duplicated);
-      setStatus("#upload-status", t("lab.upload.created", {
+      setStatus("#upload-status", prefix + t("lab.upload.created", {
         jobId: created.job_id,
         docId: created.doc_id,
         duplicated: created.duplicated ? ` · ${t("lab.upload.duplicated")}` : "",
@@ -682,7 +713,7 @@ export function createLab({
         renderUploadProgress(job.progress);
         setStatus(
           "#upload-status",
-          t("lab.upload.status", {
+          prefix + t("lab.upload.status", {
             status: job.status,
             id: job.id,
             docId: job.doc_id,
@@ -698,7 +729,7 @@ export function createLab({
       return undefined;
     } catch (error) {
       if (isCurrent(operation) && !isAbort(error)) {
-        setStatus("#upload-status", t("lab.upload.failed"), "error");
+        setStatus("#upload-status", prefix + t("lab.upload.failed"), "error");
         showUploadError(formatError(error));
       }
       return undefined;

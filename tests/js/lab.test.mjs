@@ -620,6 +620,52 @@ test("Upload sends FormData and polls real job progress until success", async (t
   assert.equal(timers.callbacks.size, 0);
 });
 
+test("multi-file upload posts each selected file sequentially with a batch summary", async (t) => {
+  const posted = [];
+  let inFlight = 0;
+  let maxInFlight = 0;
+  let jobCounter = 0;
+  const fixture = createFixture(t, {
+    api: async (_path, options = {}) => {
+      if (options.method === "POST") {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        jobCounter += 1;
+        const id = jobCounter;
+        posted.push({ name: options.body.get("file").name, id });
+        await flush();
+        inFlight -= 1;
+        return { job_id: id, doc_id: `doc-${id}`, duplicated: false };
+      }
+      return { id: jobCounter, doc_id: `doc-${jobCounter}`, status: "succeeded", progress: 100, attempts: 1, source: "upload", error: "" };
+    },
+  });
+  const { root, lab, timers, context } = fixture;
+  root.querySelector("#upload-input").files = [
+    new File(["one"], "one.md"),
+    new File(["two"], "two.txt"),
+  ];
+
+  const pending = lab.upload(context());
+  await flush();
+  await flush();
+  assert.deepEqual(posted.map((item) => item.name), ["one.md"]);
+  assert.match(root.querySelector("#upload-status").textContent, /\[1\/2\]/);
+
+  await timers.tick();
+  await flush();
+  await flush();
+  assert.deepEqual(posted.map((item) => item.name), ["one.md", "two.txt"]);
+
+  await timers.tick();
+  await pending;
+
+  assert.equal(maxInFlight, 1);
+  assert.match(root.querySelector("#upload-status").textContent, /2\/2/);
+  assert.equal(root.querySelector("#upload-button").disabled, false);
+  assert.equal(timers.callbacks.size, 0);
+});
+
 test("failed upload jobs preserve job details and request failures use shared copy", async (t) => {
   const scenarios = [
     {

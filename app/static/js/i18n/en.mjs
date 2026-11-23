@@ -171,6 +171,7 @@ export default {
   "lab.upload.status": "Status {status} · job #{id} · document {docId} · source {source} · attempts {attempts}{duplicated}",
   "lab.upload.jobError": "Job error: {error}",
   "lab.upload.failed": "Upload or job polling failed; retry when ready.",
+  "lab.upload.batchDone": "Batch upload finished: {succeeded}/{total} files succeeded.",
   "traces.kicker": "MODULE / 03",
   "traces.title": "Traces",
   "traces.subtitle": "Follow request execution and diagnostic evidence.",
