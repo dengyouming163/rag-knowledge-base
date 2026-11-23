@@ -358,7 +358,7 @@ def test_changed_content_creates_a_new_document_and_job(engine, tmp_path) -> Non
     [
         ("../escape", KB, "file:///source/a.txt", b"content"),
         (TENANT, "../escape", "file:///source/a.txt", b"content"),
-        (TENANT, KB, "file:///source/a.docx", b"content"),
+        (TENANT, KB, "file:///source/a.doc", b"content"),
         (TENANT, KB, "file:///source/no-suffix", b"content"),
         (TENANT, KB, "file:///source/empty.txt", b""),
     ],

@@ -137,7 +137,7 @@ export default {
   "lab.validation.query": "请输入检索查询。",
   "lab.validation.question": "请输入问题。",
   "lab.validation.document": "请选择要上传的文档。",
-  "lab.validation.fileType": "仅支持 .pdf、.md 和 .txt 文件。",
+  "lab.validation.fileType": "仅支持 .pdf、.md、.txt、.docx、.pptx 和 .xlsx 文件。",
   "lab.search.searching": "正在检索当前作用域…",
   "lab.search.noMatches": "没有匹配的分块。请调整查询、模式或受众。",
   "lab.search.failedEmpty": "检索失败；暂无可用结果。",

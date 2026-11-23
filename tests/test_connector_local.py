@@ -23,7 +23,7 @@ def test_first_sync_discovers_supported_files_with_metadata(tmp_path) -> None:
     text.write_bytes(b"guide")
     pdf = nested / "manual.pdf"
     pdf.write_bytes(b"%PDF-1.4")
-    (tmp_path / "ignored.docx").write_bytes(b"ignored")
+    (tmp_path / "ignored.doc").write_bytes(b"ignored")
     (tmp_path / "ignored.JSON").write_bytes(b"{}")
     (tmp_path / "directory.pdf").mkdir()
 

@@ -313,7 +313,10 @@ test("Lab validation keeps localized guidance instead of the unexpected-error fa
   assert.equal(root.text("#chat-status"), "Enter a question.");
 
   await lab.upload(context(), new File(["x"], "bad.exe"));
-  assert.equal(root.text("#upload-status"), "Only .pdf, .md, and .txt files are supported.");
+  assert.equal(
+    root.text("#upload-status"),
+    "Only .pdf, .md, .txt, .docx, .pptx, and .xlsx files are supported.",
+  );
 });
 
 test("Search sends only the retrieval contract, caches hits, escapes content, and links its trace", async (t) => {

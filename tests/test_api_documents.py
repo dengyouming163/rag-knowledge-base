@@ -112,8 +112,8 @@ def test_upload_to_other_tenant_kb_returns_404(
     assert response.status_code == 404
 
 
-def test_upload_rejects_non_pdf(client: TestClient) -> None:
-    response = _upload(client, b"not a pdf", filename="policy.docx")
+def test_upload_rejects_unsupported_suffix(client: TestClient) -> None:
+    response = _upload(client, b"legacy office", filename="policy.doc")
 
     assert response.status_code == 422
 
@@ -198,3 +198,13 @@ def test_upload_persists_pending_document_and_file(
 
     # 落盘文件名只由服务端的 doc_id + 后缀组成
     assert (UPLOAD_ROOT / TENANT / KB / f"{doc_id}.pdf").is_file()
+
+
+@pytest.mark.parametrize("filename", ["policy.docx", "policy.pptx", "policy.xlsx"])
+def test_upload_accepts_office_formats(client: TestClient, filename: str) -> None:
+    response = _upload(client, f"office-{filename}".encode(), filename=filename)
+
+    assert response.status_code == 202
+    doc_id = response.json()["doc_id"]
+    suffix = Path(filename).suffix
+    assert (UPLOAD_ROOT / TENANT / KB / f"{doc_id}{suffix}").is_file()

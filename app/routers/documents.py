@@ -32,7 +32,7 @@ from src.ingest_events import record_job_event
 
 router = APIRouter(prefix="/v1", tags=["documents"])
 
-ALLOWED_SUFFIX = {".pdf", ".md", ".txt"}
+ALLOWED_SUFFIX = {".pdf", ".md", ".txt", ".docx", ".pptx", ".xlsx"}
 UPLOAD_ROOT = Path("data/uploads")
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]+$")

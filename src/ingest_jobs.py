@@ -26,7 +26,7 @@ from sqlalchemy.engine import Engine
 
 STATUSES = ("queued", "running", "succeeded", "failed")
 MAX_ATTEMPTS = 3
-ALLOWED_SOURCE_SUFFIXES = {".pdf", ".md", ".txt"}
+ALLOWED_SOURCE_SUFFIXES = {".pdf", ".md", ".txt", ".docx", ".pptx", ".xlsx"}
 UPLOAD_ROOT = Path("data/uploads")
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 

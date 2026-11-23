@@ -640,7 +640,7 @@ export function createLab({
     try {
       validateScope(context, false);
       if (!file) throw new Error(t("lab.validation.document"));
-      if (!/\.(pdf|md|txt)$/i.test(file.name)) throw new Error(t("lab.validation.fileType"));
+      if (!/\.(pdf|md|txt|docx|pptx|xlsx)$/i.test(file.name)) throw new Error(t("lab.validation.fileType"));
     } catch (error) {
       setStatus("#upload-status", error.message, "error");
       return undefined;

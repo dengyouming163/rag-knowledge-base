@@ -12,7 +12,7 @@ from urllib.request import url2pathname
 
 from .base import DocumentRef
 
-_SUPPORTED_SUFFIXES = {".pdf", ".md", ".txt"}
+_SUPPORTED_SUFFIXES = {".pdf", ".md", ".txt", ".docx", ".pptx", ".xlsx"}
 
 
 class LocalDirectorySource:

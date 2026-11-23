@@ -137,7 +137,7 @@ export default {
   "lab.validation.query": "Enter a retrieval query.",
   "lab.validation.question": "Enter a question.",
   "lab.validation.document": "Select a document to upload.",
-  "lab.validation.fileType": "Only .pdf, .md, and .txt files are supported.",
+  "lab.validation.fileType": "Only .pdf, .md, .txt, .docx, .pptx, and .xlsx files are supported.",
   "lab.search.searching": "Searching the active scope…",
   "lab.search.noMatches": "No matching chunks. Adjust the query, mode, or audience.",
   "lab.search.failedEmpty": "Search failed; no results are available.",
