@@ -94,3 +94,17 @@ class StorageResponse(BaseModel):
     bucket: str | None
     stats: StorageStats
     documents: list[StorageDocumentOut]
+
+
+class KbEmbeddingDrift(BaseModel):
+    kb_id: str
+    total: int
+    drift: int
+    versions: dict[str, int]
+
+
+class EmbeddingDriftResponse(BaseModel):
+    configured_version: str
+    total_chunks: int
+    drift_chunks: int
+    kbs: list[KbEmbeddingDrift]

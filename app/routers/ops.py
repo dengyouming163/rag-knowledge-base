@@ -10,12 +10,14 @@ import json
 import logging
 import math
 import os
+import re
 from datetime import datetime
 from typing import Literal
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import text
 
 from app.deps import (
     EngineDep,
@@ -25,8 +27,10 @@ from app.deps import (
     ops_actions_enabled,
     require_admin,
 )
+from app.schemas import EmbeddingDriftResponse, KbEmbeddingDrift
 from app.services import ensure_kb
 from src import ingest_jobs, ops_audit, ops_runs
+from src.db.session import tenant_scope
 from src.ingest_events import list_job_events, list_workers, record_job_event
 from src.ops_metrics import build_ops_summary
 from src.ops_observability_report import (
@@ -40,6 +44,8 @@ from src.ops_pricing import load_pricing_from_env
 router = APIRouter(prefix="/v1", tags=["ops"])
 
 logger = logging.getLogger(__name__)
+
+_SAFE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def _parser_health() -> str:
@@ -401,3 +407,42 @@ def audit_api(
     if not ops_actions_enabled():
         raise HTTPException(status_code=403, detail="ops actions disabled")
     return {"audit": ops_audit.list_records(engine, tenant_id, limit=limit)}
+
+
+@router.get("/ops/storage/embedding-drift", response_model=EmbeddingDriftResponse)
+def embedding_drift(tenant_id: TenantId, engine: EngineDep, kb_id: str | None = None):
+    """向量模型漂移概况：按 KB 统计版本分布，只读，跨租户不可见。"""
+    if kb_id is not None:
+        if not _SAFE_ID.fullmatch(kb_id):
+            raise HTTPException(status_code=400, detail="invalid kb_id")
+        ensure_kb(engine, tenant_id, kb_id)
+    configured = os.environ.get("EMBED_MODEL", "").strip() or "unknown"
+    where, params = [], {}
+    if kb_id:
+        where.append("kb_id = :kb")
+        params["kb"] = kb_id
+    sql = text(
+        "SELECT kb_id, coalesce(embed_model_version, '') AS version, count(*) AS n "
+        "FROM chunks "
+        + ("WHERE " + " AND ".join(where) + " " if where else "")
+        + "GROUP BY kb_id, coalesce(embed_model_version, '') ORDER BY kb_id"
+    )
+    with tenant_scope(engine, tenant_id) as connection:
+        rows = connection.execute(sql, params).mappings().all()
+    grouped = {}
+    for row in rows:
+        item = grouped.setdefault(
+            row["kb_id"],
+            {"kb_id": row["kb_id"], "total": 0, "drift": 0, "versions": {}},
+        )
+        item["total"] += int(row["n"])
+        item["versions"][row["version"]] = int(row["n"])
+        if row["version"] != configured:
+            item["drift"] += int(row["n"])
+    kbs = [KbEmbeddingDrift(**item) for item in grouped.values()]
+    return EmbeddingDriftResponse(
+        configured_version=configured,
+        total_chunks=sum(k.total for k in kbs),
+        drift_chunks=sum(k.drift for k in kbs),
+        kbs=kbs,
+    )

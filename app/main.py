@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -15,9 +16,12 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
+from src.db.session import tenant_scope
 from src.store_pg import MissingTenantFilterError
 
+from .deps import get_engine
 from .errors import ScopeNotFoundError
 from .http_metrics import HttpMetricsMiddleware
 from .routers import (
@@ -31,6 +35,45 @@ from .routers import (
     stats,
     traces,
 )
+
+
+logger = logging.getLogger(__name__)
+
+_drift_checked = False
+
+
+def _warn_embedding_drift() -> None:
+    """每进程只查一次；任何失败静默，启动自检不能拖垮服务。"""
+    global _drift_checked
+    if _drift_checked:
+        return
+    _drift_checked = True
+    configured = os.environ.get("EMBED_MODEL", "").strip()
+    if not configured:
+        return
+    try:
+        engine = get_engine()
+        with engine.connect() as c:
+            tenants = [row[0] for row in c.execute(text("SELECT id FROM tenants"))]
+        drift = 0
+        for tenant in tenants:
+            with tenant_scope(engine, tenant) as conn:
+                drift += conn.execute(
+                    text(
+                        "SELECT count(*) FROM chunks "
+                        "WHERE embed_model_version IS DISTINCT FROM :v"
+                    ),
+                    {"v": configured},
+                ).scalar_one()
+        if drift:
+            logger.warning(
+                "检测到 %s 个块与 EMBED_MODEL=%s 不一致；"
+                "运行 py -3.13 scripts/reembed_chunks.py --tenant <t> 重嵌",
+                drift,
+                configured,
+            )
+    except Exception:  # noqa: BLE001
+        logger.debug("embedding drift check skipped", exc_info=True)
 
 
 def create_app() -> FastAPI:
@@ -86,6 +129,7 @@ def create_app() -> FastAPI:
         headers = {"X-Trace-Id": trace_id} if trace_id else None
         return PlainTextResponse("Internal Server Error", status_code=500, headers=headers)
 
+    _warn_embedding_drift()
     return app
 
 
