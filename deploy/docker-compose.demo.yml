@@ -1,0 +1,64 @@
+# 与 deploy/docker-compose.yml 合并使用；需要 Compose >= 2.24（ports: !reset）
+name: ragkb-demo
+
+x-log: &log
+  driver: json-file
+  options: {max-size: "10m", max-file: "3"}
+
+x-app-env: &app-env
+  DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+  DEFAULT_TENANT: demo
+  EMBED_MODE: ${EMBED_MODE:-real}
+  EMBED_MODEL: ${EMBED_MODEL:-BAAI/bge-m3}
+  EMBED_BASE_URL: ${EMBED_BASE_URL:-}
+  EMBED_API_KEY: ${EMBED_API_KEY:-}
+  LLM_BASE_URL: ${LLM_BASE_URL:-}
+  LLM_API_KEY: ${LLM_API_KEY:-}
+  LLM_MODEL: ${LLM_MODEL:-}
+  STORAGE_BACKEND: ${STORAGE_BACKEND:-s3}
+  JOB_LEASE_SECONDS: ${JOB_LEASE_SECONDS:-900}
+
+x-runtime: &runtime
+  restart: unless-stopped
+  logging: *log
+
+services:
+  gateway:
+    image: nginx:1.27-alpine
+    container_name: ragkb-demo-gateway
+    ports: ["18000:80"]
+    volumes:
+      - ./nginx/demo.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/htpasswd:/etc/nginx/htpasswd:ro
+    depends_on: {api: {condition: service_healthy}}
+    <<: *runtime
+
+  api:
+    container_name: ragkb-demo-api
+    ports: !reset []
+    <<: *runtime
+    environment:
+      <<: *app-env
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-52428800}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-}
+
+  worker:
+    container_name: ragkb-demo-worker
+    <<: *runtime
+    environment: *app-env
+
+  db:
+    container_name: ragkb-demo-db
+    ports: !reset []
+    <<: *runtime
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+
+  minio:
+    container_name: ragkb-demo-minio
+    ports: !reset []
+    <<: *runtime
+
+  minio-init:
+    container_name: ragkb-demo-minio-init
+    logging: *log
