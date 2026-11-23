@@ -9,7 +9,7 @@ flowchart LR
     subgraph INGEST[异步入库]
         U[上传 API<br/>content_hash 去重 / 202 + job_id]
         C[local_dir / 飞书连接器<br/>worker 定时同步]
-        S[(共享 data/uploads<br/>named volume)]
+        S[(原始文件<br/>local / MinIO S3)]
         Q[(PostgreSQL<br/>ingest_jobs)]
         W[单副本 worker<br/>SKIP LOCKED 领取<br/>状态 / 进度 / 重试]
         P[PDF 解析<br/>独立 parser 容器优先<br/>本地 pypdf 降级]
@@ -44,8 +44,9 @@ flowchart LR
     L --> T[traces / stats]
 ```
 
-- **入库边界**：上传 API 只负责接收、去重、落盘和入队；worker 每轮最多处理一条任务，通过 `FOR UPDATE SKIP LOCKED` 原子领取，执行任务状态、进度与最多三次尝试。API 与 worker 必须共享上传目录。
+- **入库边界**：上传 API 只负责接收、去重、写存储和入队；worker 每轮最多处理一条任务，通过 `FOR UPDATE SKIP LOCKED` 原子领取，执行任务状态、进度与最多三次尝试。原始文件默认写本地 `data/uploads`（`STORAGE_BACKEND=local`，API 与 worker 必须共享该卷）；设置 `STORAGE_BACKEND=s3` 后改走 MinIO 或云对象存储，key 布局不变，不再依赖共享卷。
 - **PDF 边界**：独立 parser 使用 pdfplumber 提取标题、文本和表格块，只有解析块列表为空才调用 RapidOCR；未配置 parser 或 parser 请求失败时，主服务退回本地 pypdf，本地路径不会自行 OCR。
+- **办公格式边界**：`.docx` / `.pptx` / `.xlsx` 由 python-docx / python-pptx / openpyxl 在进程内直接转 Markdown，不经过 parser 容器；纯图片 PPT 建议先转 PDF 再走 OCR。
 - **检索与隔离**：子块用于召回，父块用于补充上下文；向量与 BM25 经加权 RRF 融合。强制租户作用域、文档 ACL 和 chunks RLS 共同约束可见范围。
 - **可观测与操作**：`/v1/traces/{trace_id}` 记录阶段耗时与命中情况，`/v1/stats` 汇总任务和问答指标；`/ui/` 提供单页知识运维工作台。
 
@@ -53,7 +54,7 @@ flowchart LR
 
 ## 五步启动
 
-前置条件：Windows PowerShell，以及带 Docker Compose 的 Docker Desktop。以下五条命令均在仓库根目录顺序执行。已提交的 Compose 只定义 `db/api/worker`；扫描件 OCR 所需的 parser 使用已提交的 `parser/Dockerfile` 单独构建和运行，不依赖任何 Compose profile。
+前置条件：Windows PowerShell，以及带 Docker Compose 的 Docker Desktop。以下五条命令均在仓库根目录顺序执行。已提交的 Compose 定义 `db/api/worker`、可选的 `minio/minio-init`，以及需要 `--profile parser` 才启动的 `parser` 服务；扫描件 OCR 所需的 parser 也可以继续用已提交的 `parser/Dockerfile` 单独构建和运行（见第 4、5 步）。
 
 1. 启动 PostgreSQL 16 + pgvector（宿主端口 `5433`）：
 
@@ -85,7 +86,17 @@ flowchart LR
    docker run -d --name rag-kb-parser --restart unless-stopped --network deploy_default --network-alias parser -p 8100:8000 rag-kb-parser
    ```
 
-这里的 `deploy_default` 是上述 `-f deploy/docker-compose.yml` 在未指定 Compose 项目名时创建的默认网络。提交版 worker 已配置 `PARSER_BASE_URL=http://parser:8000`，第 5 步的网络别名使该地址解析到独立 parser 容器；宿主端口 `8100` 仅用于本机访问。parser 不是 Compose 服务，`docker compose ps/down` 不会管理它，需单独启停和清理；自定义 Compose 项目名时也要相应调整网络配置。若不启动 parser，worker 会在连接失败后回退本地 pypdf，但扫描件无法 OCR。
+这里的 `deploy_default` 是上述 `-f deploy/docker-compose.yml` 在未指定 Compose 项目名时创建的默认网络。提交版 worker 已配置 `PARSER_BASE_URL=http://parser:8000`，第 5 步的网络别名使该地址解析到独立 parser 容器；宿主端口 `8100` 仅用于本机访问。也可以用 `docker compose -f deploy/docker-compose.yml --profile parser up -d parser` 交给 Compose 管理。按第 5 步单独运行的方式，parser 不在 Compose 服务内，`docker compose ps/down` 不会管理它，需单独启停和清理；自定义 Compose 项目名时也要相应调整网络配置。若不启动 parser，worker 会在连接失败后回退本地 pypdf，但扫描件无法 OCR。
+
+### 可选：MinIO 对象存储
+
+默认 `STORAGE_BACKEND=local`，行为与旧版本一致。需要验证对象存储时：
+
+```powershell
+docker compose -f deploy/docker-compose.yml up -d minio minio-init
+```
+
+`minio-init` 是一次性容器，负责创建 `rag-kb` bucket，日志出现 `rag-kb` 列表即成功。随后把环境变量设为 `STORAGE_BACKEND=s3` 并重启 api/worker（compose 内 `S3_ENDPOINT` 固定为 `http://minio:9000`，控制台在 `http://127.0.0.1:9001`）。回滚只需把 `STORAGE_BACKEND` 改回 `local`，key 布局与本地路径一一对应，无需迁移数据。
 
 启动后访问 `http://127.0.0.1:8000/ui/`；存活与就绪端点分别为 `/live`、`/ready`，OpenAPI 页面为 `/docs`。完整故障恢复演练见 [运行手册](docs/runbook.md)。
 
