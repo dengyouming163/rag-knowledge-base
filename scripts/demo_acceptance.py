@@ -18,9 +18,9 @@ for item in (ROOT, ROOT / "scripts"):
     if str(item) not in sys.path:
         sys.path.insert(0, str(item))
 
+from compare_routes import HashEmbeddingClient  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
-from compare_routes import HashEmbeddingClient  # noqa: E402
 from src.acl import set_chunk_acl  # noqa: E402
 from src.bm25 import BM25Index  # noqa: E402
 from src.chunk import Chunk, estimate_tokens  # noqa: E402

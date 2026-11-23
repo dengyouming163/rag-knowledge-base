@@ -100,7 +100,10 @@ def seeded(engine):
 
     with engine.begin() as connection:
         connection.execute(text("DELETE FROM tenants WHERE id IN (:a, :b)"), {"a": TENANT, "b": OTHER_TENANT})
-        connection.execute(text("INSERT INTO tenants (id, name) VALUES (:t, 'contract'), (:o, 'other')"), {"t": TENANT, "o": OTHER_TENANT})
+        connection.execute(
+            text("INSERT INTO tenants (id, name) VALUES (:t, 'contract'), (:o, 'other')"),
+            {"t": TENANT, "o": OTHER_TENANT},
+        )
         connection.execute(
             text(
                 "INSERT INTO knowledge_bases (id, tenant_id, name, description, status) "
@@ -134,7 +137,7 @@ def test_contract_same_order_as_local_store(seeded, tmp_path) -> None:
 
     assert [hit.chunk_id for hit in pg_hits] == [hit.chunk_id for hit in local_hits]
     # 余弦相似度的值也应接近（顺序最重要，分数允许浮点误差）
-    for pg_hit, local_hit in zip(pg_hits, local_hits):
+    for pg_hit, local_hit in zip(pg_hits, local_hits, strict=False):
         assert pg_hit.score == pytest.approx(local_hit.score, abs=1e-6)
 
 

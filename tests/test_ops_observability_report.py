@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -17,7 +17,7 @@ from src.ops_observability_report import (
 )
 from src.ops_pricing import parse_pricing
 
-NOW = datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 2, 1, 12, 0, tzinfo=UTC)
 START = NOW - timedelta(hours=1)
 
 

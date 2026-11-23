@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import url2pathname
@@ -35,7 +35,7 @@ class LocalDirectorySource:
         for path in paths:
             with path.open("rb") as stream:
                 before = os.fstat(stream.fileno())
-                mtime = datetime.fromtimestamp(before.st_mtime, tz=timezone.utc)
+                mtime = datetime.fromtimestamp(before.st_mtime, tz=UTC)
                 if since is not None and mtime <= since:
                     continue
                 content = stream.read()

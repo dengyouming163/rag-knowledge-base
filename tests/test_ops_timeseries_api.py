@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import math
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,7 +15,7 @@ from app.main import create_app
 from src import ops_observability_report as report
 from src.ops_observability import record_http_metric, record_rag_metric
 
-NOW = datetime(2026, 2, 1, 12, 0, 30, tzinfo=timezone.utc)
+NOW = datetime(2026, 2, 1, 12, 0, 30, tzinfo=UTC)
 START = NOW - timedelta(hours=1)
 
 
@@ -136,7 +136,7 @@ def test_timeseries_uses_fixed_aligned_buckets_and_empty_values(
     start = NOW - delta
     first_epoch = math.floor(start.timestamp() / bucket_seconds) * bucket_seconds
     expected_ts = [
-        datetime.fromtimestamp(first_epoch + index * bucket_seconds, timezone.utc)
+        datetime.fromtimestamp(first_epoch + index * bucket_seconds, UTC)
         .isoformat()
         for index in range(bucket_count)
     ]
@@ -155,7 +155,7 @@ def test_timeseries_half_open_window_and_partial_buckets_count_rows_once(
 ) -> None:
     engine, tenant, kb = metric_scope
     first_epoch = math.floor(START.timestamp() / 60) * 60
-    boundary = datetime.fromtimestamp(first_epoch + 60, timezone.utc)
+    boundary = datetime.fromtimestamp(first_epoch + 60, UTC)
     rows = [
         ("before", START - timedelta(microseconds=1), 500, 10_000),
         ("start", START, 200, 100),

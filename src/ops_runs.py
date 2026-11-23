@@ -92,7 +92,7 @@ def enqueue(
                 },
             ).scalar_one()
         return int(row)
-    except IntegrityError:
+    except IntegrityError as exc:
         # 只把「活跃 kind 唯一索引」冲突翻译成 AlreadyRunning；
         # 找不到活跃记录说明是其它完整性错误（如外键），原样抛出。
         with engine.connect() as connection:
@@ -106,7 +106,7 @@ def enqueue(
             ).scalar_one_or_none()
         if existing is None:
             raise
-        raise AlreadyRunning(int(existing))
+        raise AlreadyRunning(int(existing)) from exc
 
 
 def claim_next(engine: Engine, *, kind: str | None = None) -> dict | None:

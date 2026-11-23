@@ -155,7 +155,7 @@ def test_chunk_id_and_content_hash_are_stable():
     assert [chunk.chunk_id for chunk in children] == [f"doc#{i}" for i in range(1, len(children) + 1)]
     assert len(children) >= 2
     for chunk in children:
-        assert chunk.content_hash == hashlib.sha256(f"c:{chunk.text}".encode("utf-8")).hexdigest()[:16]
+        assert chunk.content_hash == hashlib.sha256(f"c:{chunk.text}".encode()).hexdigest()[:16]
         assert chunk.audience == "public"
 
 

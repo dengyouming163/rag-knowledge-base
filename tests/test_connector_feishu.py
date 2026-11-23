@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
@@ -115,7 +115,7 @@ def test_unavailable_source_rejects_all_operations_without_http() -> None:
     source = FeishuSource(transport=httpx.MockTransport(handler))
     ref = DocumentRef(
         uri="feishu://docx/doc-1",
-        mtime=datetime.now(timezone.utc),
+        mtime=datetime.now(UTC),
         size=-1,
         hash="1",
     )
@@ -193,8 +193,8 @@ def test_list_documents_authenticates_and_follows_pagination() -> None:
     ]
     assert [ref.hash for ref in refs] == ["1", "2"]
     assert [ref.size for ref in refs] == [-1, -1]
-    assert refs[0].mtime == datetime(2024, 1, 1, tzinfo=timezone.utc)
-    assert refs[0].mtime.tzinfo is timezone.utc
+    assert refs[0].mtime == datetime(2024, 1, 1, tzinfo=UTC)
+    assert refs[0].mtime.tzinfo is UTC
     assert len(token_requests) == 1
     assert len(list_requests) == 2
     assert [request.url.path for request in metadata_requests] == [
@@ -205,7 +205,7 @@ def test_list_documents_authenticates_and_follows_pagination() -> None:
 
 def test_list_documents_filters_by_mtime_before_reading_revision() -> None:
     metadata_tokens = []
-    cutoff = datetime(2024, 1, 2, tzinfo=timezone.utc)
+    cutoff = datetime(2024, 1, 2, tzinfo=UTC)
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/open-apis/auth/v3/tenant_access_token/internal":
@@ -290,12 +290,12 @@ def test_fetch_returns_raw_document_content_as_utf8_bytes() -> None:
 
     ref = DocumentRef(
         uri="feishu://docx/doc-1",
-        mtime=datetime.now(timezone.utc),
+        mtime=datetime.now(UTC),
         size=-1,
         hash="3",
     )
 
-    assert _source(handler).fetch(ref) == "标题\n正文 😀".encode("utf-8")
+    assert _source(handler).fetch(ref) == "标题\n正文 😀".encode()
     assert [request.url.path for request in raw_requests] == [
         "/open-apis/docx/v1/documents/doc-1/raw_content"
     ]
@@ -327,7 +327,7 @@ def test_http_error_is_propagated_readably() -> None:
 
 
 def test_sync_deduplicates_uris_and_keeps_latest_snapshot(monkeypatch) -> None:
-    mtime = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    mtime = datetime(2024, 1, 1, tzinfo=UTC)
     first = DocumentRef(
         uri="feishu://docx/doc-1",
         mtime=mtime,

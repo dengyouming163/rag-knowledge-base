@@ -16,7 +16,7 @@ import logging
 import os
 import time
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 
@@ -158,7 +158,7 @@ class FeishuSource:
                     continue
                 mtime = datetime.fromtimestamp(
                     int(item["modified_time"]),
-                    tz=timezone.utc,
+                    tz=UTC,
                 )
                 if since is not None and mtime <= since:
                     continue

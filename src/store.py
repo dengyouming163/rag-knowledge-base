@@ -73,7 +73,7 @@ class LocalVectorStore:
             raise ValueError("chunks 与 vectors 数量必须一致")
 
         written = 0
-        for chunk, vector in zip(chunks, vectors):
+        for chunk, vector in zip(chunks, vectors, strict=False):
             if chunk.content_hash in self._records:
                 continue
             array = _normalize(vector)

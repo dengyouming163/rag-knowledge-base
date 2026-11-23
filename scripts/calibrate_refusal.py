@@ -21,7 +21,6 @@ import argparse
 import json
 import statistics
 import sys
-import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,7 +28,6 @@ for item in (ROOT, ROOT / "scripts"):
     if str(item) not in sys.path:
         sys.path.insert(0, str(item))
 
-from compare_routes import HashEmbeddingClient  # noqa: E402
 from run_eval import build_retriever, load_cases, load_corpus  # noqa: E402
 
 EVAL_DIR = ROOT / "eval"

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import httpx
 from pydantic import BaseModel
@@ -78,7 +79,7 @@ class ChatClient:
     def close(self) -> None:
         self._client.close()
 
-    def __enter__(self) -> "ChatClient":
+    def __enter__(self) -> ChatClient:
         return self
 
     def __exit__(self, *exc_info: Any) -> None:

@@ -154,7 +154,7 @@ class HybridRetriever:
 
         scores: dict[str, float] = {}
         best: dict[str, SearchHit] = {}
-        for weight, hits in zip(weights, routes):
+        for weight, hits in zip(weights, routes, strict=False):
             for rank, hit in enumerate(hits, start=1):
                 scores[hit.chunk_id] = (
                     scores.get(hit.chunk_id, 0.0) + weight / (RRF_K + rank)

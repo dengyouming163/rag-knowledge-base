@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from src.ops_metrics import build_ops_summary, percentile, summarize_queue
 
@@ -13,7 +13,7 @@ def test_percentile_interpolates() -> None:
 
 
 def test_queue_counts_wait_and_duration() -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     jobs = [
         {"status": "queued", "created_at": now - timedelta(seconds=10), "started_at": None,
          "finished_at": None},

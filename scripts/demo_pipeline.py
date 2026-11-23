@@ -21,6 +21,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from compare_routes import HashEmbeddingClient
+
 from src.bm25 import BM25Index
 from src.chunk import split_document
 from src.embed import EmbeddingClient, EmbeddingError
@@ -34,14 +35,17 @@ DOCS_DIR = ROOT / "data" / "docs"
 BUILTIN_DOCS: list[tuple[str, str]] = [
     (
         "kb-after-sale",
-        """# 售后与退款政策
+        (
+            """# 售后与退款政策
 
 ## 退款条件
 签收后七天内支持无理由退款，商品需保持完好、配件齐全。定制类商品与非质量问题拆封的个护用品不支持无理由退款。
 
 ## 退款到账
-退款审核通过后原路退回：微信/支付宝通常 1-3 个工作日到账，银行卡 3-7 个工作日到账。超时未到账请提供订单号联系客服人工核查。
-""",
+"""
+            "退款审核通过后原路退回：微信/支付宝通常 1-3 个工作日到账，"
+            "银行卡 3-7 个工作日到账。超时未到账请提供订单号联系客服人工核查。\n"
+        ),
     ),
     (
         "kb-logistics",
@@ -119,13 +123,13 @@ def build_clients(mock: bool) -> tuple[object, object]:
     except EmbeddingError as exc:
         print(f"初始化 Embedding 失败：{exc}", file=sys.stderr)
         print("请设置 EMBED_API_KEY 后重试，或改用 --mock 无 Key 演示。", file=sys.stderr)
-        raise SystemExit(1)
+        raise SystemExit(1) from exc
     try:
         chat = ChatClient()
     except LLMError as exc:
         print(f"初始化 LLM 失败：{exc}", file=sys.stderr)
         print("请设置 LLM_API_KEY 后重试，或改用 --mock 无 Key 演示。", file=sys.stderr)
-        raise SystemExit(1)
+        raise SystemExit(1) from exc
     return embed, chat
 
 

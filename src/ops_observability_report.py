@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import math
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
@@ -215,7 +215,7 @@ def resolve_window(
     if name not in WINDOWS:
         raise ValueError("invalid window")
     delta, bucket_seconds = WINDOWS[name]
-    end = now or datetime.now(timezone.utc)
+    end = now or datetime.now(UTC)
     if end.tzinfo is None:
         raise ValueError("now must be timezone-aware")
     return end - delta, end, bucket_seconds
@@ -346,7 +346,7 @@ def build_observability_timeseries(
     for index in range(bucket_count):
         bucket_epoch = first_epoch + index * bucket_seconds
         point = {
-            "ts": datetime.fromtimestamp(bucket_epoch, timezone.utc).isoformat(),
+            "ts": datetime.fromtimestamp(bucket_epoch, UTC).isoformat(),
             "requests": 0,
             "client_errors": 0,
             "server_errors": 0,

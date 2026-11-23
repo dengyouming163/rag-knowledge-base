@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 def percentile(values: list[float], quantile: float) -> float | None:
@@ -22,7 +22,7 @@ def percentile(values: list[float], quantile: float) -> float | None:
 
 def summarize_queue(jobs: list[dict]) -> dict:
     counts = Counter(job["status"] for job in jobs)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     queued_at = [
         job["created_at"] for job in jobs
         if job["status"] == "queued" and job.get("created_at")

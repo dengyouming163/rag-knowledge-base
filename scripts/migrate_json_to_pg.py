@@ -31,9 +31,9 @@ if str(ROOT) not in sys.path:
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
+from compare_routes import HashEmbeddingClient
 from sqlalchemy import text
 
-from compare_routes import HashEmbeddingClient
 from src.chunk import Chunk, estimate_tokens
 from src.db.base import create_db_engine
 from src.embed import EmbeddingClient, EmbeddingError
@@ -154,7 +154,7 @@ def build_embedder(mock: bool):
     except EmbeddingError as exc:
         print(f"初始化 Embedding 失败：{exc}", file=sys.stderr)
         print("请设置 EMBED_API_KEY，或改用 --mock。", file=sys.stderr)
-        raise SystemExit(1)
+        raise SystemExit(1) from exc
 
 
 def migrate(engine, tenant_id: str, chunks: list[Chunk], embedder) -> dict[str, int]:

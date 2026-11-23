@@ -10,8 +10,9 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from contextlib import nullcontext
-from typing import Any, Sequence
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
@@ -114,7 +115,7 @@ class PgVectorStore:
                 "parent_id": chunk.parent_id,
                 "is_parent": bool(chunk.is_parent),
             }
-            for chunk, vector in zip(chunks, vectors)
+            for chunk, vector in zip(chunks, vectors, strict=False)
         ]
 
         scope = (

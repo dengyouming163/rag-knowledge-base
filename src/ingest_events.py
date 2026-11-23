@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
@@ -77,7 +77,7 @@ def record_worker_heartbeat(
                 ),
                 {
                     "worker_id": worker_id,
-                    "now": datetime.now(timezone.utc),
+                    "now": datetime.now(UTC),
                     "version": version,
                     "job_id": current_job_id,
                 },
@@ -100,7 +100,7 @@ def list_workers(engine: Engine, tenant_id: str) -> list[dict]:
             ),
             {"tenant_id": tenant_id},
         ).mappings().all()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return [
         {
             **dict(row),

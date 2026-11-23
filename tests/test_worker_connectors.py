@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -67,7 +67,7 @@ class ClosableSource(FakeSource):
 def _ref(uri: str, content: bytes) -> DocumentRef:
     return DocumentRef(
         uri=uri,
-        mtime=datetime.now(timezone.utc),
+        mtime=datetime.now(UTC),
         size=len(content),
         hash=hashlib.sha256(content).hexdigest(),
     )

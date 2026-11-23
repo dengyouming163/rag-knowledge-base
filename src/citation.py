@@ -11,8 +11,8 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Collection
 from dataclasses import dataclass, field
-from typing import Collection
 
 from .metrics import citation_accuracy
 

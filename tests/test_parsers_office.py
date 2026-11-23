@@ -6,10 +6,9 @@ import io
 
 import pytest
 from docx import Document
+from openpyxl import Workbook
 from pptx import Presentation
 from pptx.util import Inches
-
-from openpyxl import Workbook
 
 from src.parsers.office import (
     MAX_SHEET_ROWS,

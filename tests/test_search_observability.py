@@ -12,7 +12,6 @@ from app.routers import search as search_module
 from app.schemas import SearchRequest, SearchResponse
 from src import ops_observability
 
-
 TENANT = "tenant-from-dependency"
 KB = "kb-search"
 ENGINE = object()

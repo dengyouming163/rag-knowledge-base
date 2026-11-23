@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import httpx
 
@@ -77,7 +78,7 @@ class EmbeddingClient:
     def close(self) -> None:
         self._client.close()
 
-    def __enter__(self) -> "EmbeddingClient":
+    def __enter__(self) -> EmbeddingClient:
         return self
 
     def __exit__(self, *exc_info: Any) -> None:

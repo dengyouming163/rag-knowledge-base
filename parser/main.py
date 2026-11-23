@@ -156,7 +156,7 @@ def _parse_pdf(content: bytes) -> list[Block]:
 
             text_lines: list[str] = []
 
-            def flush_text() -> None:
+            def flush_text(page_number=page_number, section=section) -> None:
                 nonlocal text_lines
                 if text_lines:
                     blocks.append(

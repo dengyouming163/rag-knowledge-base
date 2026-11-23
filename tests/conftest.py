@@ -20,7 +20,9 @@ def isolate_trace_files(tmp_path, monkeypatch):
 @pytest.fixture()
 def metric_scope():
     from uuid import uuid4
+
     from sqlalchemy import text
+
     from src.db.base import create_db_engine
 
     engine = create_db_engine()

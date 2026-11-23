@@ -15,7 +15,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from src.parsers.pdf import PdfBlock, PdfParserClient, ParserUnavailable, blocks_to_text
+from src.parsers.pdf import ParserUnavailable, PdfBlock, PdfParserClient, blocks_to_text
 
 PARSER_MAIN = Path(__file__).resolve().parents[1] / "parser" / "main.py"
 

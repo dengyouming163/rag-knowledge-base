@@ -34,6 +34,7 @@ if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
 from compare_routes import HashEmbeddingClient
+
 from src.bm25 import BM25Index
 from src.chunk import Chunk, estimate_tokens
 from src.citation import extract_ids
@@ -89,7 +90,7 @@ def build_retriever(mock: bool, chunks: list[Chunk]) -> tuple[HybridRetriever, o
         except EmbeddingError as exc:
             print(f"初始化 Embedding 失败：{exc}", file=sys.stderr)
             print("请设置 EMBED_API_KEY，或改用 --mock。", file=sys.stderr)
-            raise SystemExit(1)
+            raise SystemExit(1) from exc
 
     vectors = embed.embed_texts([chunk.text for chunk in chunks])
     store = LocalVectorStore(tempfile.mkdtemp(prefix="rag-eval-"))

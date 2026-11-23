@@ -36,7 +36,6 @@ from .routers import (
     traces,
 )
 
-
 logger = logging.getLogger(__name__)
 
 _drift_checked = False

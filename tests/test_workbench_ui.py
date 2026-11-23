@@ -16,7 +16,6 @@ from fastapi.testclient import TestClient
 
 from app.main import create_app
 
-
 NAV = ("overview", "lab", "traces", "ingestion", "evaluation", "access", "audit", "storage")
 STATIC_ROOT = Path(__file__).parents[1] / "app" / "static"
 
@@ -1176,7 +1175,9 @@ def test_ingestion_jobs_events_retry_permissions_and_partial_failures(workbench_
     job_state["jobs"] = "error"
     page.locator("#ingestion-load").click()
     page.locator("#ingestion-jobs-status").filter(has_text="jobs exploded").wait_for()
-    assert "Select a job" in page.locator("#ingestion-job-events-status").inner_text() or "events" in page.locator("#ingestion-job-events-status").inner_text()
+    assert "Select a job" in page.locator("#ingestion-job-events-status").inner_text() or "events" in page.locator(
+        "#ingestion-job-events-status"
+    ).inner_text()
     assert "succeeded" not in page.locator("#ingestion-jobs-status").inner_text()
 
     job_state["jobs"] = "ok"
@@ -1398,7 +1399,10 @@ def test_evaluation_poll_stops_on_exit_scope_hidden_and_destroy_ignores_late_res
     page.set_default_timeout(7000)
     _install_task14_permissions(page, {"identity": "admin", "permissions": "admin"})
     page.route("**/v1/ops/runs?*", lambda route: _fulfill_json(route, {"runs": []}))
-    page.route("**/v1/ops/kbs/*/runs", lambda route: _fulfill_json(route, {"run_id": 101, "status": "queued"}, status=202))
+    page.route(
+        "**/v1/ops/kbs/*/runs",
+        lambda route: _fulfill_json(route, {"run_id": 101, "status": "queued"}, status=202),
+    )
     detail_calls = {"count": 0}
     page.add_init_script("""
         window.__task14Signals = [];
@@ -1818,7 +1822,10 @@ def test_review_active_evaluation_polling_stops_on_real_scope_change(workbench_p
     page.set_default_timeout(7000)
     _install_task14_permissions(page, {"identity": "admin", "permissions": "admin"})
     page.route("**/v1/ops/runs?*", lambda route: _fulfill_json(route, {"runs": []}))
-    page.route("**/v1/ops/kbs/*/runs", lambda route: _fulfill_json(route, {"run_id": 101, "status": "queued"}, status=202))
+    page.route(
+        "**/v1/ops/kbs/*/runs",
+        lambda route: _fulfill_json(route, {"run_id": 101, "status": "queued"}, status=202),
+    )
     detail_calls = {"count": 0}
 
     def detail_route(route) -> None:
@@ -2748,7 +2755,7 @@ def test_workbench_defaults_to_chinese_and_switches_to_english(workbench_page) -
     page.wait_for_function("document.documentElement.lang === 'zh-CN'")
 
     chinese_labels = ("概览", "查询实验室", "调用追踪", "入库任务", "评测与演练", "访问控制", "审计日志")
-    for name, label in zip(NAV, chinese_labels):
+    for name, label in zip(NAV, chinese_labels, strict=False):
         assert page.locator(f'[data-nav="{name}"] span').last.inner_text() == label
     assert page.evaluate("document.documentElement.lang") == "zh-CN"
 
@@ -2756,7 +2763,7 @@ def test_workbench_defaults_to_chinese_and_switches_to_english(workbench_page) -
     page.wait_for_function("document.documentElement.lang === 'en'")
 
     english_labels = ("Overview", "Query Lab", "Traces", "Ingestion", "Evaluation", "Access Control", "Audit Log")
-    for name, label in zip(NAV, english_labels):
+    for name, label in zip(NAV, english_labels, strict=False):
         assert page.locator(f'[data-nav="{name}"] span').last.inner_text() == label
     assert page.evaluate("localStorage.getItem('workbuddy.locale')") == "en"
     assert "lang=en" in page.url

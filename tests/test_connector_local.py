@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -42,9 +42,9 @@ def test_first_sync_discovers_supported_files_with_metadata(tmp_path) -> None:
     assert markdown_ref.size == len(markdown_payload)
     assert markdown_ref.hash == hashlib.sha256(markdown_payload).hexdigest()
     assert markdown_ref.mtime == datetime.fromtimestamp(
-        markdown.stat().st_mtime, tz=timezone.utc
+        markdown.stat().st_mtime, tz=UTC
     )
-    assert markdown_ref.mtime.tzinfo is timezone.utc
+    assert markdown_ref.mtime.tzinfo is UTC
 
 
 def test_sync_uses_both_mtime_and_content_hash(tmp_path) -> None:
@@ -97,7 +97,7 @@ def test_list_documents_filters_by_mtime(tmp_path) -> None:
     old_path.write_bytes(b"old")
     new_path = tmp_path / "new.txt"
     new_path.write_bytes(b"new")
-    old_mtime = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    old_mtime = datetime(2024, 1, 1, tzinfo=UTC)
     new_mtime = old_mtime + timedelta(days=2)
     os.utime(old_path, (old_mtime.timestamp(), old_mtime.timestamp()))
     os.utime(new_path, (new_mtime.timestamp(), new_mtime.timestamp()))
@@ -144,7 +144,7 @@ def test_fetch_preserves_windows_unc_authority(tmp_path, monkeypatch) -> None:
     payload = b"unc payload"
     ref = DocumentRef(
         uri="file://server/share/docs/a%20b.txt",
-        mtime=datetime.now(timezone.utc),
+        mtime=datetime.now(UTC),
         size=len(payload),
         hash=hashlib.sha256(payload).hexdigest(),
     )
@@ -219,7 +219,7 @@ def test_list_documents_does_not_read_files_older_than_since(
     old_path.write_bytes(b"old")
     new_path = tmp_path / "new.txt"
     new_path.write_bytes(b"new")
-    old_mtime = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    old_mtime = datetime(2024, 1, 1, tzinfo=UTC)
     new_mtime = old_mtime + timedelta(days=2)
     os.utime(old_path, (old_mtime.timestamp(), old_mtime.timestamp()))
     os.utime(new_path, (new_mtime.timestamp(), new_mtime.timestamp()))
@@ -262,7 +262,7 @@ def test_sync_deduplicates_canonical_uris_before_comparing(
     tmp_path, monkeypatch
 ) -> None:
     uri = "file:///docs/policy.txt"
-    mtime = datetime.now(timezone.utc)
+    mtime = datetime.now(UTC)
     first = DocumentRef(
         uri=uri,
         mtime=mtime,

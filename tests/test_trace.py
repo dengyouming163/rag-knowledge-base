@@ -9,14 +9,14 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from test_api_search import KB, TENANT, FailingChat, FakeChat, client  # noqa: F401
 
 from app.deps import get_chat_client
-from test_api_search import KB, TENANT, FakeChat, FailingChat, client  # noqa: F401
 
 
 def _record(store, trace_id: str, *, stage: str = "retrieve", query: str = "退款"):
@@ -63,7 +63,7 @@ def test_find_reads_previous_utc_date_after_restart(tmp_path, monkeypatch) -> No
     from src import trace as trace_module
 
     class FrozenDateTime(datetime):
-        value = datetime(2026, 11, 18, 23, 59, 59, tzinfo=timezone.utc)
+        value = datetime(2026, 11, 18, 23, 59, 59, tzinfo=UTC)
 
         @classmethod
         def now(cls, tz=None):
@@ -72,7 +72,7 @@ def test_find_reads_previous_utc_date_after_restart(tmp_path, monkeypatch) -> No
     monkeypatch.setattr(trace_module, "datetime", FrozenDateTime)
     store = trace_module.TraceStore(tmp_path)
     _record(store, "abc123def456", stage="retrieve", query="original")
-    FrozenDateTime.value = datetime(2026, 11, 19, 0, 0, 1, tzinfo=timezone.utc)
+    FrozenDateTime.value = datetime(2026, 11, 19, 0, 0, 1, tzinfo=UTC)
     _record(store, "abc123def456", stage="answer", query="original")
 
     assert {path.name for path in tmp_path.glob("*.jsonl")} == {

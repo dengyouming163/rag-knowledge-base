@@ -172,7 +172,7 @@ def _tail_by_tokens(text: str, tokens: int) -> str:
 
 def _content_hash(role: str, text: str) -> str:
     """内容指纹带角色前缀，避免父块与同文子块在唯一约束上相互覆盖。"""
-    return hashlib.sha256(f"{role}:{text}".encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha256(f"{role}:{text}".encode()).hexdigest()[:16]
 
 
 def split_document(

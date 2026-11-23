@@ -13,8 +13,8 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Iterable
 
 # 只保留高置信度模式：宁可漏一点，也不要把正常问题误伤
 INJECTION_PATTERNS: tuple[re.Pattern[str], ...] = (

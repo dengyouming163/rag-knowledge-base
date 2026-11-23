@@ -6,7 +6,7 @@ import json
 import logging
 import threading
 from collections import deque
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -46,7 +46,7 @@ class TraceStore:
         rerank_degraded: bool | None = None,
         citation_ok: bool | None = None,
     ) -> dict:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         item = {
             "trace_id": trace_id,
             "tenant": tenant,
@@ -112,7 +112,7 @@ class TraceStore:
     ) -> list[dict]:
         """按时间倒序返回最近的记录，只保留最近 `days` 天的数据。"""
         records = self.list_records(tenant, kb)
-        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        cutoff = datetime.now(UTC) - timedelta(days=days)
 
         def parsed_ts(item: dict) -> datetime:
             return datetime.fromisoformat(item["ts"].replace("Z", "+00:00"))

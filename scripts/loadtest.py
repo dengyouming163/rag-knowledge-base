@@ -20,9 +20,9 @@ import os
 import tempfile
 import time
 from collections import Counter
-from datetime import datetime, timezone
+from collections.abc import AsyncIterator, Awaitable, Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import AsyncIterator, Awaitable, Callable
 
 import httpx
 
@@ -249,7 +249,7 @@ async def run_loadtest(
     if not math.isfinite(timeout) or timeout <= 0:
         raise ValueError("timeout 必须为有限且大于 0 的数值")
 
-    timestamp = datetime.now(timezone.utc).isoformat()
+    timestamp = datetime.now(UTC).isoformat()
     started = time.perf_counter()
     results: dict[str, list[dict]] = {"search": [], "chat": []}
     jobs = iter(["search"] * requests + ["chat"] * requests)

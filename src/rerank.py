@@ -13,7 +13,7 @@ query 和候选拼在一起打分，准但慢。所以只对少量候选做，�
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 import httpx
@@ -81,7 +81,7 @@ class ApiReranker:
 
         reranked = [
             hit.model_copy(update={"score": score, "metadata": {**hit.metadata, "rerank_score": score}})
-            for hit, score in zip(hits, scores)
+            for hit, score in zip(hits, scores, strict=False)
         ]
         reranked.sort(key=lambda item: (-item.score, item.chunk_id))
         return RerankResult(hits=reranked[:top_k])

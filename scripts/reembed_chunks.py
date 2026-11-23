@@ -78,7 +78,9 @@ def reembed(
             )
             if not rows:
                 break
-            for row, vector in zip(rows, embed.embed_texts([r["text"] for r in rows])):
+            for row, vector in zip(
+                rows, embed.embed_texts([r["text"] for r in rows]), strict=False
+            ):
                 connection.execute(
                     text(
                         "UPDATE chunks SET embedding = CAST(:e AS vector), "

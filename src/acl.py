@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine

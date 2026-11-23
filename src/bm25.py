@@ -73,7 +73,7 @@ class BM25Index:
         }
 
     @classmethod
-    def from_payload(cls, payload: dict) -> "BM25Index":
+    def from_payload(cls, payload: dict) -> BM25Index:
         """从快照还原索引，不重新分词（分词是最耗时的一步）。
 
         用 `__new__` 跳过 `__init__` 的分词循环，再从倒排表反推词频与长度：

@@ -13,7 +13,6 @@ from src.ops_observability import (
     validate_stage_spans,
 )
 
-
 NON_FINITE = [float("nan"), float("inf"), float("-inf")]
 
 

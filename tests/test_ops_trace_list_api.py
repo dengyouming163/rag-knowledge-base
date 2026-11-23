@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -151,7 +151,7 @@ def _event(store: TraceStore, trace_id: str, *, tenant=TENANT, kb=KB, stage="ret
 def test_trace_list_paginates_three_pages_with_stable_tie_break(
     client: TestClient, engine
 ) -> None:
-    base = datetime.now(timezone.utc) - timedelta(minutes=5)
+    base = datetime.now(UTC) - timedelta(minutes=5)
     for trace_id, occurred_at in (
         ("page-oldest", base - timedelta(minutes=2)),
         ("page-tie-a", base - timedelta(minutes=1)),
@@ -205,7 +205,7 @@ def test_trace_list_paginates_three_pages_with_stable_tie_break(
 
 
 def test_trace_list_validates_cursor_window_and_limit(client: TestClient, engine) -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for index in range(21):
         _rag(engine, f"limit-{index}", occurred_at=now - timedelta(seconds=index))
 
@@ -235,7 +235,7 @@ def test_trace_list_validates_cursor_window_and_limit(client: TestClient, engine
 def test_trace_list_applies_all_filters_and_exact_trace_id(
     client: TestClient, engine
 ) -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     common = {
         "operation": "search",
         "mode": "vector",

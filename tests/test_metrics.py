@@ -15,7 +15,6 @@ from src.metrics import (
     refusal_accuracy,
 )
 
-
 # ---------- Recall@k ----------
 
 

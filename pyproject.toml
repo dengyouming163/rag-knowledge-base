@@ -28,7 +28,26 @@ test = [
     "pdfplumber",
     "Pillow",
 ]
+dev = ["ruff>=0.5", "pytest-cov>=5"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+exclude = [".venv", "data", "eval/fixtures", "deploy"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E203"]
+
+[tool.ruff.lint.per-file-ignores]
+# 脚本先改 sys.path 再导入项目模块，导入顺序是刻意的
+"scripts/**" = ["E402"]
+# 测试同样需要先注入 scripts/ 到 sys.path；test_trace 复用 test_api_search 的 fixture
+"tests/**" = ["B011", "E402"]
+"tests/test_trace.py" = ["B011", "E402", "F811"]
+# FastAPI 依赖注入惯用法：File()/Depends() 只能作为参数默认值出现
+"parser/main.py" = ["B008"]

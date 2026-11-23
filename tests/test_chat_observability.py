@@ -17,7 +17,6 @@ from src.guard.injection import CANARY
 from src.pipeline import GUARD_ANSWER, RagPipeline
 from src.store import SearchHit
 
-
 TENANT = "tenant-from-dependency"
 KB = "kb-chat"
 ENGINE = object()
