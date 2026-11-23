@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import os
 import sys
-from pathlib import Path
 from typing import Any
 
 from sqlalchemy import text
@@ -23,8 +22,7 @@ from .ingest_jobs import (
     mark_progress,
     mark_succeeded,
 )
-
-UPLOAD_ROOT = Path("data/uploads")
+from .storage import Storage, build_storage
 
 
 def worker_once(
@@ -33,6 +31,7 @@ def worker_once(
     embed_client: Any,
     parser: Any = None,
     worker_id: str | None = None,
+    storage: Storage | None = None,
 ) -> int:
     """跑一轮：领到任务就执行并返回 1（无论成败）；没领到返回 0。"""
     worker_id = worker_id or os.environ.get("WORKER_ID", "worker-local")
@@ -89,13 +88,26 @@ def worker_once(
                 f"文档 {job['doc_id']} 不存在或 source_url 为空，无法定位上传文件"
             )
 
-        path = UPLOAD_ROOT / source_url
+        active_storage = storage if storage is not None else build_storage()
+        if not active_storage.exists(source_url):
+            # 文件缺失重传也不会自己出现，按不可重试失败处理，避免空跑三次
+            raise NonRetryableIngestError(
+                f"上传文件不存在：{source_url}，请重新上传"
+            )
+        try:
+            file_content = active_storage.get_bytes(source_url)
+        except FileNotFoundError as exc:
+            raise NonRetryableIngestError(
+                f"上传文件不存在：{source_url}，请重新上传"
+            ) from exc
+
         result = ingest_document(
             engine,
             tenant_id=job["tenant_id"],
             kb_id=job["kb_id"],
             doc_id=job["doc_id"],
-            path=path,
+            path=source_url,
+            content=file_content,
             embed_client=embed_client,
             parser=parser,
             on_stage=on_stage,

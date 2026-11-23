@@ -15,6 +15,7 @@ import src.ingest_jobs as ingest_jobs
 from scripts import run_worker
 from src.connectors.base import DocumentRef
 from src.db.base import create_db_engine
+from src.storage import LocalStorage
 from src.worker import worker_once
 
 TENANT = "t_worker_connectors"
@@ -189,7 +190,7 @@ def test_received_document_uses_upload_layout_and_existing_worker(
     assert running_job is not None and running_job["status"] == "running"
     claims = iter([running_job, None])
     monkeypatch.setattr("src.worker.claim_next", lambda *args, **kwargs: next(claims))
-    monkeypatch.setattr("src.worker.UPLOAD_ROOT", tmp_path)
+    monkeypatch.setattr("src.worker.build_storage", lambda: LocalStorage(tmp_path))
     assert worker_once(engine, embed_client=FakeEmbed()) == 1
     row = _document_and_job(engine, received["doc_id"])
     assert row["doc_status"] == "ready"

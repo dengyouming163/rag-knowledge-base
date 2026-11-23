@@ -24,10 +24,11 @@ from uuid import uuid4
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
+from .storage import LocalStorage, Storage, build_storage
+
 STATUSES = ("queued", "running", "succeeded", "failed")
 MAX_ATTEMPTS = 3
 ALLOWED_SOURCE_SUFFIXES = {".pdf", ".md", ".txt", ".docx", ".pptx", ".xlsx"}
-UPLOAD_ROOT = Path("data/uploads")
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 
 _JOB_COLUMNS = (
@@ -63,6 +64,7 @@ def receive_source_document(
     uri: str,
     content: bytes,
     upload_root: str | Path | None = None,
+    storage: Storage | None = None,
 ) -> dict:
     """接收一份 Source 内容、落盘并复用 enqueue；返回新增/重复及 job 信息。
 
@@ -145,17 +147,16 @@ def receive_source_document(
                     "duplicated": True,
                 }
 
-    destination = (Path(upload_root) if upload_root is not None else UPLOAD_ROOT) / relative_path
+    if storage is not None:
+        resolved_storage: Storage = storage
+    elif upload_root is not None:
+        # upload_root 仅保留给测试与本地脚本显式指定目录，生产走 build_storage()
+        resolved_storage = LocalStorage(upload_root)
+    else:
+        resolved_storage = build_storage()
+
     try:
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        temporary_path = destination.with_name(
-            f".{destination.name}.{uuid4().hex}.tmp"
-        )
-        try:
-            temporary_path.write_bytes(content)
-            temporary_path.replace(destination)
-        finally:
-            temporary_path.unlink(missing_ok=True)
+        resolved_storage.put_bytes(relative_path.as_posix(), content)
         job_id = enqueue(engine, tenant_id, kb_id, doc_id, source=source_name)
     except Exception:
         with engine.begin() as connection:

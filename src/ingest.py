@@ -47,19 +47,24 @@ class NonRetryableIngestError(RuntimeError):
     """文档本身无法通过重试恢复，需要用户处理后重新上传。"""
 
 
-def _extract_text(file_path: Path, parser: Any) -> str:
-    """按后缀提取纯文本/Markdown；不支持的格式直接抛 ValueError。"""
+def _extract_text(
+    file_path: Path, parser: Any, content: bytes | None = None
+) -> str:
+    """按后缀提取纯文本/Markdown；不支持的格式直接抛 ValueError。
+
+    `content` 用于从对象存储直接取回的内存字节，避免 worker 回写临时文件。
+    """
     suffix = file_path.suffix.lower()
+    data = content if content is not None else file_path.read_bytes()
     if suffix == ".pdf":
-        content = file_path.read_bytes()
         # 只在真正解析 PDF 时才创建客户端：构造本身不联网，
         # 但没必要为 Markdown 上传也持有一个 httpx.Client。
         try:
             if parser is None:
                 with PdfParserClient() as client:
-                    blocks = client.parse(content, filename=file_path.name)
+                    blocks = client.parse(data, filename=file_path.name)
             else:
-                blocks = parser.parse(content, filename=file_path.name)
+                blocks = parser.parse(data, filename=file_path.name)
         except ParserUnavailable as exc:
             message = str(exc)
             if exc.retryable is True:
@@ -73,7 +78,7 @@ def _extract_text(file_path: Path, parser: Any) -> str:
 
     if suffix in _OFFICE_PARSERS:
         try:
-            extracted = _OFFICE_PARSERS[suffix](file_path.read_bytes())
+            extracted = _OFFICE_PARSERS[suffix](data)
         except OfficeParseError as exc:
             raise NonRetryableIngestError(str(exc)) from exc
         if not extracted.strip():
@@ -85,7 +90,7 @@ def _extract_text(file_path: Path, parser: Any) -> str:
         return extracted
 
     if suffix in _TEXT_SUFFIXES:
-        return file_path.read_text(encoding="utf-8")
+        return data.decode("utf-8")
 
     raise ValueError(f"不支持的文件类型：{suffix or '(none)'}")
 
@@ -98,6 +103,7 @@ def ingest_document(
     doc_id: str,
     path: str | Path,
     embed_client: Any,
+    content: bytes | None = None,
     parser: Any = None,
     on_stage: StageCallback | None = None,
 ) -> dict:
@@ -113,7 +119,7 @@ def ingest_document(
             on_stage(name, progress, message)
 
     stage("parsing", 30, "开始解析")
-    text_content = _extract_text(file_path, parser)
+    text_content = _extract_text(file_path, parser, content)
     if not text_content.strip():
         # 空内容如果继续走流程，最终会把文档标成 ready 却没有任何块，
         # 这类"假成功"比直接失败更难排查。

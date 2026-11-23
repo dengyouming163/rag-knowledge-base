@@ -29,11 +29,11 @@ from app.schemas import UploadDocumentResponse
 from app.services import ensure_kb
 from src import ingest_jobs
 from src.ingest_events import record_job_event
+from src.storage import StorageError, build_storage
 
 router = APIRouter(prefix="/v1", tags=["documents"])
 
 ALLOWED_SUFFIX = {".pdf", ".md", ".txt", ".docx", ".pptx", ".xlsx"}
-UPLOAD_ROOT = Path("data/uploads")
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 
@@ -131,13 +131,12 @@ async def upload_document(
         message=f"source=upload doc_id={doc_id}",
     )
 
-    # 数据库已提交，再落盘：这里的失败只会留下 failed 行，不会留下 pending 行
+    # 数据库已提交，再写存储：这里的失败只会留下 failed 行，不会留下 pending 行
     relative_path = Path(tenant_id) / kb_id / f"{doc_id}{suffix}"
-    destination = UPLOAD_ROOT / relative_path
+    key = relative_path.as_posix()
     try:
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes(content)
-    except OSError as exc:
+        build_storage().put_bytes(key, content)
+    except (OSError, StorageError) as exc:
         with engine.begin() as connection:
             connection.execute(
                 text(

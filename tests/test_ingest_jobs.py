@@ -26,6 +26,7 @@ from src.ingest_jobs import (
     mark_succeeded,
 )
 from src.parsers.pdf import ParserUnavailable, PdfParserClient
+from src.storage import LocalStorage
 from src.worker import worker_once
 
 TENANT = "t_jobs"
@@ -265,7 +266,7 @@ def test_worker_once_processes_one_job(engine, tmp_path, monkeypatch) -> None:
     source_url = f"{TENANT}/{KB}/d1.md"
     _seed_document(engine, "d1", source_url, "worker_doc_hash_1")
     job_id = enqueue(engine, TENANT, KB, doc_id="d1")
-    monkeypatch.setattr("src.worker.UPLOAD_ROOT", tmp_path)
+    monkeypatch.setattr("src.worker.build_storage", lambda: LocalStorage(tmp_path))
     path = tmp_path / TENANT / KB / "d1.md"
     path.parent.mkdir(parents=True)
     path.write_text("# 售后政策\n\n## 退款\n\n支持七天无理由退款。", encoding="utf-8")
@@ -296,27 +297,51 @@ def test_worker_once_processes_one_job(engine, tmp_path, monkeypatch) -> None:
     assert worker_once(engine, embed_client=FakeEmbed()) == 0
 
 
-def test_worker_marks_document_failed_after_max_retries(
+def test_worker_fails_missing_file_without_retry(
     engine, tmp_path, monkeypatch
 ) -> None:
     source_url = f"{TENANT}/{KB}/missing.md"
     _seed_document(engine, "d2", source_url, "worker_doc_hash_2")
     job_id = enqueue(engine, TENANT, KB, doc_id="d2")
-    monkeypatch.setattr("src.worker.UPLOAD_ROOT", tmp_path)
+    monkeypatch.setattr("src.worker.build_storage", lambda: LocalStorage(tmp_path))
 
-    for _ in range(3):
-        assert worker_once(engine, embed_client=FakeEmbed()) == 1
+    assert worker_once(engine, embed_client=FakeEmbed()) == 1
+    assert worker_once(engine, embed_client=FakeEmbed()) == 0
 
     job = get_job(engine, TENANT, job_id)
     assert job["status"] == "failed"
+    assert job["attempts"] == 1
+    assert "上传文件不存在" in job["error"]
     assert job["finished_at"] is not None
-    assert job["error"]
-    with engine.begin() as connection:
-        doc_status = connection.execute(
-            text("SELECT status FROM documents WHERE id = 'd2' AND tenant_id = :t"),
-            {"t": TENANT},
-        ).scalar_one()
-    assert doc_status == "failed"
+
+
+def test_worker_retries_transient_storage_error(engine, monkeypatch) -> None:
+    class FlakyStorage:
+        def exists(self, key: str) -> bool:
+            return True
+
+        def get_bytes(self, key: str) -> bytes:
+            raise ConnectionError("connection reset")
+
+    source_url = f"{TENANT}/{KB}/transient.md"
+    _seed_document(engine, "d3", source_url, "worker_doc_hash_3")
+    job_id = enqueue(engine, TENANT, KB, doc_id="d3")
+    monkeypatch.setattr("src.worker.build_storage", lambda: FlakyStorage())
+
+    assert worker_once(engine, embed_client=FakeEmbed()) == 1
+    job = get_job(engine, TENANT, job_id)
+    assert job["status"] != "failed"
+    assert job["attempts"] == 1
+
+    assert worker_once(engine, embed_client=FakeEmbed()) == 1
+    job = get_job(engine, TENANT, job_id)
+    assert job["status"] != "failed"
+    assert job["attempts"] == 2
+
+    assert worker_once(engine, embed_client=FakeEmbed()) == 1
+    job = get_job(engine, TENANT, job_id)
+    assert job["status"] == "failed"
+    assert job["attempts"] == 3
 
 
 def test_worker_fails_scanned_document_without_retry(
@@ -329,7 +354,7 @@ def test_worker_fails_scanned_document_without_retry(
     source_url = f"{TENANT}/{KB}/scanned.pdf"
     _seed_document(engine, "scanned", source_url, "worker_scanned_doc_hash")
     job_id = enqueue(engine, TENANT, KB, doc_id="scanned")
-    monkeypatch.setattr("src.worker.UPLOAD_ROOT", tmp_path)
+    monkeypatch.setattr("src.worker.build_storage", lambda: LocalStorage(tmp_path))
     path = tmp_path / TENANT / KB / "scanned.pdf"
     path.parent.mkdir(parents=True)
     path.write_bytes(b"%PDF-1.4 scanned")
@@ -358,7 +383,7 @@ def test_worker_retries_remote_503_when_local_pdf_has_no_text(
     source_url = f"{TENANT}/{KB}/remote-503.pdf"
     _seed_document(engine, "remote-503", source_url, "worker_remote_503_doc_hash")
     job_id = enqueue(engine, TENANT, KB, doc_id="remote-503")
-    monkeypatch.setattr("src.worker.UPLOAD_ROOT", tmp_path)
+    monkeypatch.setattr("src.worker.build_storage", lambda: LocalStorage(tmp_path))
     path = tmp_path / TENANT / KB / "remote-503.pdf"
     path.parent.mkdir(parents=True)
     writer = PdfWriter()
@@ -412,7 +437,7 @@ def test_worker_retries_ocr_only_parser_unavailable(
     source_url = f"{TENANT}/{KB}/ocr-only.pdf"
     _seed_document(engine, "ocr-only", source_url, "worker_ocr_only_doc_hash")
     job_id = enqueue(engine, TENANT, KB, doc_id="ocr-only")
-    monkeypatch.setattr("src.worker.UPLOAD_ROOT", tmp_path)
+    monkeypatch.setattr("src.worker.build_storage", lambda: LocalStorage(tmp_path))
     path = tmp_path / TENANT / KB / "ocr-only.pdf"
     path.parent.mkdir(parents=True)
     path.write_bytes(b"%PDF-1.4 ocr only")
