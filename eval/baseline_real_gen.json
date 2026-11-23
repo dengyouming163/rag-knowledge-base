@@ -1,0 +1,1304 @@
+{
+  "run_at": "2026-11-19T19:27:00",
+  "mock": false,
+  "mode": "hybrid",
+  "top_k": 5,
+  "generate": true,
+  "suite": "eval\\cases.jsonl",
+  "corpus": "eval\\demo_corpus.json",
+  "corpus_chunks": 26,
+  "elapsed_ms": 55524.4,
+  "metrics": {
+    "recall_at_k": 1.0,
+    "mrr": 0.9737,
+    "hit_rate": 1.0,
+    "refusal_accuracy": 1.0,
+    "answer_coverage": 0.9211,
+    "citation_accuracy": 1.0
+  },
+  "counts": {
+    "cases": 50,
+    "answerable": 38,
+    "unanswerable": 12,
+    "generation_errors": 0,
+    "answers_without_citation": 0
+  },
+  "cases": [
+    {
+      "case_id": "c001",
+      "query": "退款一般几天到账",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#1"
+      ],
+      "predicted": [
+        "kb-after-sale#1",
+        "kb-logistics#1",
+        "kb-maintenance#1",
+        "kb-spec#6",
+        "kb-after-sale#2"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "退款审核通过后按原支付路径退回，通常 1-3 个工作日到账 [kb-after-sale#1]。",
+      "cited": [
+        "kb-after-sale#1"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c002",
+      "query": "支持七天无理由退款吗",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#1"
+      ],
+      "predicted": [
+        "kb-after-sale#1",
+        "kb-after-sale#2",
+        "kb-logistics#1",
+        "kb-spec#6",
+        "kb-spec#5"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "支持。退款审核通过后按原支付路径退回，通常 1-3 个工作日到账。[kb-after-sale#1]",
+      "cited": [
+        "kb-after-sale#1"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c003",
+      "query": "退款退回到哪里",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#1"
+      ],
+      "predicted": [
+        "kb-after-sale#1",
+        "kb-maintenance#2",
+        "kb-device#1",
+        "kb-fault#3",
+        "kb-logistics#4"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "退款按原支付路径退回，审核通过后通常 1-3 个工作日到账 [kb-after-sale#1]。",
+      "cited": [
+        "kb-after-sale#1"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c004",
+      "query": "退款必须原路退回吗",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#1"
+      ],
+      "predicted": [
+        "kb-after-sale#1",
+        "kb-after-sale#2",
+        "kb-logistics#4",
+        "kb-logistics#2",
+        "kb-logistics#1"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "是的，退款按原支付路径退回，审核通过后通常 1-3 个工作日到账 [kb-after-sale#1]。",
+      "cited": [
+        "kb-after-sale#1"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c005",
+      "query": "钱什么时候能回来",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#1"
+      ],
+      "predicted": [
+        "kb-logistics#1",
+        "kb-after-sale#1",
+        "kb-spec#6",
+        "kb-fault#6",
+        "kb-maintenance#4"
+      ],
+      "recall": 1.0,
+      "mrr": 0.5,
+      "answer": "根据现有资料无法确定。资料中没有关于退款、返款或资金到账时间的信息，只包含配送时效、节能模式、水质要求、运行噪音和报修准备等内容。要回答这个问题，还需要退款/售后政策或资金处理时效相关的资料。",
+      "cited": [],
+      "refused": true,
+      "citation_accuracy": 0.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c006",
+      "query": "买完不想要了能退吗",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#1"
+      ],
+      "predicted": [
+        "kb-after-sale#1",
+        "kb-after-sale#2",
+        "kb-logistics#1",
+        "kb-spec#6",
+        "kb-maintenance#6"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "可以退。支持七天无理由退款；退款审核通过后按原支付路径退回，通常 1-3 个工作日到账 [kb-after-sale#1]。",
+      "cited": [
+        "kb-after-sale#1"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c007",
+      "query": "换货要在几天内申请",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#2"
+      ],
+      "predicted": [
+        "kb-after-sale#2",
+        "kb-logistics#1",
+        "kb-logistics#2",
+        "kb-logistics#4",
+        "kb-spec#6"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "换货需在签收后七天内申请，且商品需保持完好 [kb-after-sale#2]。",
+      "cited": [
+        "kb-after-sale#2"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c008",
+      "query": "换货的运费谁承担",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#2"
+      ],
+      "predicted": [
+        "kb-after-sale#2",
+        "kb-logistics#2",
+        "kb-logistics#4",
+        "kb-maintenance#1",
+        "kb-logistics#1"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "换货产生的物流费用由商家承担。[kb-after-sale#2]",
+      "cited": [
+        "kb-after-sale#2"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c009",
+      "query": "换货对商品状态有什么要求",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#2"
+      ],
+      "predicted": [
+        "kb-after-sale#2",
+        "kb-logistics#4",
+        "kb-logistics#2",
+        "kb-logistics#1",
+        "kb-fault#3"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "换货要求商品保持完好，并且需在签收后七天内申请 [kb-after-sale#2]。",
+      "cited": [
+        "kb-after-sale#2"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c010",
+      "query": "签收后第八天还能申请换货吗",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#2"
+      ],
+      "predicted": [
+        "kb-after-sale#2",
+        "kb-logistics#4",
+        "kb-logistics#2",
+        "kb-logistics#1",
+        "kb-after-sale#1"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "根据现有资料无法支持在签收后第八天申请换货。换货需在签收后七天内申请，且商品保持完好 [kb-after-sale#2]。第八天已超过该期限，资料中未提供超期后仍可换货的说明。",
+      "cited": [
+        "kb-after-sale#2"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c011",
+      "query": "现货订单多久发出",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-logistics#1"
+      ],
+      "predicted": [
+        "kb-logistics#1",
+        "kb-after-sale#2",
+        "kb-logistics#2",
+        "kb-logistics#4",
+        "kb-spec#3"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "现货订单 48 小时内发出；偏远地区可能延迟 1-2 天，节假日顺延。[kb-logistics#1]",
+      "cited": [
+        "kb-logistics#1"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c012",
+      "query": "偏远地区会延迟几天",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-logistics#1"
+      ],
+      "predicted": [
+        "kb-logistics#1",
+        "kb-after-sale#1",
+        "kb-maintenance#1",
+        "kb-logistics#2",
+        "kb-spec#6"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "偏远地区可能延迟 1-2 天 [kb-logistics#1]。",
+      "cited": [
+        "kb-logistics#1"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c013",
+      "query": "节假日配送会顺延吗",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-logistics#1"
+      ],
+      "predicted": [
+        "kb-logistics#1",
+        "kb-logistics#2",
+        "kb-after-sale#1",
+        "kb-maintenance#5",
+        "kb-fault#5"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "会顺延。现货订单 48 小时内发出，偏远地区可能延迟 1-2 天，节假日顺延。[kb-logistics#1]",
+      "cited": [
+        "kb-logistics#1"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c014",
+      "query": "没发货可以自己改地址吗",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-logistics#2"
+      ],
+      "predicted": [
+        "kb-logistics#2",
+        "kb-logistics#4",
+        "kb-logistics#1",
+        "kb-after-sale#2",
+        "kb-fault#6"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "可以。未发货订单可在订单详情页自助修改收货地址 [kb-logistics#2]。",
+      "cited": [
+        "kb-logistics#2"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c015",
+      "query": "已发货了怎么改地址",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-logistics#2"
+      ],
+      "predicted": [
+        "kb-logistics#2",
+        "kb-logistics#4",
+        "kb-after-sale#2",
+        "kb-logistics#1",
+        "kb-fault#6"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "已发货订单无法直接自助修改地址，需要联系快递拦截后重新派送 [kb-logistics#2]。",
+      "cited": [
+        "kb-logistics#2"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c016",
+      "query": "改地址需要联系谁",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-logistics#2"
+      ],
+      "predicted": [
+        "kb-logistics#2",
+        "kb-fault#6",
+        "kb-logistics#4",
+        "kb-after-sale#2",
+        "kb-spec#5"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "未发货订单可在订单详情页自助修改收货地址，无需联系他人；已发货订单需联系快递拦截后重新派送 [kb-logistics#2]。",
+      "cited": [
+        "kb-logistics#2"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c017",
+      "query": "E102 是什么意思",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-device#1"
+      ],
+      "predicted": [
+        "kb-device#1",
+        "kb-fault#2",
+        "kb-fault#3",
+        "kb-fault#4",
+        "kb-fault#1"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "E102 表示滤芯未安装到位。请重新安装滤芯后长按复位键 3 秒。[kb-device#1]",
+      "cited": [
+        "kb-device#1"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c018",
+      "query": "E102 怎么处理",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-device#1"
+      ],
+      "predicted": [
+        "kb-device#1",
+        "kb-spec#5",
+        "kb-after-sale#1",
+        "kb-fault#3",
+        "kb-fault#2"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "E102 表示滤芯未安装到位。请重新安装滤芯，然后长按复位键 3 秒 [kb-device#1]。",
+      "cited": [
+        "kb-device#1"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c019",
+      "query": "E102 复位键要按多久",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-device#1"
+      ],
+      "predicted": [
+        "kb-device#1",
+        "kb-maintenance#2",
+        "kb-fault#5",
+        "kb-fault#3",
+        "kb-after-sale#1"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "E102 提示滤芯未安装到位，重新安装滤芯后长按复位键 3 秒 [kb-device#1]。",
+      "cited": [
+        "kb-device#1"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c020",
+      "query": "E205 是什么故障",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-device#2"
+      ],
+      "predicted": [
+        "kb-device#2",
+        "kb-fault#5",
+        "kb-fault#2",
+        "kb-fault#3",
+        "kb-device#1"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "E205 表示水箱缺水，请加水至最高水位线以下后重新启动。[kb-device#2]",
+      "cited": [
+        "kb-device#2"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c021",
+      "query": "E205 怎么解决",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-device#2"
+      ],
+      "predicted": [
+        "kb-device#2",
+        "kb-device#1",
+        "kb-fault#3",
+        "kb-fault#2",
+        "kb-fault#1"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "E205 表示水箱缺水，解决方法是：加水至最高水位线以下，然后重新启动设备。[kb-device#2]",
+      "cited": [
+        "kb-device#2"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c022",
+      "query": "E205 加水加到什么位置",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-device#2"
+      ],
+      "predicted": [
+        "kb-device#2",
+        "kb-device#1",
+        "kb-maintenance#2",
+        "kb-fault#3",
+        "kb-spec#5"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "E205 表示水箱缺水，加水至最高水位线以下即可，然后重新启动设备 [kb-device#2]。",
+      "cited": [
+        "kb-device#2"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c023",
+      "query": "水箱多久洗一回",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-device#3"
+      ],
+      "predicted": [
+        "kb-device#3",
+        "kb-spec#6",
+        "kb-spec#1",
+        "kb-device#2",
+        "kb-maintenance#1"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "建议每两周清洗一次水箱与滤芯支架，不要使用洗碗机或强酸清洁剂 [kb-device#3]。",
+      "cited": [
+        "kb-device#3"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c024",
+      "query": "水箱能用洗碗机洗吗",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-device#3"
+      ],
+      "predicted": [
+        "kb-device#3",
+        "kb-spec#6",
+        "kb-spec#1",
+        "kb-maintenance#6",
+        "kb-spec#4"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "不能。资料明确建议不要使用洗碗机清洗水箱，也不要用强酸清洁剂；建议每两周清洗一次水箱与滤芯支架 [kb-device#3]。",
+      "cited": [
+        "kb-device#3"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c025",
+      "query": "清洁时不能用什么清洁剂",
+      "type": "fact",
+      "answerable": true,
+      "expected": [
+        "kb-device#3"
+      ],
+      "predicted": [
+        "kb-device#3",
+        "kb-maintenance#6",
+        "kb-spec#6",
+        "kb-spec#5",
+        "kb-spec#4"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "清洁时不要使用强酸清洁剂（清洗水箱与滤芯支架时）[kb-device#3]。另外，外壳清洁不要直接用水冲淋机身 [kb-maintenance#6]。",
+      "cited": [
+        "kb-device#3",
+        "kb-maintenance#6"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c026",
+      "query": "退款和换货的申请期限分别是多久",
+      "type": "compare",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#1",
+        "kb-after-sale#2"
+      ],
+      "predicted": [
+        "kb-after-sale#1",
+        "kb-after-sale#2",
+        "kb-maintenance#1",
+        "kb-spec#4",
+        "kb-logistics#4"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "退款支持七天无理由退款 [kb-after-sale#1]；换货需在签收后七天内申请 [kb-after-sale#2]。两者期限均为七天。",
+      "cited": [
+        "kb-after-sale#1",
+        "kb-after-sale#2"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c027",
+      "query": "E102 和 E205 分别代表什么故障",
+      "type": "compare",
+      "answerable": true,
+      "expected": [
+        "kb-device#1",
+        "kb-device#2"
+      ],
+      "predicted": [
+        "kb-device#2",
+        "kb-device#1",
+        "kb-fault#5",
+        "kb-fault#3",
+        "kb-maintenance#3"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "E102 表示滤芯未安装到位，需重新安装滤芯后长按复位键 3 秒 [kb-device#1]；E205 表示水箱缺水，需加水至最高水位线以下后重新启动 [kb-device#2]。",
+      "cited": [
+        "kb-device#1",
+        "kb-device#2"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c028",
+      "query": "未发货和已发货改地址的方式有什么不同",
+      "type": "compare",
+      "answerable": true,
+      "expected": [
+        "kb-logistics#2"
+      ],
+      "predicted": [
+        "kb-logistics#2",
+        "kb-logistics#4",
+        "kb-after-sale#2",
+        "kb-logistics#1",
+        "kb-fault#6"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "未发货订单可在订单详情页自助修改收货地址；已发货订单需联系快递拦截后重新派送。[kb-logistics#2]",
+      "cited": [
+        "kb-logistics#2"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c029",
+      "query": "偏远地区和节假日对配送时效的影响",
+      "type": "compare",
+      "answerable": true,
+      "expected": [
+        "kb-logistics#1"
+      ],
+      "predicted": [
+        "kb-logistics#1",
+        "kb-logistics#2",
+        "kb-fault#6",
+        "kb-maintenance#1",
+        "kb-maintenance#5"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "偏远地区配送可能延迟 1-2 天，节假日配送顺延；现货订单本身为 48 小时内发出。[kb-logistics#1]",
+      "cited": [
+        "kb-logistics#1"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c030",
+      "query": "退款到账要多久，换货运费谁出",
+      "type": "compare",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#1",
+        "kb-after-sale#2"
+      ],
+      "predicted": [
+        "kb-after-sale#1",
+        "kb-after-sale#2",
+        "kb-logistics#1",
+        "kb-logistics#2",
+        "kb-logistics#4"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "退款审核通过后按原支付路径退回，通常 1-3 个工作日到账 [kb-after-sale#1]；换货产生的物流费用由商家承担 [kb-after-sale#2]。",
+      "cited": [
+        "kb-after-sale#1",
+        "kb-after-sale#2"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c031",
+      "query": "E102 和 E205 分别该怎么处理",
+      "type": "compare",
+      "answerable": true,
+      "expected": [
+        "kb-device#1",
+        "kb-device#2"
+      ],
+      "predicted": [
+        "kb-device#2",
+        "kb-device#1",
+        "kb-spec#5",
+        "kb-spec#4",
+        "kb-maintenance#3"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "E102 表示滤芯未安装到位，需重新安装滤芯后长按复位键 3 秒 [kb-device#1]。E205 表示水箱缺水，需加水至最高水位线以下后重新启动 [kb-device#2]。",
+      "cited": [
+        "kb-device#1",
+        "kb-device#2"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c032",
+      "query": "洗碗机和强酸清洁剂都能用来清洁吗",
+      "type": "compare",
+      "answerable": true,
+      "expected": [
+        "kb-device#3"
+      ],
+      "predicted": [
+        "kb-device#3",
+        "kb-maintenance#6",
+        "kb-spec#4",
+        "kb-spec#5",
+        "kb-spec#6"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "不能。资料明确建议不要使用洗碗机或强酸清洁剂来清洗水箱与滤芯支架 [kb-device#3]。",
+      "cited": [
+        "kb-device#3"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c033",
+      "query": "平时发货要多久，节假日呢",
+      "type": "compare",
+      "answerable": true,
+      "expected": [
+        "kb-logistics#1"
+      ],
+      "predicted": [
+        "kb-logistics#1",
+        "kb-logistics#2",
+        "kb-logistics#4",
+        "kb-after-sale#2",
+        "kb-fault#6"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "现货订单 48 小时内发出，偏远地区可能延迟 1-2 天；节假日顺延。[kb-logistics#1]",
+      "cited": [
+        "kb-logistics#1"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c034",
+      "query": "换货商品已经发货了，运费谁出、地址怎么改",
+      "type": "multi_hop",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#2",
+        "kb-logistics#2"
+      ],
+      "predicted": [
+        "kb-logistics#2",
+        "kb-after-sale#2",
+        "kb-logistics#4",
+        "kb-logistics#1",
+        "kb-spec#6"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "换货运费由商家承担 [kb-after-sale#2]。地址修改方面：未发货订单可在订单详情页自助修改收货地址；已发货订单需联系快递拦截后重新派送 [kb-logistics#2]。由于该换货商品已发货，需按已发货情形联系快递拦截后重新派送。",
+      "cited": [
+        "kb-after-sale#2",
+        "kb-logistics#2"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c035",
+      "query": "签收第 8 天发现 E102，还能换货吗，机器先怎么处理",
+      "type": "multi_hop",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#2",
+        "kb-device#1"
+      ],
+      "predicted": [
+        "kb-after-sale#2",
+        "kb-logistics#4",
+        "kb-logistics#2",
+        "kb-logistics#1",
+        "kb-device#1"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "根据现有资料无法确定 E102 具体指什么，也无法据此判断换货资格。\n\n关于换货时限：换货需在签收后七天内申请，且商品保持完好 [kb-after-sale#2]。您提到签收第 8 天，已超过七天期限，按该政策通常无法申请换货 [kb-after-sale#2]。\n\n关于机器先怎么处理：资料中没有针对 E102 故障的处理指引，无法确定。建议补充 E102 的含义（如故障代码/型号）及商品当前状态，以便进一步核对。",
+      "cited": [
+        "kb-after-sale#2"
+      ],
+      "refused": true,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c036",
+      "query": "E205 处理时需要按复位键吗",
+      "type": "multi_hop",
+      "answerable": true,
+      "expected": [
+        "kb-device#1",
+        "kb-device#2"
+      ],
+      "predicted": [
+        "kb-maintenance#2",
+        "kb-device#1",
+        "kb-device#2",
+        "kb-fault#3",
+        "kb-fault#5"
+      ],
+      "recall": 1.0,
+      "mrr": 0.5,
+      "answer": "不需要。E205 表示水箱缺水，处理方式是加水至最高水位线以下后重新启动，资料中未提到需要按复位键 [kb-device#2]。",
+      "cited": [
+        "kb-device#2"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c037",
+      "query": "节假日下单，发货和退款到账都会顺延吗",
+      "type": "multi_hop",
+      "answerable": true,
+      "expected": [
+        "kb-logistics#1",
+        "kb-after-sale#1"
+      ],
+      "predicted": [
+        "kb-logistics#1",
+        "kb-after-sale#1",
+        "kb-logistics#2",
+        "kb-logistics#4",
+        "kb-after-sale#2"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "节假日下单时，发货会顺延（现货订单 48 小时内发出，节假日顺延）[kb-logistics#1]。退款到账方面，资料只说明审核通过后通常 1-3 个工作日到账，未提及节假日是否顺延，因此根据现有资料无法确定退款到账是否顺延，还缺退款到账在节假日期间处理规则的信息 [kb-after-sale#1]。",
+      "cited": [
+        "kb-logistics#1",
+        "kb-after-sale#1"
+      ],
+      "refused": true,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c038",
+      "query": "未发货的订单想退款，还需要先改地址吗",
+      "type": "multi_hop",
+      "answerable": true,
+      "expected": [
+        "kb-after-sale#1",
+        "kb-logistics#2"
+      ],
+      "predicted": [
+        "kb-logistics#2",
+        "kb-after-sale#1",
+        "kb-logistics#1",
+        "kb-after-sale#2",
+        "kb-logistics#4"
+      ],
+      "recall": 1.0,
+      "mrr": 1.0,
+      "answer": "不需要先改地址。未发货订单可直接在订单详情页自助修改收货地址 [kb-logistics#2]；退款方面支持七天无理由退款，审核通过后按原支付路径退回，通常 1-3 个工作日到账 [kb-after-sale#1]。资料未说明退款必须先改地址，两者是独立操作。",
+      "cited": [
+        "kb-logistics#2",
+        "kb-after-sale#1"
+      ],
+      "refused": false,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c039",
+      "query": "发票怎么开",
+      "type": "unanswerable",
+      "answerable": false,
+      "expected": [],
+      "predicted": [
+        "kb-logistics#4",
+        "kb-fault#6",
+        "kb-logistics#2",
+        "kb-logistics#1",
+        "kb-maintenance#4"
+      ],
+      "recall": null,
+      "mrr": null,
+      "answer": "根据现有资料无法确定。资料中没有关于开具发票的说明，还缺发票申请入口、开票时间、发票类型（如电子/纸质）等信息。",
+      "cited": [],
+      "refused": true,
+      "citation_accuracy": 0.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c040",
+      "query": "保修期是多久",
+      "type": "unanswerable",
+      "answerable": false,
+      "expected": [],
+      "predicted": [
+        "kb-maintenance#1",
+        "kb-after-sale#2",
+        "kb-fault#3",
+        "kb-spec#6",
+        "kb-fault#6"
+      ],
+      "recall": null,
+      "mrr": null,
+      "answer": "根据现有资料无法确定保修期是多久。资料中没有关于保修期限的信息，只涉及故障代码、物流改址、滤芯更换周期和换货政策。需要补充保修政策相关文档才能回答。",
+      "cited": [],
+      "refused": true,
+      "citation_accuracy": 0.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c041",
+      "query": "会员积分怎么用",
+      "type": "unanswerable",
+      "answerable": false,
+      "expected": [],
+      "predicted": [
+        "kb-spec#4",
+        "kb-spec#2",
+        "kb-fault#5",
+        "kb-spec#6",
+        "kb-after-sale#2"
+      ],
+      "recall": null,
+      "mrr": null,
+      "answer": "根据现有资料无法确定。资料中没有关于会员积分使用的任何信息，还缺会员积分规则、兑换方式或适用范围等说明。",
+      "cited": [],
+      "refused": true,
+      "citation_accuracy": 0.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c042",
+      "query": "支持海外配送吗",
+      "type": "unanswerable",
+      "answerable": false,
+      "expected": [],
+      "predicted": [
+        "kb-logistics#1",
+        "kb-maintenance#5",
+        "kb-logistics#4",
+        "kb-after-sale#1",
+        "kb-logistics#2"
+      ],
+      "recall": null,
+      "mrr": null,
+      "answer": "根据现有资料无法确定。资料中只提到配送时效（现货订单 48 小时内发出，偏远地区可能延迟 1-2 天，节假日顺延）[kb-logistics#1]，没有涉及是否支持海外配送的信息。",
+      "cited": [
+        "kb-logistics#1"
+      ],
+      "refused": true,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c043",
+      "query": "有上门安装服务吗",
+      "type": "unanswerable",
+      "answerable": false,
+      "expected": [],
+      "predicted": [
+        "kb-spec#3",
+        "kb-device#1",
+        "kb-logistics#4",
+        "kb-fault#6",
+        "kb-maintenance#3"
+      ],
+      "recall": null,
+      "mrr": null,
+      "answer": "根据现有资料无法确定。资料中没有关于是否提供上门安装服务的信息，缺少安装服务政策或售后安装说明相关内容。",
+      "cited": [],
+      "refused": true,
+      "citation_accuracy": 0.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c044",
+      "query": "这个产品多少钱",
+      "type": "unanswerable",
+      "answerable": false,
+      "expected": [],
+      "predicted": [
+        "kb-after-sale#2",
+        "kb-logistics#4",
+        "kb-after-sale#1",
+        "kb-maintenance#1",
+        "kb-spec#2"
+      ],
+      "recall": null,
+      "mrr": null,
+      "answer": "根据现有资料无法确定。资料中没有产品价格信息，只包含换货、退款、滤芯更换和签收验货等内容。需要补充产品价格或商品详情页信息才能回答。",
+      "cited": [],
+      "refused": true,
+      "citation_accuracy": 0.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c045",
+      "query": "有几种颜色可选",
+      "type": "unanswerable",
+      "answerable": false,
+      "expected": [],
+      "predicted": [
+        "kb-logistics#4",
+        "kb-fault#5",
+        "kb-logistics#1",
+        "kb-maintenance#3",
+        "kb-logistics#2"
+      ],
+      "recall": null,
+      "mrr": null,
+      "answer": "根据现有资料无法确定。资料中没有关于产品颜色选项的信息，缺少产品规格或外观相关的资料。",
+      "cited": [],
+      "refused": true,
+      "citation_accuracy": 0.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c046",
+      "query": "退货寄回地址是什么",
+      "type": "unanswerable",
+      "answerable": false,
+      "expected": [],
+      "predicted": [
+        "kb-logistics#2",
+        "kb-after-sale#1",
+        "kb-logistics#1",
+        "kb-logistics#4",
+        "kb-after-sale#2"
+      ],
+      "recall": null,
+      "mrr": null,
+      "answer": "根据现有资料无法确定退货寄回地址。资料中只提到支持七天无理由退款、退款按原支付路径退回 [kb-after-sale#1]，以及未发货/已发货订单的收货地址修改方式 [kb-logistics#2]，但没有提供退货寄回地址的具体信息。",
+      "cited": [
+        "kb-after-sale#1",
+        "kb-logistics#2"
+      ],
+      "refused": true,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c047",
+      "query": "客服电话多少",
+      "type": "unanswerable",
+      "answerable": false,
+      "expected": [],
+      "predicted": [
+        "kb-fault#6",
+        "kb-fault#4",
+        "kb-spec#2",
+        "kb-fault#5",
+        "kb-spec#3"
+      ],
+      "recall": null,
+      "mrr": null,
+      "answer": "根据现有资料无法确定客服电话。资料中只提到联系客服前需记录错误码、发生时间及操作步骤 [kb-fault#6]，但未提供客服电话信息。",
+      "cited": [
+        "kb-fault#6"
+      ],
+      "refused": true,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c048",
+      "query": "支持哪些支付方式",
+      "type": "unanswerable",
+      "answerable": false,
+      "expected": [],
+      "predicted": [
+        "kb-after-sale#1",
+        "kb-maintenance#5",
+        "kb-after-sale#2",
+        "kb-maintenance#4",
+        "kb-spec#3"
+      ],
+      "recall": null,
+      "mrr": null,
+      "answer": "根据现有资料无法确定。资料中只提到退款按原支付路径退回 [kb-after-sale#1]，但没有说明具体支持哪些支付方式，缺少支付方式清单相关信息。",
+      "cited": [
+        "kb-after-sale#1"
+      ],
+      "refused": true,
+      "citation_accuracy": 1.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c049",
+      "query": "优惠券能和满减叠加吗",
+      "type": "unanswerable",
+      "answerable": false,
+      "expected": [],
+      "predicted": [
+        "kb-maintenance#4",
+        "kb-logistics#1",
+        "kb-device#2",
+        "kb-logistics#4",
+        "kb-after-sale#2"
+      ],
+      "recall": null,
+      "mrr": null,
+      "answer": "根据现有资料无法确定。资料中没有关于优惠券与满减能否叠加的信息，还缺少促销活动规则或优惠券使用说明相关内容。",
+      "cited": [],
+      "refused": true,
+      "citation_accuracy": 0.0,
+      "citation_ok": true,
+      "error": null
+    },
+    {
+      "case_id": "c050",
+      "query": "企业批量采购有折扣吗",
+      "type": "unanswerable",
+      "answerable": false,
+      "expected": [],
+      "predicted": [
+        "kb-spec#1",
+        "kb-maintenance#3",
+        "kb-fault#2",
+        "kb-logistics#1",
+        "kb-logistics#4"
+      ],
+      "recall": null,
+      "mrr": null,
+      "answer": "根据现有资料无法确定。资料中没有关于企业批量采购折扣的任何信息，缺少采购政策、折扣条件或报价规则等内容。",
+      "cited": [],
+      "refused": true,
+      "citation_accuracy": 0.0,
+      "citation_ok": true,
+      "error": null
+    }
+  ]
+}

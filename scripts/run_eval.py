@@ -8,8 +8,12 @@
     # 真实 embedding（需要 EMBED_API_KEY），用于记录质量基线
     py -3.13 scripts/run_eval.py --real --out eval/baseline_real.json
 
-输出包含：跑的是哪份集、什么模式、top-k、四个指标、逐条结果。
-拒答率与引用准确率依赖生成链路，当前版本记为 null 并标注 pending。
+    # 接生成链路：跑完整的 RAG（检索 → 生成 → 引用校验）
+    py -3.13 scripts/run_eval.py --real --generate --out eval/baseline_real_gen.json
+
+输出包含：跑的是哪份集、什么模式、top-k、各指标、逐条结果。
+不加 --generate 时，拒答率 / 覆盖率 / 引用准确率记为 null（检索指标不依赖生成链路）；
+加 --generate 后这三项才有值，代价是每条用例要调两次 LLM（改写 + 回答）。
 """
 
 from __future__ import annotations
@@ -32,8 +36,11 @@ if str(ROOT / "scripts") not in sys.path:
 from compare_routes import HashEmbeddingClient
 from src.bm25 import BM25Index
 from src.chunk import Chunk, estimate_tokens
+from src.citation import extract_ids
 from src.embed import EmbeddingClient, EmbeddingError
+from src.llm import ChatClient, LLMError
 from src.metrics import mrr, recall_at_k
+from src.pipeline import RagPipeline
 from src.retrieve import MODES, HybridRetriever
 from src.store import LocalVectorStore
 
@@ -91,11 +98,67 @@ def build_retriever(mock: bool, chunks: list[Chunk]) -> tuple[HybridRetriever, o
     return HybridRetriever(store, bm25, embed), embed
 
 
-def evaluate(cases: list[dict], retriever: HybridRetriever, *, top_k: int, mode: str) -> dict:
+REFUSAL_MARKERS = ("无法确定", "无法回答", "没有找到", "不足以回答", "无法根据")
+
+
+def _is_refusal(answer: str, chunks: list[str]) -> bool:
+    """判断这次回答算不算"拒答"。
+
+    只看 chunks 是否为空是不够的：检索总能返回几条命中，
+    模型完全可能自己写出"根据现有资料无法确定"。那也是一种正确拒答。
+    """
+    if not chunks:
+        return True
+    return any(marker in answer for marker in REFUSAL_MARKERS)
+
+
+def _generate_case(pipeline: RagPipeline, case_id: str, query: str, top_k: int) -> dict:
+    """跑一次完整生成链路，返回逐条记录。
+
+    单条 LLM 失败不能中断整轮评测（50 条里挂一条就白跑）；
+    失败记为 error，该条不计入生成类指标的分母。
+    """
+    try:
+        out = pipeline.answer(query, top_k=top_k)
+    except LLMError as exc:
+        print(f"[WARN] {case_id} 生成失败：{exc}", file=sys.stderr)
+        return {
+            "answer": None,
+            "cited": [],
+            "refused": None,
+            "citation_accuracy": None,
+            "citation_ok": None,
+            "error": str(exc),
+        }
+
+    answer = out["answer"]
+    return {
+        # 截断只为控制报告体积；校验用的是完整回答
+        "answer": answer[:300],
+        "cited": extract_ids(answer),
+        "refused": _is_refusal(answer, out["chunks"]),
+        "citation_accuracy": out["citation_accuracy"],
+        "citation_ok": out["citation_ok"],
+        "error": None,
+    }
+
+
+def evaluate(
+    cases: list[dict],
+    retriever: HybridRetriever,
+    *,
+    top_k: int,
+    mode: str,
+    pipeline: RagPipeline | None = None,
+) -> dict:
     per_case: list[dict] = []
     recalls: list[float] = []
     mrrs: list[float] = []
     answerable = 0
+    refusals: list[bool] = []
+    coverages: list[bool] = []
+    citations: list[float] = []
+    no_citation = 0
 
     for case in cases:
         hits = retriever.retrieve(
@@ -115,39 +178,67 @@ def evaluate(cases: list[dict], retriever: HybridRetriever, *, top_k: int, mode:
             recall = None
             reciprocal = None
 
-        per_case.append(
-            {
-                "case_id": case["case_id"],
-                "query": case["query"],
-                "type": case["type"],
-                "answerable": case["answerable"],
-                "expected": case["expected_chunk_ids"],
-                "predicted": predicted,
-                "recall": recall,
-                "mrr": reciprocal,
-            }
-        )
+        row = {
+            "case_id": case["case_id"],
+            "query": case["query"],
+            "type": case["type"],
+            "answerable": case["answerable"],
+            "expected": case["expected_chunk_ids"],
+            "predicted": predicted,
+            "recall": recall,
+            "mrr": reciprocal,
+        }
+
+        if pipeline is not None:
+            generated = _generate_case(pipeline, case["case_id"], case["query"], top_k)
+            row.update(generated)
+
+            if generated["error"] is None:
+                if case["answerable"]:
+                    coverages.append(not generated["refused"])
+                    if not generated["refused"]:
+                        citations.append(generated["citation_accuracy"])
+                        if not generated["cited"]:
+                            no_citation += 1
+                else:
+                    refusals.append(generated["refused"])
+
+        per_case.append(row)
 
     hit_rate = (
         sum(1 for value in recalls if value > 0) / len(recalls) if recalls else 0.0
     )
 
-    return {
-        "metrics": {
-            "recall_at_k": round(statistics.fmean(recalls), 4) if recalls else 0.0,
-            "mrr": round(statistics.fmean(mrrs), 4) if mrrs else 0.0,
-            "hit_rate": round(hit_rate, 4),
-            "refusal_accuracy": None,
-            "answer_coverage": None,
-            "citation_accuracy": None,
-        },
-        "counts": {
-            "cases": len(cases),
-            "answerable": answerable,
-            "unanswerable": len(cases) - answerable,
-        },
-        "cases": per_case,
+    metrics = {
+        "recall_at_k": round(statistics.fmean(recalls), 4) if recalls else 0.0,
+        "mrr": round(statistics.fmean(mrrs), 4) if mrrs else 0.0,
+        "hit_rate": round(hit_rate, 4),
+        "refusal_accuracy": None,
+        "answer_coverage": None,
+        "citation_accuracy": None,
     }
+    counts = {
+        "cases": len(cases),
+        "answerable": answerable,
+        "unanswerable": len(cases) - answerable,
+    }
+
+    if pipeline is not None:
+        # 拒答率只看不可回答题，覆盖率只看可回答题，两者必须成对出现，
+        # 否则"全拒答"也能拿满分（见 metrics.refusal_accuracy 的说明）。
+        metrics["refusal_accuracy"] = (
+            round(statistics.fmean([float(ok) for ok in refusals]), 4) if refusals else None
+        )
+        metrics["answer_coverage"] = (
+            round(statistics.fmean([float(ok) for ok in coverages]), 4) if coverages else None
+        )
+        metrics["citation_accuracy"] = (
+            round(statistics.fmean(citations), 4) if citations else None
+        )
+        counts["generation_errors"] = sum(1 for row in per_case if row["error"] is not None)
+        counts["answers_without_citation"] = no_citation
+
+    return {"metrics": metrics, "counts": counts, "cases": per_case}
 
 
 def conditions_mismatch(base: dict, cur: dict) -> list[str]:
@@ -261,26 +352,57 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--threshold", type=float, default=0.02, help="允许的总分退化幅度，默认 0.02"
     )
+    parser.add_argument(
+        "--generate",
+        action="store_true",
+        help="接生成链路，产出拒答率/覆盖率/引用准确率（需要 LLM_API_KEY）",
+    )
+    parser.add_argument(
+        "--limit", type=int, default=0, help="只跑前 N 条用例（0=全部），用于先验证 Key 是否可用"
+    )
     args = parser.parse_args(argv)
 
     if args.top_k < 1:
         parser.error("--top-k 必须为正整数")
+    if args.limit < 0:
+        parser.error("--limit 不能为负数")
+
+    chat = None
+    if args.generate:
+        try:
+            chat = ChatClient()
+        except LLMError as exc:
+            print(f"初始化 LLM 失败：{exc}", file=sys.stderr)
+            print("--generate 需要 LLM_API_KEY；不接生成链路请去掉该参数。", file=sys.stderr)
+            return 1
 
     chunks = load_corpus(args.corpus)
     cases = load_cases(args.suite)
+    if args.limit:
+        cases = cases[: args.limit]
     if not cases:
         print("评测集为空。", file=sys.stderr)
         return 1
 
     started = time.perf_counter()
     retriever, embed = build_retriever(args.mock, chunks)
-    result = evaluate(cases, retriever, top_k=args.top_k, mode=args.mode)
+    pipeline = None
+    if chat is not None:
+        pipeline = RagPipeline(
+            chat_client=chat,
+            embed_client=embed,
+            store=None,
+            bm25_index=None,
+            retriever=retriever,
+        )
+    result = evaluate(cases, retriever, top_k=args.top_k, mode=args.mode, pipeline=pipeline)
 
     payload = {
         "run_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "mock": args.mock,
         "mode": args.mode,
         "top_k": args.top_k,
+        "generate": args.generate,
         "suite": str(args.suite.relative_to(ROOT)),
         "corpus": str(args.corpus.relative_to(ROOT)),
         "corpus_chunks": len(chunks),
@@ -299,7 +421,21 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Recall@{args.top_k}  {metrics['recall_at_k']:.4f}")
     print(f"MRR@{args.top_k}     {metrics['mrr']:.4f}")
     print(f"Hit Rate@{args.top_k} {metrics['hit_rate']:.4f}")
-    print(f"拒答率 / 覆盖率 / 引用准确率：null（待生成链路接入）")
+    if args.generate:
+        def _fmt(value):
+            return "null" if value is None else f"{value:.4f}"
+
+        print(f"拒答准确率  {_fmt(metrics['refusal_accuracy'])}（不可回答题正确拒答比例）")
+        print(f"答案覆盖率  {_fmt(metrics['answer_coverage'])}（可回答题给出了答案的比例）")
+        print(f"引用准确率  {_fmt(metrics['citation_accuracy'])}（引用的 id 在上下文中的比例）")
+        missing = counts.get("answers_without_citation", 0)
+        if missing:
+            print(f"无引用回答  {missing} 条（答了但没标来源，不计入引用准确率分母）")
+        errors = counts.get("generation_errors", 0)
+        if errors:
+            print(f"生成失败    {errors} 条（未计入上述三项指标）")
+    else:
+        print("拒答率 / 覆盖率 / 引用准确率：null（加 --generate 才跑生成链路）")
     print(f"已写入 {args.out}")
 
     if args.mock:
@@ -326,7 +462,7 @@ def main(argv: list[str] | None = None) -> int:
                 if failures:
                     exit_code = 1
 
-    for obj in (embed,):
+    for obj in (embed, chat):
         close = getattr(obj, "close", None)
         if callable(close):
             close()
