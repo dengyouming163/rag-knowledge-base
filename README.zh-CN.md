@@ -78,7 +78,20 @@ Compose 栈将 API 发布到 `8000`，PostgreSQL 发布到宿主 `5433`（容器
 
 ## Live Demo
 
-`http://132.232.166.40:18000/ui/` — HTTP Basic Auth；凭据请联系维护者。演示数据为合成数据，不含敏感信息。
+**<http://132.232.166.40:18000/ui/>** — 这是公开演示实例，因此下方凭据是特意公开的：
+
+| 字段 | 值 |
+|---|---|
+| Basic Auth 账号 | `demo` |
+| Basic Auth 密码 | `TEJax7hnwrzg2kj7` |
+| 租户请求头 | `X-Tenant-Id: demo` |
+
+演示数据为合成数据，不含敏感信息：共 17 篇（15 份法律 `.docx` 模板 + 1 份 Markdown 售后政策 + 1 份 PDF），已入库到 `kb_after_sale` 知识库，合计 280 个 chunk。网关按 IP 限流 10 r/s（burst 20），上传上限 50 MB。该实例为一次性演示环境，随时可能被重置或更换凭据。
+
+```bash
+curl -u demo:TEJax7hnwrzg2kj7 -H 'X-Tenant-Id: demo' \
+  http://132.232.166.40:18000/v1/storage
+```
 
 ## API summary
 
@@ -146,4 +159,4 @@ docs/                 架构、部署、运维、安全、API、评测与路线�
 
 Apache License 2.0 — 见 [`LICENSE`](LICENSE)。
 
-延伸阅读：[`CHANGELOG.md`](CHANGELOG.md)、[`CONTRIBUTING.md`](CONTRIBUTING.md)、[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)。
+延伸阅读：[`docs/ROADMAP.md`](docs/ROADMAP.md)、[`CHANGELOG.md`](CHANGELOG.md)、[`CONTRIBUTING.md`](CONTRIBUTING.md)、[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)。

@@ -100,9 +100,9 @@ Compose **2.24 or newer** is required because the overlay removes published port
 
 After deployment the entry point is:
 
-`http://<demo-url>:18000/ui/`
+`http://<your-host>:18000/ui/`
 
-Credentials are generated on the host in `.env` (`DEMO_USER` / `DEMO_PASSWORD`) and in `deploy/nginx/htpasswd`; they are not stored in the repository. Rotate them by regenerating the htpasswd file and recreating the `gateway` container.
+Credentials are generated on the host in `.env` (`DEMO_USER` / `DEMO_PASSWORD`) and in `deploy/nginx/htpasswd`; rotating them means regenerating the htpasswd file and recreating the `gateway` container. The public showcase instance publishes its credentials in the README [`Live Demo`](../README.md#live-demo) section on purpose; treat the password as public and rotate it if that instance is ever reused for real data.
 
 ### Gateway configuration
 

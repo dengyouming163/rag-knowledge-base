@@ -25,7 +25,7 @@ The public demo runs behind an nginx sidecar with:
 - HTTP Basic Auth on `/ui` and `/v1` (only `/health` is anonymous),
 - per-IP request limiting (10 r/s, burst 20),
 - a 50 MB upload cap enforced by both nginx and the API (`MAX_UPLOAD_BYTES`),
-- **no TLS** — credentials travel in clear text, so the demo account is read-mostly and disposable.
+- **no TLS** — credentials travel in clear text. The showcase credential pair is published in the README, holds no secret, and is rotated by regenerating the htpasswd file; never reuse it for real data.
 
 Operational hardening expected in any real deployment:
 

@@ -2,7 +2,7 @@
 
 The authoritative contract is the OpenAPI document served by the application at `/docs` (interactive) and `/openapi.json` (machine-readable). This page is a map of the surface, request conventions and error semantics; when the two disagree, `/docs` and the router code win.
 
-Base URL locally: `http://127.0.0.1:8000`. Behind the demo gateway: `http://<demo-url>:18000`.
+Base URL locally: `http://127.0.0.1:8000`. Behind the demo gateway: `http://132.232.166.40:18000` (public showcase credentials are listed in the README).
 
 ## Conventions
 

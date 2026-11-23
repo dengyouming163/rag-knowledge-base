@@ -78,7 +78,20 @@ The Compose stack publishes the API on port `8000`, PostgreSQL on host port `543
 
 ## Live Demo
 
-`http://132.232.166.40:18000/ui/` — HTTP Basic Auth; ask the maintainer for credentials. The demo dataset is synthetic and non-sensitive.
+**<http://132.232.166.40:18000/ui/>** — this is a public showcase instance, so the credentials below are published on purpose:
+
+| Field | Value |
+|---|---|
+| Basic Auth user | `demo` |
+| Basic Auth password | `TEJax7hnwrzg2kj7` |
+| Tenant header | `X-Tenant-Id: demo` |
+
+The dataset is synthetic and non-sensitive: 17 files (15 legal `.docx` templates, one Markdown after-sales policy and one PDF) ingested into the `kb_after_sale` knowledge base, 280 chunks in total. Per-IP rate limiting is 10 r/s (burst 20) and uploads are capped at 50 MB. The instance is disposable and may be reset or rotated at any time.
+
+```bash
+curl -u demo:TEJax7hnwrzg2kj7 -H 'X-Tenant-Id: demo' \
+  http://132.232.166.40:18000/v1/storage
+```
 
 ## API summary
 
@@ -146,4 +159,4 @@ Report vulnerabilities privately as described in [`SECURITY.md`](SECURITY.md). T
 
 Apache License 2.0 — see [`LICENSE`](LICENSE).
 
-Further reading: [`CHANGELOG.md`](CHANGELOG.md), [`CONTRIBUTING.md`](CONTRIBUTING.md), [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
+Further reading: [`docs/ROADMAP.md`](docs/ROADMAP.md), [`CHANGELOG.md`](CHANGELOG.md), [`CONTRIBUTING.md`](CONTRIBUTING.md), [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
