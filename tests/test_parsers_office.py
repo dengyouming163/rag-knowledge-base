@@ -9,10 +9,15 @@ from docx import Document
 from pptx import Presentation
 from pptx.util import Inches
 
+from openpyxl import Workbook
+
 from src.parsers.office import (
+    MAX_SHEET_ROWS,
+    TRUNCATION_NOTE,
     OfficeParseError,
     docx_to_markdown,
     pptx_to_markdown,
+    xlsx_to_markdown,
 )
 
 
@@ -109,6 +114,88 @@ def test_pptx_empty_presentation_returns_empty() -> None:
 def test_pptx_corrupt_file_raises_readable_error() -> None:
     with pytest.raises(OfficeParseError) as exc_info:
         pptx_to_markdown(b"not a pptx")
+
+    assert "加密" in str(exc_info.value)
+    assert "损坏" in str(exc_info.value)
+
+
+def _save_workbook(workbook: Workbook) -> bytes:
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
+def _multi_sheet_bytes() -> bytes:
+    workbook = Workbook()
+    policy = workbook.active
+    policy.title = "政策"
+    policy.append(["编号", "标题"])
+    policy.append([1, "退款"])
+
+    empty = workbook.create_sheet("空表")
+    empty.append([None, None])
+
+    price = workbook.create_sheet("价格")
+    price.append(["SKU", "价格"])
+    price.append(["A-1", 99])
+    return _save_workbook(workbook)
+
+
+def test_xlsx_multiple_sheets_and_empty_sheet_skipped() -> None:
+    markdown = xlsx_to_markdown(_multi_sheet_bytes())
+
+    assert "## 政策" in markdown
+    assert "## 价格" in markdown
+    assert "## 空表" not in markdown
+    assert "| 编号 | 标题 |" in markdown
+    assert "| SKU | 价格 |" in markdown
+    assert markdown.index("## 政策") < markdown.index("## 价格")
+
+
+def test_xlsx_synthesizes_columns_when_first_row_is_data() -> None:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "数据"
+    sheet.append([1, 2])
+    sheet.append([3, 4])
+
+    markdown = xlsx_to_markdown(_save_workbook(workbook))
+
+    assert "| 列1 | 列2 |" in markdown
+    assert "| 1 | 2 |" in markdown
+
+
+def test_xlsx_merged_cells_use_top_left_value() -> None:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "合并"
+    sheet["A1"] = "地区"
+    sheet["C1"] = "金额"
+    sheet.merge_cells("A1:B1")
+    sheet["A2"] = "华东"
+    sheet["C2"] = 100
+
+    markdown = xlsx_to_markdown(_save_workbook(workbook))
+
+    assert "| 地区 | 地区 | 金额 |" in markdown
+
+
+def test_xlsx_truncates_after_5000_rows() -> None:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "长表"
+    sheet.append(["编号", "标题"])
+    for index in range(1, MAX_SHEET_ROWS + 1):
+        sheet.append([index, f"第 {index} 行"])
+
+    markdown = xlsx_to_markdown(_save_workbook(workbook))
+
+    assert TRUNCATION_NOTE in markdown
+
+
+def test_xlsx_corrupt_file_raises_readable_error() -> None:
+    with pytest.raises(OfficeParseError) as exc_info:
+        xlsx_to_markdown(b"not an xlsx")
 
     assert "加密" in str(exc_info.value)
     assert "损坏" in str(exc_info.value)

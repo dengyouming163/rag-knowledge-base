@@ -8,15 +8,20 @@ OfficeParseError，由 ingest._extract_text 转成不可重试的入库错误，
 from __future__ import annotations
 
 import io
+from typing import Any
 
 from docx import Document
 from docx.oxml.ns import qn
 from docx.table import Table
 from docx.text.paragraph import Paragraph
+from openpyxl import load_workbook
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 
 from src.tables import rows_to_markdown
+
+MAX_SHEET_ROWS = 5000
+TRUNCATION_NOTE = "已截断，仅索引前 5000 行"
 
 _HEADING_STYLES = {
     "Heading 1": "#",
@@ -124,5 +129,99 @@ def pptx_to_markdown(content: bytes) -> str:
             if notes:
                 blocks.append("### 备注")
                 blocks.append(notes)
+
+    return "\n\n".join(blocks).strip()
+
+
+def _cell_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    return str(value)
+
+
+def _merged_cell_values(sheet) -> dict[tuple[int, int], Any]:
+    """合并区域的所有坐标都取左上角值，避免右/下侧出现空洞。"""
+    values: dict[tuple[int, int], Any] = {}
+    for merged in sheet.merged_cells.ranges:
+        value = sheet.cell(row=merged.min_row, column=merged.min_col).value
+        for row in range(merged.min_row, merged.max_row + 1):
+            for column in range(merged.min_col, merged.max_col + 1):
+                values[(row, column)] = value
+    return values
+
+
+def _is_number(text: str) -> bool:
+    if not text:
+        return True
+    try:
+        float(text.replace(",", ""))
+    except ValueError:
+        return False
+    return True
+
+
+def _sheet_table(sheet) -> tuple[list[list[str]], bool]:
+    """返回 (含表头的二维表, 是否截断)；空 sheet 返回 ([], False)。
+
+    只保留前 MAX_SHEET_ROWS 行（含表头），第 MAX_SHEET_ROWS + 1 行存在
+    非空内容时标记截断，避免格式化的空白行造成误报。
+    """
+    merged = _merged_cell_values(sheet)
+    limit = min(sheet.max_row or 0, MAX_SHEET_ROWS + 1)
+
+    raw: list[list[str]] = []
+    truncated = False
+    for row_index, row in enumerate(
+        sheet.iter_rows(min_row=1, max_row=limit, values_only=True), start=1
+    ):
+        values = [
+            _cell_text(value if value is not None else merged.get((row_index, column)))
+            for column, value in enumerate(row, start=1)
+        ]
+        if row_index > MAX_SHEET_ROWS:
+            if any(values):
+                truncated = True
+            break
+        raw.append(values)
+
+    while raw and not any(raw[-1]):
+        raw.pop()
+    while raw and not any(raw[0]):
+        raw.pop(0)
+    if not raw:
+        return [], truncated
+
+    width = max(len(row) for row in raw)
+    rows = [row + [""] * (width - len(row)) for row in raw]
+    first = rows[0]
+    if any(cell for cell in first if not _is_number(cell)):
+        header, body = first, rows[1:]
+    else:
+        header = [f"列{index}" for index in range(1, width + 1)]
+        body = rows
+    return [header, *body], truncated
+
+
+def xlsx_to_markdown(content: bytes) -> str:
+    """整本工作簿 → 单个 Markdown 文档，每个非空 sheet 一个 `## {sheet 名}`。"""
+    try:
+        workbook = load_workbook(io.BytesIO(content), data_only=True)
+    except Exception as exc:  # noqa: BLE001
+        raise OfficeParseError("无法打开 .xlsx 文件（可能已加密或损坏）") from exc
+
+    blocks: list[str] = []
+    try:
+        for sheet in workbook.worksheets:
+            rows, truncated = _sheet_table(sheet)
+            if not rows:
+                continue
+            blocks.append(f"## {sheet.title}")
+            blocks.append(rows_to_markdown(rows))
+            if truncated:
+                blocks.append(TRUNCATION_NOTE)
+    finally:
+        workbook.close()
 
     return "\n\n".join(blocks).strip()
