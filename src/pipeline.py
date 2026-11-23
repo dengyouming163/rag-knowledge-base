@@ -7,6 +7,7 @@ from typing import Any
 
 from .citation import validate_citation
 from .guard.injection import CANARY, screen_hits, screen_output
+from .refusal import confidence_of, default_min_similarity
 from .rewrite import rewrite_query
 from .store import SearchHit
 
@@ -25,8 +26,11 @@ GUARD_ANSWER = "检测到请求包含不安全指令，已拒绝回答。请换�
 class RagPipeline:
     """把改写、检索、生成串成一条链路；组件全部注入，便于替换与单测。
 
-    min_score 是兜底阈值：最高分低于它视为"检索没找到"，直接返回兜底话术，
-    不再花 token 让模型在无关资料上硬答。
+    min_score 为 None 时走"语义置信度"阈值：用向量路的原始余弦判断
+    "这批资料到底像不像"，低于 DEFAULT_MIN_SIMILARITY 直接拒答，不烧 token。
+    （融合分是名次的函数，不能当置信度，理由见 src/refusal.py。）
+
+    显式传 min_score 时仍按旧语义比较 `hits[0].score`，便于测试与特殊场景覆盖。
     """
 
     def __init__(
@@ -37,7 +41,7 @@ class RagPipeline:
         bm25_index: Any,
         retriever: Any,
         *,
-        min_score: float = 0.0,
+        min_score: float | None = None,
         parent_loader: Any = None,
         reranker: Any = None,
     ) -> None:
@@ -66,7 +70,17 @@ class RagPipeline:
             top_k=top_k,
             filters={"audience": audience, "user_tags": list(user_tags or []), "is_admin": is_admin},
         )
-        if not hits or hits[0].score < self.min_score:
+        if not hits:
+            return _refusal(rewritten, [])
+        if self.min_score is None:
+            # 语义置信度：向量路原始余弦；纯 BM25 模式拿不到，放行交给模型
+            confidence = confidence_of(hits)
+            threshold = default_min_similarity()
+            # threshold <= 0 视为关闭闸门（余弦可以是负数，不能拿 0 当"全放行"）
+            too_weak = threshold > 0 and confidence is not None and confidence < threshold
+        else:
+            too_weak = hits[0].score < self.min_score
+        if too_weak:
             return _refusal(rewritten, [])
 
         # 子块负责命中，父块负责上下文：引用仍用子块 ID，正文换成完整章节

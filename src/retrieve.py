@@ -63,12 +63,19 @@ class HybridRetriever:
         active_route = route or detect_route(query)
         vector_hits = self._vector_route(query, recall_k, filters)
         bm25_hits = self._bm25_route(query, recall_k, filters)
-        return self._fuse(
+        fused = self._fuse(
             vector_hits,
             bm25_hits,
             weights=(active_route.vector_weight, active_route.bm25_weight),
             route_name=active_route.name,
-        )[:top_k]
+        )
+        # 融合分只反映名次，不能当置信度；把向量路的原始余弦一并带出去，
+        # 供拒答阈值（src/refusal.py）判断"这一批到底像不像"。
+        vector_scores = {hit.chunk_id: hit.score for hit in vector_hits}
+        for hit in fused:
+            if hit.chunk_id in vector_scores:
+                hit.metadata["vector_score"] = vector_scores[hit.chunk_id]
+        return fused[:top_k]
 
     def compare_routes(
         self,

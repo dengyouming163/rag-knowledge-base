@@ -155,7 +155,9 @@ def test_search_bm25_only_mode(client: TestClient) -> None:
 # ---------------------------------------------------------------- SSE
 
 
-def test_chat_stream_emits_deltas_and_done(client: TestClient) -> None:
+def test_chat_stream_emits_deltas_and_done(client: TestClient, monkeypatch) -> None:
+    # 关掉拒答闸门：这条测的是"生成链路能流式下发"，不是置信度判断
+    monkeypatch.setenv("REFUSAL_MIN_SIMILARITY", "0")
     client.app.dependency_overrides[get_chat_client] = lambda: FakeChat()
 
     response = client.post(
@@ -169,7 +171,9 @@ def test_chat_stream_emits_deltas_and_done(client: TestClient) -> None:
     assert response.text.rstrip().endswith("data: [DONE]")
 
 
-def test_chat_stream_reports_llm_failure(client: TestClient) -> None:
+def test_chat_stream_reports_llm_failure(client: TestClient, monkeypatch) -> None:
+    # 同上：必须先让请求走到生成环节，才能验证 LLM 失败会下发 event: error
+    monkeypatch.setenv("REFUSAL_MIN_SIMILARITY", "0")
     client.app.dependency_overrides[get_chat_client] = lambda: FailingChat()
 
     response = client.post(

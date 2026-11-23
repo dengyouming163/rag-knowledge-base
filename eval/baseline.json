@@ -1,12 +1,12 @@
 {
-  "run_at": "2026-11-18T20:52:06",
+  "run_at": "2026-11-19T15:45:31",
   "mock": true,
   "mode": "hybrid",
   "top_k": 5,
   "suite": "eval\\cases.jsonl",
   "corpus": "eval\\demo_corpus.json",
   "corpus_chunks": 26,
-  "elapsed_ms": 21.5,
+  "elapsed_ms": 16.6,
   "metrics": {
     "recall_at_k": 0.9342,
     "mrr": 0.8575,
@@ -357,8 +357,8 @@
         "kb-device#1",
         "kb-maintenance#2",
         "kb-fault#5",
-        "kb-device#3",
-        "kb-fault#3"
+        "kb-fault#3",
+        "kb-device#3"
       ],
       "recall": 1.0,
       "mrr": 1.0
@@ -411,8 +411,8 @@
         "kb-device#2",
         "kb-maintenance#2",
         "kb-device#1",
-        "kb-fault#1",
-        "kb-spec#5"
+        "kb-spec#5",
+        "kb-fault#1"
       ],
       "recall": 1.0,
       "mrr": 1.0
@@ -504,7 +504,7 @@
         "kb-device#1",
         "kb-device#2",
         "kb-fault#3",
-        "kb-fault#1"
+        "kb-fault#4"
       ],
       "recall": 1.0,
       "mrr": 0.5
@@ -574,14 +574,14 @@
         "kb-device#2"
       ],
       "predicted": [
-        "kb-device#1",
         "kb-spec#5",
-        "kb-after-sale#1",
+        "kb-device#1",
         "kb-device#2",
+        "kb-after-sale#1",
         "kb-spec#4"
       ],
       "recall": 1.0,
-      "mrr": 1.0
+      "mrr": 0.5
     },
     {
       "case_id": "c032",
@@ -651,8 +651,8 @@
         "kb-after-sale#2",
         "kb-logistics#4",
         "kb-device#1",
-        "kb-fault#3",
-        "kb-maintenance#1"
+        "kb-maintenance#4",
+        "kb-logistics#1"
       ],
       "recall": 1.0,
       "mrr": 1.0
@@ -667,14 +667,14 @@
         "kb-device#2"
       ],
       "predicted": [
-        "kb-fault#3",
         "kb-device#1",
-        "kb-spec#5",
         "kb-maintenance#2",
+        "kb-spec#5",
+        "kb-fault#3",
         "kb-device#2"
       ],
       "recall": 1.0,
-      "mrr": 0.5
+      "mrr": 1.0
     },
     {
       "case_id": "c037",

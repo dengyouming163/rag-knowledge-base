@@ -142,3 +142,27 @@ def test_generation_error_propagates():
 
     with pytest.raises(LLMError):
         pipeline.answer("退款到账要多久")
+
+
+def test_gate_refuses_when_semantic_confidence_is_low() -> None:
+    """融合分再高，只要向量路余弦低于阈值，就不该花 token 让模型硬答。"""
+    hit = make_hit("kb#1", score=0.9)
+    hit.metadata["vector_score"] = 0.05
+    pipeline, chat, _ = build_pipeline([hit])
+
+    result = pipeline.answer("公司年会在哪开")
+
+    assert result["chunks"] == []
+    # 只发生了改写这一次调用，没有进入生成
+    assert chat.generation_calls == []
+
+
+def test_gate_passes_when_semantic_confidence_is_high() -> None:
+    hit = make_hit("kb#1", score=0.01)
+    hit.metadata["vector_score"] = 0.62
+    pipeline, chat, _ = build_pipeline([hit])
+
+    result = pipeline.answer("退款多久到账")
+
+    assert result["chunks"] == ["kb#1"]
+    assert len(chat.generation_calls) == 1

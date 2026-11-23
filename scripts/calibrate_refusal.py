@@ -36,22 +36,31 @@ EVAL_DIR = ROOT / "eval"
 OUT = EVAL_DIR / "refusal_calibration.json"
 
 
-def collect_scores(mock: bool) -> tuple[list[float], list[float]]:
-    """返回 (可回答题的最高相似度列表, 不可回答题的最高相似度列表)。"""
+def collect_scores(mock: bool, mode: str = "vector") -> tuple[list[float], list[float]]:
+    """返回 (可回答题的最高分列表, 不可回答题的最高分列表)。
+
+    mode 决定分值的量纲，**两者不可混用**：
+    - vector：余弦相似度，0~1；
+    - hybrid：RRF 融合分，量级只有 0.01~0.04。
+    所以阈值必须按 mode 分别标定。
+    """
     chunks = load_corpus(EVAL_DIR / "demo_corpus.json")
     cases = load_cases(EVAL_DIR / "cases.jsonl")
-    embed = HashEmbeddingClient(dim=1024) if mock else None
-    retriever, _ = build_retriever(mock, chunks)
+    retriever, embed = build_retriever(mock, chunks)
 
     answerable: list[float] = []
     unanswerable: list[float] = []
-    for case in cases:
-        # 只看向量路的原始余弦，避免 RRF 分数（约 0.03）被误当相似度
-        hits = retriever.retrieve(
-            case["query"], top_k=1, filters={"audience": "public"}, mode="vector"
-        )
-        top = hits[0].score if hits else 0.0
-        (answerable if case["answerable"] else unanswerable).append(float(top))
+    try:
+        for case in cases:
+            hits = retriever.retrieve(
+                case["query"], top_k=1, filters={"audience": "public"}, mode=mode
+            )
+            top = hits[0].score if hits else 0.0
+            (answerable if case["answerable"] else unanswerable).append(float(top))
+    finally:
+        close = getattr(embed, "close", None)
+        if callable(close):
+            close()
     return answerable, unanswerable
 
 
@@ -70,37 +79,53 @@ def evaluate_threshold(
     }
 
 
-def sweep(answerable: list[float], unanswerable: list[float]) -> list[dict]:
-    return [evaluate_threshold(answerable, unanswerable, i / 100) for i in range(0, 91, 2)]
+def sweep(
+    answerable: list[float], unanswerable: list[float], step: float = 0.02
+) -> list[dict]:
+    """按 step 扫描阈值。不同 mode 的合理步长不同（hybrid 分差只有千分之一量级）。"""
+    count = int(round(0.9 / step))
+    return [
+        evaluate_threshold(answerable, unanswerable, round(i * step, 4))
+        for i in range(count + 1)
+    ]
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mock", action="store_true", help="使用确定性假向量（默认）")
     parser.add_argument("--real", action="store_true", help="使用真实 Embedding")
+    parser.add_argument(
+        "--mode", choices=["vector", "bm25", "hybrid"], default="vector",
+        help="按哪种检索模式标定（分数量纲不同，阈值不可混用）",
+    )
+    parser.add_argument("--step", type=float, default=0.02, help="阈值扫描步长")
     parser.add_argument("--write", action="store_true", help="写入 eval/refusal_calibration.json")
     args = parser.parse_args()
 
     if args.real and args.mock:
         parser.error("--mock 与 --real 不能同时使用")
+    if args.step <= 0:
+        parser.error("--step 必须为正数")
 
-    answerable, unanswerable = collect_scores(mock=not args.real)
-    rows = sweep(answerable, unanswerable)
+    answerable, unanswerable = collect_scores(mock=not args.real, mode=args.mode)
+    rows = sweep(answerable, unanswerable, step=args.step)
     best = max(rows, key=lambda row: (row["accuracy"], -row["threshold"]))
 
-    print(f"可回答题 {len(answerable)} 条，最高相似度 中位数 {statistics.median(answerable):.3f}")
-    print(f"不可回答 {len(unanswerable)} 条，最高相似度 中位数 {statistics.median(unanswerable):.3f}")
+    print(f"检索模式 {args.mode}（{'real' if args.real else 'mock'} 向量）")
+    print(f"可回答题 {len(answerable)} 条，最高分 中位数 {statistics.median(answerable):.4f}")
+    print(f"不可回答 {len(unanswerable)} 条，最高分 中位数 {statistics.median(unanswerable):.4f}")
     print("\n阈值  准确率  误拒  误答")
     for row in rows[::5]:
-        print(f"{row['threshold']:.2f}  {row['accuracy']:.4f}  {row['false_refusal']:>4}  {row['false_answer']:>4}")
-    print(f"\n最优阈值 {best['threshold']:.2f} → 准确率 {best['accuracy']:.4f}"
+        print(f"{row['threshold']:.4f}  {row['accuracy']:.4f}  {row['false_refusal']:>4}  {row['false_answer']:>4}")
+    print(f"\n最优阈值 {best['threshold']:.4f} → 准确率 {best['accuracy']:.4f}"
           f"（误拒 {best['false_refusal']}，误答 {best['false_answer']}）")
 
     if args.write:
         OUT.write_text(
             json.dumps(
                 {
-                    "mode": "real" if args.real else "mock",
+                    "mode": args.mode,
+                    "embedding": "real" if args.real else "mock",
                     "answerable_count": len(answerable),
                     "unanswerable_count": len(unanswerable),
                     "best": best,
