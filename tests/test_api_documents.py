@@ -208,3 +208,20 @@ def test_upload_accepts_office_formats(client: TestClient, filename: str) -> Non
     doc_id = response.json()["doc_id"]
     suffix = Path(filename).suffix
     assert (UPLOAD_ROOT / TENANT / KB / f"{doc_id}{suffix}").is_file()
+
+
+def test_upload_stores_filename_and_size_in_meta(
+    client: TestClient, engine, sample_pdf_bytes: bytes
+) -> None:
+    response = _upload(client, sample_pdf_bytes, filename="report.pdf")
+
+    assert response.status_code == 202
+    doc_id = response.json()["doc_id"]
+
+    with engine.connect() as connection:
+        meta = connection.execute(
+            text("SELECT meta FROM documents WHERE id = :id"), {"id": doc_id}
+        ).scalar_one()
+
+    assert meta["filename"] == "report.pdf"
+    assert meta["size"] == len(sample_pdf_bytes)

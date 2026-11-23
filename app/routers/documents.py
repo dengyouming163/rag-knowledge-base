@@ -16,9 +16,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import uuid4
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
@@ -89,11 +90,16 @@ async def upload_document(
             duplicated = True
         else:
             doc_id = f"{kb_id}-{uuid4().hex[:8]}"
+            # 原始文件名与大小写入 meta，供「存储」视图展示；source_url 仍是 key
+            doc_meta = json.dumps(
+                {"filename": file.filename or "", "size": len(content)},
+                ensure_ascii=False,
+            )
             inserted = connection.execute(
                 text(
                     "INSERT INTO documents "
                     "(id, tenant_id, kb_id, title, source_url, content_hash, status, meta) "
-                    "VALUES (:id, :t, :kb, :title, :url, :hash, 'pending', '{}'::jsonb) "
+                    "VALUES (:id, :t, :kb, :title, :url, :hash, 'pending', CAST(:meta AS jsonb)) "
                     "ON CONFLICT (tenant_id, kb_id, content_hash) DO NOTHING "
                     "RETURNING id"
                 ),
@@ -105,6 +111,7 @@ async def upload_document(
                     "title": doc_id,
                     "url": (Path(tenant_id) / kb_id / f"{doc_id}{suffix}").as_posix(),
                     "hash": content_hash,
+                    "meta": doc_meta,
                 },
             ).scalar_one_or_none()
             if inserted is None:
