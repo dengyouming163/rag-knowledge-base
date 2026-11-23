@@ -7,6 +7,10 @@ x-log: &log
 
 x-app-env: &app-env
   DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+  # 应用进程用 kb_app（非 superuser）连库，RLS 才生效。
+  # 显式注入 DB_APP_PASSWORD 让 app_database_url() 拼出的连接串与 deploy 脚本 ALTER ROLE 的密码一致。
+  DB_APP_USER: kb_app
+  DB_APP_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
   DEFAULT_TENANT: demo
   EMBED_MODE: ${EMBED_MODE:-real}
   EMBED_MODEL: ${EMBED_MODEL:-BAAI/bge-m3}

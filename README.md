@@ -78,7 +78,7 @@ The Compose stack publishes the API on port `8000`, PostgreSQL on host port `543
 
 ## Live Demo
 
-`http://<demo-url>:18000/ui/` — HTTP Basic Auth; credentials are held by the deployment owner. The demo dataset is synthetic and non-sensitive.
+`http://132.232.166.40:18000/ui/` — HTTP Basic Auth; ask the maintainer for credentials. The demo dataset is synthetic and non-sensitive.
 
 ## API summary
 

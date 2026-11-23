@@ -78,7 +78,7 @@ Compose 栈将 API 发布到 `8000`，PostgreSQL 发布到宿主 `5433`（容器
 
 ## Live Demo
 
-`http://<demo-url>:18000/ui/` — HTTP Basic Auth；凭据由部署方保管。演示数据为合成数据，不含敏感信息。
+`http://132.232.166.40:18000/ui/` — HTTP Basic Auth；凭据请联系维护者。演示数据为合成数据，不含敏感信息。
 
 ## API summary
 
