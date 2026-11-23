@@ -28,7 +28,10 @@ if [ ! -f "$ENV_FILE" ]; then
   umask 077
   cat > "$ENV_FILE" <<EOF
 DB_PASSWORD=$(rand 16)
+DB_APP_USER=kb_app
+DB_APP_PASSWORD=$(printf '%s' "$DB_PASSWORD")
 STORAGE_BACKEND=s3
+S3_ENDPOINT=http://minio:9000
 S3_BUCKET=rag-kb
 S3_ACCESS_KEY=rag-app
 S3_SECRET_KEY=$(rand 16)

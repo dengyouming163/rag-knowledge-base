@@ -55,7 +55,9 @@ def app_database_url() -> str:
     host = os.environ.get("DB_HOST", "127.0.0.1")
     port = os.environ.get("DB_PORT", "5433")
     user = os.environ.get("DB_APP_USER", "kb_app")
-    password = os.environ.get("DB_APP_PASSWORD", "kb_app")
+    # 没显式设 DB_APP_PASSWORD 时，fallback 到 DB_PASSWORD（deploy 脚本生成的随机密码），
+    # 避免 deploy 脚本只写 DB_PASSWORD 漏写 DB_APP_PASSWORD 时应用拼出 kb_app:kb_app 硬编码密码。
+    password = os.environ.get("DB_APP_PASSWORD") or os.environ.get("DB_PASSWORD", "kb_app")
     name = os.environ.get("DB_NAME", "kb")
     return f"postgresql+psycopg://{user}:{password}@{host}:{port}/{name}"
 
