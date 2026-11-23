@@ -36,6 +36,14 @@ services:
       DEFAULT_TENANT: demo
       # 没有 EMBED_API_KEY 时用 1024 维哈希向量，保证链路可用
       EMBED_MODE: mock
+      # 容器内必须用服务名 minio；生产把 S3_ENDPOINT 改成实际地址
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: ${S3_BUCKET:-rag-kb}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-ragkb}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-ragkb-secret}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_USE_SSL: ${S3_USE_SSL:-false}
     ports:
       - "8000:8000"
     # api 与 worker 是不同容器，上传文件必须通过 named volume 共享，
@@ -66,11 +74,76 @@ services:
       DEFAULT_TENANT: demo
       EMBED_MODE: mock
       PARSER_BASE_URL: http://parser:8000
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: ${S3_BUCKET:-rag-kb}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-ragkb}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-ragkb-secret}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_USE_SSL: ${S3_USE_SSL:-false}
     volumes: ["uploads:/app/data/uploads"]
     depends_on:
       db:
         condition: service_healthy
 
+  # 可选的 PDF 解析服务：默认不启动（profiles），这样 `docker compose up` 的
+  # 镜像体积和启动时间不受影响。需要解析 PDF 时：
+  #   docker compose --profile parser up -d parser
+  # 然后在 .env 里设 PARSER_BASE_URL=http://parser:8000
+  parser:
+    profiles: ["parser"]
+    build:
+      context: ../parser
+      dockerfile: Dockerfile
+    container_name: rag-kb-parser
+    ports:
+      - "8100:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/health')"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # 本地对象存储：仅 STORAGE_BACKEND=s3 时需要。API 9000、控制台 9001。
+  minio:
+    image: docker.m.daocloud.io/minio/minio:latest
+    container_name: rag-kb-minio
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-ragkb}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-ragkb-secret}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    restart: unless-stopped
+
+  # 一次性建桶；minio 可能尚未就绪，用 alias 重试直到成功。
+  minio-init:
+    image: docker.m.daocloud.io/minio/mc:latest
+    container_name: rag-kb-minio-init
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        until mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"; do sleep 2; done;
+        mc mb --ignore-existing local/rag-kb;
+        mc ls local/rag-kb;
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-ragkb}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-ragkb-secret}
+    restart: "no"
+
 volumes:
   pgdata: {}
+  # local 模式仍需要 api 与 worker 共享；s3 模式可不再依赖它
   uploads: {}
+  miniodata: {}
