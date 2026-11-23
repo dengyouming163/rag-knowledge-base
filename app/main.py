@@ -8,9 +8,11 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -34,6 +36,16 @@ from .routers import (
 def create_app() -> FastAPI:
     app = FastAPI(title="RAG Knowledge Base", version="0.1.0")
     app.add_middleware(HttpMetricsMiddleware)
+    # 默认不启用跨域：只有显式配置白名单时才放行，避免把控制台/接口暴露给任意站点。
+    origins = [o.strip() for o in os.environ.get("CORS_ALLOW_ORIGINS", "").split(",") if o.strip()]
+    if origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["Content-Type", "X-Tenant-Id", "X-User-Id", "Authorization"],
+            max_age=600,
+        )
     app.include_router(health.router)
     app.include_router(search.router)
     app.include_router(traces.router)
