@@ -57,10 +57,11 @@ set -a; . "./$ENV_FILE"; set +a
 
 if [ ! -f "$HTPASSWD" ]; then
   log "生成 Basic Auth 凭据"
-  umask 077
+  # nginx alpine worker 用 uid 101 跑，需要可读 htpasswd；bcrypt 加盐后 644 足够安全
+  umask 022
   docker run --rm httpd:2.4-alpine \
     htpasswd -nbB "${DEMO_USER:-demo}" "${DEMO_PASSWORD}" > "$HTPASSWD"
-  chmod 600 "$HTPASSWD"
+  chmod 644 "$HTPASSWD"
 fi
 
 log "构建并启动"
