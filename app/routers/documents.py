@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from pathlib import Path
 from typing import Annotated, Any
@@ -35,8 +36,20 @@ from src.storage import StorageError, build_storage, describe_storage
 router = APIRouter(prefix="/v1", tags=["documents"])
 
 ALLOWED_SUFFIX = {".pdf", ".md", ".txt", ".docx", ".pptx", ".xlsx"}
-MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+DEFAULT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def max_upload_bytes() -> int:
+    """读取上限，环境变量非法时退回默认值，不让配置错误把上传打挂。"""
+    raw = os.environ.get("MAX_UPLOAD_BYTES", "").strip()
+    if not raw:
+        return DEFAULT_MAX_UPLOAD_BYTES
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_MAX_UPLOAD_BYTES
+    return value if value > 0 else DEFAULT_MAX_UPLOAD_BYTES
 
 
 def _validate_id(name: str, value: str) -> None:
@@ -66,10 +79,12 @@ async def upload_document(
     if suffix not in ALLOWED_SUFFIX:
         raise HTTPException(status_code=422, detail=f"unsupported file type: {suffix or '(none)'}")
 
-    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    limit = max_upload_bytes()
+    # 只多读 1 字节即可判断超限，不把超大文件整个读入内存
+    content = await file.read(limit + 1)
     if not content:
         raise HTTPException(status_code=422, detail="empty file")
-    if len(content) > MAX_UPLOAD_BYTES:
+    if len(content) > limit:
         raise HTTPException(status_code=413, detail="file too large")
 
     content_hash = hashlib.sha256(content).hexdigest()[:16]

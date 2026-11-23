@@ -151,32 +151,42 @@ def test_duplicate_upload_reuses_document_and_file(
 
 
 def test_upload_too_large_returns_413(client: TestClient, monkeypatch) -> None:
-    assert documents.MAX_UPLOAD_BYTES == 20 * 1024 * 1024
-    monkeypatch.setattr(documents, "MAX_UPLOAD_BYTES", 10)
+    assert documents.DEFAULT_MAX_UPLOAD_BYTES == 50 * 1024 * 1024
+    monkeypatch.setenv("MAX_UPLOAD_BYTES", "10")
+    assert _upload(client, b"x" * 11).status_code == 413
 
-    response = _upload(client, b"x" * 11)
 
-    assert response.status_code == 413
+def test_upload_too_large_persists_nothing(client: TestClient, engine, monkeypatch) -> None:
+    monkeypatch.setenv("MAX_UPLOAD_BYTES", "10")
+    assert _upload(client, b"x" * 11).status_code == 413
+    with engine.begin() as connection:
+        count = connection.execute(
+            text("SELECT count(*) FROM documents WHERE tenant_id = :t"), {"t": TENANT}
+        ).scalar_one()
+    assert count == 0
+    assert not (UPLOAD_ROOT / TENANT / KB).exists()
 
 
 def test_upload_reads_only_one_byte_past_limit(monkeypatch) -> None:
-    monkeypatch.setattr(documents, "MAX_UPLOAD_BYTES", 10)
+    monkeypatch.setenv("MAX_UPLOAD_BYTES", "10")
     monkeypatch.setattr(documents, "ensure_kb", lambda *_args: None)
     upload = UploadFile(file=io.BytesIO(b"x" * 11), filename="policy.pdf")
-    original_read = upload.read
-    read_sizes: list[int] = []
+    original_read, sizes = upload.read, []
 
     async def recording_read(size: int = -1) -> bytes:
-        read_sizes.append(size)
+        sizes.append(size)
         return await original_read(size)
 
     monkeypatch.setattr(upload, "read", recording_read)
-
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(documents.upload_document(KB, TENANT, None, upload))
-
     assert exc_info.value.status_code == 413
-    assert read_sizes == [documents.MAX_UPLOAD_BYTES + 1]
+    assert sizes == [11]
+
+
+def test_max_upload_bytes_falls_back_on_invalid_env(monkeypatch) -> None:
+    monkeypatch.setenv("MAX_UPLOAD_BYTES", "not-a-number")
+    assert documents.max_upload_bytes() == documents.DEFAULT_MAX_UPLOAD_BYTES
 
 
 def test_upload_persists_pending_document_and_file(
