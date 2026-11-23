@@ -1,171 +1,149 @@
 # rag-knowledge-base
 
-面向多行业客服/陪伴场景的知识库问答（RAG）项目，覆盖异步入库、混合检索、拒答与引用、流式问答、运营统计和单页工作台。
+[![CI](https://github.com/dengyouming163/rag-knowledge-base/actions/workflows/ci.yml/badge.svg)](https://github.com/dengyouming163/rag-knowledge-base/actions/workflows/ci.yml)
+![Python 3.13](https://img.shields.io/badge/python-3.13-3776AB)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-## 架构
+English | [简体中文](README.zh-CN.md)
+
+## What this is
+
+A multi-tenant retrieval-augmented generation (RAG) service for enterprise knowledge. It covers the full path from document intake to governed answers:
+
+**asynchronous ingestion → hybrid retrieval → citation-validated generation → operations console.**
+
+It is built for customer-support knowledge bases, compliance and policy corpora, and internal documentation, where answers must be traceable to a specific source chunk and where cross-tenant data must never leak. Tenant scope, document-level ACL tags and PostgreSQL row-level security are enforced on every read of the chunk table; answers that lack sufficiently similar evidence are refused instead of guessed.
+
+## Capabilities
+
+- **Asynchronous ingestion** — the upload API writes the object, deduplicates by `content_hash`, enqueues a job and returns `202`; a single-replica worker claims one job per loop with `FOR UPDATE SKIP LOCKED`, reports stage progress, retries up to three attempts and records terminal failures.
+- **OCR fallback** — a standalone parser container (pdfplumber) extracts headings, text and table blocks; RapidOCR is invoked only when the parsed block list is empty. If the parser is not configured or unreachable, PDF parsing degrades to local `pypdf` (the local path never performs OCR).
+- **Parent/child chunking** — child chunks are embedded and matched; parent chunks are substituted into the prompt for context. Only child chunks carry vectors.
+- **Hybrid retrieval** — pgvector HNSW (`m=16`, `ef_construction=100`, cosine) plus BM25, fused with weighted Reciprocal Rank Fusion (`k=60`).
+- **Refusal gate** — generation is skipped when the maximum vector cosine similarity of the retrieved context is below `REFUSAL_MIN_SIMILARITY` (default `0.56`, defined in `src/refusal.py`). The rank-based fusion score is deliberately not used as a confidence signal.
+- **Citation validation** — every `[chunk_id]` in the answer is checked against the chunks actually placed in the context (`src/citation.py`); invalid identifiers are reported rather than silently rewritten.
+- **SSE chat** — `POST /v1/chat/stream` streams a `hits` event, answer deltas and `[DONE]`, with trace and token-usage metadata on the first event.
+- **Isolation** — PostgreSQL RLS on `chunks` (migration `0007_rls_chunks.py`) with a non-superuser application role, plus document ACL tag intersection (`src/acl.py`).
+- **Operations cockpit** — the no-build console at `/ui/` exposes health, queue state, job event timelines, traces, AI metrics, evaluation runs, identity comparison and audit entries.
+- **Storage view** — `GET /v1/storage` lists documents, sizes, status and the active backend (`local` or `s3`).
+- **Embedding drift report** — `GET /v1/ops/storage/embedding-drift` compares stored `embed_model_version` values per knowledge base against the configured `EMBED_MODEL`; a startup warning is logged when drift exists.
+- **Configurable limits** — `MAX_UPLOAD_BYTES` (default 50 MB) is enforced before any database or disk write; `JOB_LEASE_SECONDS` (default 900 s) reclaims jobs stuck in `running`; `CORS_ALLOW_ORIGINS` is empty by default, so cross-origin access is off unless explicitly allow-listed.
+
+## Architecture
+
+Ingestion path:
 
 ```mermaid
 flowchart LR
-    subgraph INGEST[异步入库]
-        U[上传 API<br/>content_hash 去重 / 202 + job_id]
-        C[local_dir / 飞书连接器<br/>worker 定时同步]
-        S[(原始文件<br/>local / MinIO S3)]
-        Q[(PostgreSQL<br/>ingest_jobs)]
-        W[单副本 worker<br/>SKIP LOCKED 领取<br/>状态 / 进度 / 重试]
-        P[PDF 解析<br/>独立 parser 容器优先<br/>本地 pypdf 降级]
-        O[RapidOCR<br/>仅解析块列表为空时]
-        E[父子分块 / Embedding<br/>仅子块向量化]
-        D[(PostgreSQL + pgvector<br/>HNSW / BM25 / RLS)]
-        U --> S
-        C --> S
-        U --> Q
-        C --> Q
-        S --> W
-        Q --> W
-        W --> P
-        P -->|解析块列表为空| O
-        P --> E
-        O --> E
-        E --> D
-    end
-
-    subgraph QUERY[检索与问答]
-        A[FastAPI<br/>租户 / ACL / 版本作用域]
-        R[多轮问题改写]
-        H[向量 + BM25 召回<br/>加权 RRF 融合]
-        F[低置信度拒答]
-        X[父块扩展 / 注入防护<br/>可配置 Rerank]
-        L[LLM 生成<br/>引用校验 / SSE]
-        A --> R --> H --> F --> X --> L
-    end
-
-    D --> H
-    UI[单页 /ui<br/>检索 / 问答 / 上传 / 任务 / 统计] --> A
-    L --> T[traces / stats]
+    U[Upload API<br/>POST /v1/kbs/:kb/documents] -->|content_hash dedup| S[(Object storage<br/>tenant/kb/doc)]
+    U -->|enqueue| J[(ingest_jobs)]
+    J --> W[worker<br/>SKIP LOCKED, lease]
+    W --> P[parser container<br/>pypdf fallback]
+    P --> C[parent / child chunking]
+    C --> E[embed child chunks]
+    E --> D[(PostgreSQL + pgvector<br/>HNSW + BM25 + RLS)]
 ```
 
-- **入库边界**：上传 API 只负责接收、去重、写存储和入队；worker 每轮最多处理一条任务，通过 `FOR UPDATE SKIP LOCKED` 原子领取，执行任务状态、进度与最多三次尝试。原始文件默认写本地 `data/uploads`（`STORAGE_BACKEND=local`，API 与 worker 必须共享该卷）；设置 `STORAGE_BACKEND=s3` 后改走 MinIO 或云对象存储，key 布局不变，不再依赖共享卷。
-- **PDF 边界**：独立 parser 使用 pdfplumber 提取标题、文本和表格块，只有解析块列表为空才调用 RapidOCR；未配置 parser 或 parser 请求失败时，主服务退回本地 pypdf，本地路径不会自行 OCR。
-- **办公格式边界**：`.docx` / `.pptx` / `.xlsx` 由 python-docx / python-pptx / openpyxl 在进程内直接转 Markdown，不经过 parser 容器；纯图片 PPT 建议先转 PDF 再走 OCR。
-- **检索与隔离**：子块用于召回，父块用于补充上下文；向量与 BM25 经加权 RRF 融合。强制租户作用域、文档 ACL 和 chunks RLS 共同约束可见范围。
-- **可观测与操作**：`/v1/traces/{trace_id}` 记录阶段耗时与命中情况，`/v1/stats` 汇总任务和问答指标；`/ui/` 提供单页知识运维工作台。
+Query path:
 
-设计取舍见 [ADR 0007：数据库异步入库](docs/adr/0007-async-ingest.md)、[ADR 0008：PDF 本地降级与 OCR 回退](docs/adr/0008-ocr-fallback.md) 与 [ADR 0009：调测驾驶舱](docs/adr/0009-ops-cockpit.md)。
-
-## 五步启动
-
-前置条件：Windows PowerShell，以及带 Docker Compose 的 Docker Desktop。以下五条命令均在仓库根目录顺序执行。已提交的 Compose 定义 `db/api/worker`、可选的 `minio/minio-init`，以及需要 `--profile parser` 才启动的 `parser` 服务；扫描件 OCR 所需的 parser 也可以继续用已提交的 `parser/Dockerfile` 单独构建和运行（见第 4、5 步）。
-
-1. 启动 PostgreSQL 16 + pgvector（宿主端口 `5433`）：
-
-   ```powershell
-   docker compose -f deploy/docker-compose.yml up -d db
-   ```
-
-2. 构建临时 API 镜像并执行全部 Alembic 迁移（包括 `kb_app` 与 RLS）：
-
-   ```powershell
-   docker compose -f deploy/docker-compose.yml run --rm --build api alembic upgrade head
-   ```
-
-3. 启动 API 与单副本 worker；两者通过 `uploads` named volume 共享文件：
-
-   ```powershell
-   docker compose -f deploy/docker-compose.yml up -d --build api worker
-   ```
-
-4. 从已提交的 parser 目录构建独立 OCR 解析镜像：
-
-   ```powershell
-   docker build -t rag-kb-parser ./parser
-   ```
-
-5. 把独立 parser 容器接入 Compose 默认网络，并赋予 `parser` 网络别名：
-
-   ```powershell
-   docker run -d --name rag-kb-parser --restart unless-stopped --network deploy_default --network-alias parser -p 8100:8000 rag-kb-parser
-   ```
-
-这里的 `deploy_default` 是上述 `-f deploy/docker-compose.yml` 在未指定 Compose 项目名时创建的默认网络。提交版 worker 已配置 `PARSER_BASE_URL=http://parser:8000`，第 5 步的网络别名使该地址解析到独立 parser 容器；宿主端口 `8100` 仅用于本机访问。也可以用 `docker compose -f deploy/docker-compose.yml --profile parser up -d parser` 交给 Compose 管理。按第 5 步单独运行的方式，parser 不在 Compose 服务内，`docker compose ps/down` 不会管理它，需单独启停和清理；自定义 Compose 项目名时也要相应调整网络配置。若不启动 parser，worker 会在连接失败后回退本地 pypdf，但扫描件无法 OCR。
-
-### 可选：MinIO 对象存储
-
-默认 `STORAGE_BACKEND=local`，行为与旧版本一致。需要验证对象存储时：
-
-```powershell
-docker compose -f deploy/docker-compose.yml up -d minio minio-init
+```mermaid
+flowchart LR
+    Q[Question] --> R[query rewrite]
+    R --> V[vector recall]
+    R --> B[BM25 recall]
+    V --> F[weighted RRF, k=60]
+    B --> F
+    F --> G{refusal gate<br/>cosine ≥ threshold}
+    G -->|below| N[refusal answer]
+    G -->|pass| X[parent expansion<br/>injection screen<br/>optional rerank]
+    X --> L[LLM generation]
+    L --> K[citation validation]
 ```
 
-`minio-init` 是一次性容器，负责创建 `rag-kb` bucket，日志出现 `rag-kb` 列表即成功。随后把环境变量设为 `STORAGE_BACKEND=s3` 并重启 api/worker（compose 内 `S3_ENDPOINT` 固定为 `http://minio:9000`，控制台在 `http://127.0.0.1:9001`）。回滚只需把 `STORAGE_BACKEND` 改回 `local`，key 布局与本地路径一一对应，无需迁移数据。
+Request handling is layered: HTTP routers in `app/routers/` delegate to `app/services.py`, which assembles `src/*` components (retrieval, pipeline, ingestion, storage) over PostgreSQL/pgvector and the configured object store. The application entry point is `app/main.py`; ingestion runs through `src/ingest.py` and `src/worker.py`; retrieval and generation are `src/retrieve.py` and `src/pipeline.py`; job state lives in `src/ingest_jobs.py`; isolation is established by `migrations/versions/0007_rls_chunks.py`. Architectural rationale is recorded in the ADRs under [`docs/adr/`](docs/adr/README.md), and the layer-by-layer description is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-启动后访问 `http://127.0.0.1:8000/ui/`；存活与就绪端点分别为 `/live`、`/ready`，OpenAPI 页面为 `/docs`。完整故障恢复演练见 [运行手册](docs/runbook.md)。
+## Quickstart
 
-### mock 与真实模型
+Requirements: Docker with Compose v2 and a shell. From the repository root:
 
-- 当前 Compose 显式使用 `EMBED_MODE=mock`，无 Key 即可验收上传、检索与任务链路。mock 是 1024 维确定性哈希向量，没有语义，界面分数不能解释为真实检索质量；对话仍需为 API 进程配置 `LLM_API_KEY`（容器内须显式注入）。
-- `scripts/demo_pipeline.py` 保留 `--mock` 与 `--real` 两种端到端演示。真实模式按 `.env.example` 配置进程环境变量，默认 Embedding 为 SiliconFlow `BAAI/bge-m3`，对话为 DeepSeek `deepseek-chat`，可用对应 base URL / model 环境变量覆盖。
-- `EMBED_BASE_URL`、`EMBED_MODEL`、`LLM_BASE_URL`、`LLM_MODEL` 只改变模型提供方或模型名；真实模型结果必须单独记录，不能和 mock 基线混比。
-
-## UI 证据
-
-![知识运维工作台总览](docs/images/ui-overview-top.jpg)
-
-截图来自已提交的真实浏览器手工验收，覆盖选库、检索、流式问答、引用展开、角色切换和上传完成状态；运行时的检索分数为 mock 模式结果。完整操作、结果与证据边界见 [UI 验收清单](docs/ui-checklist.md)。
-
-## 调测驾驶舱
-
-`/ui` 的“调测驾驶舱”把任务、Trace、AI 指标、评测/压测与身份权限放在同一个三栏工作台里。评测、压测和安全演练由独立 ops-runner 按白名单执行，不在 API 进程里运行脚本或停启容器。
-
-本地启动（数据库沿用 Compose 暴露的 `5433`）：
-
-```powershell
-# 1) 数据库
-docker compose -f deploy/docker-compose.yml up -d db
-
-# 2) API：开启运维写动作（缺省为 0，只读）
-$env:OPS_ENABLE_ACTIONS = "1"
-py -3.13 -m uvicorn app.main:app --host 127.0.0.1 --port 8000
-
-# 3) 另开两个终端分别启动 worker 与 ops-runner
-py -3.13 scripts/run_worker.py --interval 5
-py -3.13 scripts/run_ops.py --interval 5
+```bash
+cp .env.example .env
+docker compose -f deploy/docker-compose.yml up -d --build
+docker compose -f deploy/docker-compose.yml exec -T api alembic upgrade head
 ```
 
-用 Docker 启动 API 时同样要把 `OPS_ENABLE_ACTIONS=1` 注入 API 容器，Compose 没有为它预设值；ops-runner 需要与 API 使用同一个数据库。打开 `http://127.0.0.1:8000/ui/` 后，在左侧进入“评测与压测”。
+Then open `http://127.0.0.1:8000/ui/`.
 
-四项能力：
+The Compose stack publishes the API on port `8000`, PostgreSQL on host port `5433` (container `5432`), MinIO on `9000`/`9001` when the `minio` services are started, and the parser on `8100` when the `parser` profile is used. The default configuration uses `EMBED_MODE=mock`, which produces deterministic 1024-dimension hash vectors with no semantic meaning: it proves the pipeline works and cannot be used for quality claims. Chat requires `LLM_API_KEY` in the API process environment.
 
-1. **只读驾驶舱**：组件健康、队列、任务事件时间线、AI 指标与 Trace 瀑布。
-2. **评测与压测**：最近一次 mock 评测指标、运行历史与详情、相对上一轮的指标 delta；管理员可触发 `eval_mock` 与固定压测（并发 20、每端点 200 请求）。
-3. **身份与权限**：身份卡、guest / member / admin 身份对比、三层隔离与拒绝原因。
-4. **操作审计**：allowed / denied 时间线，覆盖触发与任务重试；身份对比记录拒绝尝试。
+## Live Demo
 
-指标口径（与 `scripts/run_eval.py` 一致，完整说明见 [驾驶舱验收清单](docs/ops-cockpit-checklist.md)）：
+`http://<demo-url>:18000/ui/` — HTTP Basic Auth; credentials are held by the deployment owner. The demo dataset is synthetic and non-sensitive.
 
-| 指标 | 含义 |
+## API summary
+
+The authoritative OpenAPI contract is `/docs` (and `/openapi.json`); the human-readable overview is [`docs/API.md`](docs/API.md).
+
+| Method and path | Purpose |
 |---|---|
-| `recall_at_k` | 可回答用例中，前 k 条命中的标注 chunk 比例逐题计算后取均值，多标注可部分得分 |
-| `mrr` | 可回答用例中，前 k 条里首个正确结果的倒数排名均值 |
-| `hit_rate` | 可回答用例中 `recall_at_k` 大于 0 的比例 |
-| `refusal_accuracy` | 不可回答用例中正确拒答的比例 |
-| `answer_coverage` | 可回答用例中未拒答的比例，生成失败单独计入 `generation_errors` |
-| `citation_accuracy` | 可回答、生成成功且未拒答的回答中，引用 chunk_id 存在于实际上下文的比例均值 |
+| `POST /v1/kbs/{kb_id}/documents` | Upload one file, deduplicate by content hash, enqueue a job, return `202` with `job_id` and `doc_id` |
+| `GET /v1/jobs/{job_id}` | Read one ingestion job (status, attempts, progress, error) for the current tenant |
+| `POST /v1/kbs/{kb_id}/search` | Hybrid / vector / BM25 retrieval with `top_k`, `mode` and `audience` |
+| `POST /v1/chat/stream` (SSE) | Rewrite, retrieve, gate, generate and validate citations; streams `hits`, deltas and `[DONE]` |
+| `GET /v1/storage` | List stored documents with size, status and active storage backend |
+| `GET /v1/ops/storage/embedding-drift` | Per-knowledge-base embedding version distribution and drift count |
+| `GET /live` | Liveness probe; always `200` while the process is running |
+| `GET /ready` | Readiness probe; checks PostgreSQL, cached for 5 seconds, `503` when the database is down |
 
-安全演练只运行隔离测试（parser 降级、LLM 失败、队列重试），不会真实停容器；同一知识库同类型运行未结束时再次触发会返回 409。`OPS_ENABLE_ACTIONS` 未开启或当前身份不是管理员时，触发按钮保持禁用。
+The tenant is taken from the `X-Tenant-Id` header (default `demo`) and never from the request body; this header is a placeholder until token-based authentication lands.
 
-## 真实模型评测
+## Evaluation
 
-以下为 **2026-11-19 19:27** 一次本地真实模型运行：`mock=false`、Embedding 使用真实 `BAAI/bge-m3`、`hybrid`、`top_k=5`、开启生成。语料共 26 个 chunks；用例共 50 条，其中 38 条可回答、12 条不可回答；生成失败 0 条。
+Measured with real `BAAI/bge-m3` embeddings and a real `deepseek-chat` generation model, `mode=hybrid`, `top_k=5`, over `eval/cases.jsonl` (50 cases: 38 answerable, 12 unanswerable) and `eval/demo_corpus.json` (26 chunks). Raw output: `eval/baseline_real_gen.json`.
 
-| 指标 | 实测值 | 分母与语义 |
+| Metric | Value | Scope and definition |
 |---|---:|---|
-| Recall@5 | 1.0000 | 38 条可回答题；逐题计算前 5 条命中的标注 chunk 比例后取均值，多标注可部分得分 |
-| MRR@5 | 0.9737 | 38 条可回答题；前 5 条中首个正确结果的倒数排名均值 |
-| Hit Rate@5 | 1.0000 | 38 条可回答题中，Recall@5 大于 0 的比例 |
-| 拒答准确率 | 1.0000 | 12 条不可回答题中正确拒答的比例（12/12） |
-| 答案覆盖率 | 0.9211 | 38 条可回答题中未拒答的比例（35/38）；本次生成失败 0 条 |
-| 引用准确率 | 1.0000 | 35 条可回答、生成成功且未拒答的回答，逐条计算引用 chunk_id 存在于实际上下文的比例后取均值；无引用回答按 0 计入分母，本次为 0 条 |
+| Recall@5 | **1.0000** | 38 answerable cases; mean per-case fraction of labelled chunks found in the top 5 |
+| MRR@5 | **0.9737** | 38 answerable cases; mean reciprocal rank of the first correct chunk |
+| Citation accuracy | **1.0000** | Answers that were answerable, generated and not refused; fraction whose cited `chunk_id`s exist in the actual context |
+| Refusal accuracy | **1.0000** | 12 unanswerable cases; fraction correctly refused (12/12) |
+| Answer coverage | **0.9211** | 38 answerable cases not refused (35/38) |
+| Generation errors | **0** | No case failed during rewriting or generation |
 
-证据边界：原始输出位于本次工作区的 `eval/baseline_real_gen.json`，该文件是**未跟踪的本地证据**，不会随干净检出分发，因此这里不把它链接成仓库基线。以上数值只代表这次小型语料、用例与参数组合，不是通用榜单成绩。复现需使用当前生成评测实现 `scripts/run_eval.py`，自行配置真实模型 Key，并在相同检索与生成条件下重新导出结果；指标实现口径见 `src/metrics.py` 与 `scripts/run_eval.py`。
+Mock baseline (`eval/baseline.json`, deterministic hash vectors, retrieval only): Recall@5 `0.9342`, MRR `0.8575`, hit rate `0.9474`. Mock vectors exercise the pipeline and the regression gate; they are not evidence of retrieval or answer quality. Reproduce and interpret these numbers with [`docs/EVALUATION.md`](docs/EVALUATION.md).
 
-完整回归测试使用 `py -3.13 -m pytest -q`；数据库不可用时会跳过需要真实 PostgreSQL 的集成用例，应以命令实际输出的 passed / skipped / warning 为准，不沿用历史计数。
+## Repository layout
+
+```text
+app/                  FastAPI entry point, routers, dependency wiring, static console
+  routers/            documents, jobs, search, chat, stats, traces, identity, ops, health
+  main.py             application factory, CORS, exception mapping, /ui mount
+src/                  domain logic
+  ingest.py           parse → chunk → embed → publish
+  ingest_jobs.py      job state machine, lease recovery, retries
+  worker.py           single-job claim loop
+  retrieve.py         vector + BM25 + weighted RRF
+  pipeline.py         rewrite → retrieve → gate → generate → citation check
+  storage.py          local and S3 object storage
+  acl.py, refusal.py, citation.py, guard/injection.py
+migrations/           Alembic revisions, including 0007 RLS on chunks
+deploy/               docker-compose files, nginx demo gateway, MinIO policies
+scripts/              run_worker, run_ops, run_eval, ci_gate, loadtest, reembed_chunks, deploy_demo
+tests/                pytest suite and front-end unit tests
+eval/                 evaluation suite, corpus, baselines and calibration data
+docs/                 architecture, deployment, operations, security, API, evaluation, roadmap
+```
+
+## Operations
+
+Start with [`docs/OPERATIONS.md`](docs/OPERATIONS.md): probe semantics (`/live`, `/ready`, gateway `/health`), job diagnosis through `GET /v1/ops/jobs` and `GET /v1/ops/jobs/{job_id}/events`, manual retry (requires `OPS_ENABLE_ACTIONS=1` and `users.role='admin'`), stale-job recovery, embedding drift remediation with `scripts/reembed_chunks.py`, log and load-test commands, and the common failure modes with their symptoms. Degradation drills are documented in [`docs/runbook.md`](docs/runbook.md). Deployment and environment variables are covered in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
+## Security
+
+Report vulnerabilities privately as described in [`SECURITY.md`](SECURITY.md). The trust boundary, authentication model, RLS and ACL design, prompt-injection screening and demo-environment caveats are documented in [`docs/SECURITY.md`](docs/SECURITY.md).
+
+## License
+
+Apache License 2.0 — see [`LICENSE`](LICENSE).
+
+Further reading: [`CHANGELOG.md`](CHANGELOG.md), [`CONTRIBUTING.md`](CONTRIBUTING.md), [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
