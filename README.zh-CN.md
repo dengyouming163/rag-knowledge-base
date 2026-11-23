@@ -93,6 +93,20 @@ curl -u demo:TEJax7hnwrzg2kj7 -H 'X-Tenant-Id: demo' \
   http://132.232.166.40:18000/v1/storage
 ```
 
+## 界面截图
+
+概览 — 当前作用域下的健康、队列、worker 与 AI 指标（业务数据需先点一次「刷新」加载）：
+
+![运维控制台概览](docs/assets/screenshots/overview.zh-CN.png)
+
+查询实验室 — 基于已入库语料的流式回答与引用校验：
+
+![查询实验室的流式回答与引用来源](docs/assets/screenshots/lab-chat.zh-CN.png)
+
+存储视图 — 已入库文档的大小、状态与当前对象存储后端：
+
+![存储视图列出 17 篇已入库文档](docs/assets/screenshots/storage.zh-CN.png)
+
 ## API summary
 
 权威 OpenAPI 契约见 `/docs`（以及 `/openapi.json`）；可读概览见 [`docs/API.md`](docs/API.md)。

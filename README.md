@@ -93,6 +93,20 @@ curl -u demo:TEJax7hnwrzg2kj7 -H 'X-Tenant-Id: demo' \
   http://132.232.166.40:18000/v1/storage
 ```
 
+## Screenshots
+
+Overview — health, queue, worker and AI metrics for the active scope (click **Refresh** once to load business data):
+
+![Overview of the operations console](docs/assets/screenshots/overview.en.png)
+
+Query Lab — a streamed, citation-validated answer grounded in the ingested corpus:
+
+![Query Lab streaming answer with citation sources](docs/assets/screenshots/lab-chat.en.png)
+
+Storage — ingested documents with size, status and the active object-store backend:
+
+![Storage view listing 17 ingested documents on S3](docs/assets/screenshots/storage.en.png)
+
 ## API summary
 
 The authoritative OpenAPI contract is `/docs` (and `/openapi.json`); the human-readable overview is [`docs/API.md`](docs/API.md).
