@@ -72,3 +72,25 @@ class JobOut(BaseModel):
 
 class JobListResponse(BaseModel):
     jobs: list[JobOut]
+
+
+class StorageDocumentOut(BaseModel):
+    id: str
+    kb_id: str
+    filename: str
+    size: int | None
+    status: str
+    created_at: datetime
+
+
+class StorageStats(BaseModel):
+    total: int
+    bytes: int
+    by_status: dict[str, int]
+
+
+class StorageResponse(BaseModel):
+    backend: Literal["local", "s3"]
+    bucket: str | None
+    stats: StorageStats
+    documents: list[StorageDocumentOut]

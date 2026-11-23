@@ -22,15 +22,15 @@ from pathlib import Path
 from typing import Annotated, Any
 from uuid import uuid4
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from sqlalchemy import text
 
 from app.deps import EngineDep, TenantId
-from app.schemas import UploadDocumentResponse
+from app.schemas import StorageResponse, UploadDocumentResponse
 from app.services import ensure_kb
 from src import ingest_jobs
 from src.ingest_events import record_job_event
-from src.storage import StorageError, build_storage
+from src.storage import StorageError, build_storage, describe_storage
 
 router = APIRouter(prefix="/v1", tags=["documents"])
 
@@ -155,3 +155,69 @@ async def upload_document(
         raise HTTPException(status_code=500, detail="failed to persist upload") from exc
 
     return UploadDocumentResponse(job_id=job_id, doc_id=doc_id, duplicated=duplicated)
+
+
+def _doc_filename(meta_filename: str | None, source_url: str, doc_id: str) -> str:
+    """meta.filename → source_url basename → doc_id。"""
+    if meta_filename:
+        return meta_filename
+    base = Path(source_url).name if source_url else ""
+    return base or doc_id
+
+
+@router.get("/storage", response_model=StorageResponse)
+def list_storage(
+    tenant_id: TenantId,
+    engine: EngineDep,
+    kb_id: str | None = None,
+    status: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=500),
+) -> StorageResponse:
+    if kb_id is not None:
+        _validate_id("kb_id", kb_id)
+    status_value = status if status in {"pending", "ready", "failed"} else None
+
+    where = ["tenant_id = :t"]
+    params: dict[str, Any] = {"t": tenant_id, "limit": limit}
+    if kb_id:
+        where.append("kb_id = :kb")
+        params["kb"] = kb_id
+    if status_value:
+        where.append("status = :status")
+        params["status"] = status_value
+
+    sql = text(
+        "SELECT id, kb_id, source_url, meta->>'filename' AS filename, "
+        "NULLIF(meta->>'size', '')::bigint AS size, status, created_at "
+        "FROM documents WHERE " + " AND ".join(where) + " "
+        "ORDER BY created_at DESC LIMIT :limit"
+    )
+    with engine.connect() as connection:
+        rows = connection.execute(sql, params).mappings().all()
+
+    documents = []
+    by_status: dict[str, int] = {}
+    total_bytes = 0
+    for row in rows:
+        filename = _doc_filename(row["filename"], row["source_url"] or "", row["id"])
+        size = int(row["size"]) if row["size"] is not None else None
+        documents.append(
+            {
+                "id": row["id"],
+                "kb_id": row["kb_id"],
+                "filename": filename,
+                "size": size,
+                "status": row["status"],
+                "created_at": row["created_at"],
+            }
+        )
+        by_status[row["status"]] = by_status.get(row["status"], 0) + 1
+        total_bytes += size or 0
+
+    desc = describe_storage()
+    return StorageResponse(
+        backend=desc["backend"],
+        bucket=desc["bucket"],
+        stats={"total": len(documents), "bytes": total_bytes, "by_status": by_status},
+        documents=documents,
+    )
